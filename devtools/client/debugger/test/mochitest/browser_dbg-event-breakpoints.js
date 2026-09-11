@@ -164,6 +164,9 @@ add_task(async function () {
   await assertPausedAtSourceAndLine(dbg, eventBreakpointsSource.id, 67);
   await resume(dbg);
 
+  info("Deselect compositionend");
+  await toggleEventBreakpoint(dbg, "Keyboard", "event.keyboard.compositionend");
+
   info("Test textInput");
   await toggleEventBreakpoint(dbg, "Keyboard", "event.keyboard.textInput");
   invokeOnElement("#focus-text", "focus");
