@@ -1121,8 +1121,9 @@ class WorkerPrivate final
   // Whether this worker exposes its debugger through the parent-process
   // RemoteWorkerDebugger mechanism (true) or registers its nsIWorkerDebugger on
   // the local main thread (false). Latched at construction from
-  // dom.worker.remoteDebugger.enabled; always false in the parent process. The
-  // two mechanisms are mutually exclusive for a given worker.
+  // dom.worker.remoteDebugger.enabled, and for a parent-process worker also
+  // from RemoteWorkerService::IsInitialized(); see the mUseRemoteDebugger
+  // initializer. The two mechanisms are mutually exclusive for a given worker.
   bool UseRemoteDebugger() const { return mUseRemoteDebugger; }
 
   void SetIsQueued(const bool& aQueued);

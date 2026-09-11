@@ -1641,11 +1641,10 @@ nsresult WorkerPrivate::DispatchLockHeld(
     return NS_ERROR_UNEXPECTED;
   }
 
-  // Postpone the debuggee runnable dispatching while remote debugger
-  // registration
-  if (runnable->IsDebuggeeRunnable() && !mDebuggerReady &&
-      !mRemoteDebuggerReady &&
-      (!mRemoteDebuggerRegistered && XRE_IsParentProcess())) {
+  // Suspend the debuggee while the debugger has asked us to, through either the
+  // local or the remote mechanism.
+  if (runnable->IsDebuggeeRunnable() &&
+      !(mDebuggerReady && mRemoteDebuggerReady)) {
     MOZ_RELEASE_ASSERT(!aSyncLoopTarget);
     mDelayedDebuggeeRunnables.AppendElement(runnable);
     return NS_OK;
@@ -1796,8 +1795,7 @@ void WorkerPrivate::SetIsRemoteDebuggerRegistered(const bool& aRegistered) {
     MOZ_ASSERT(mRemoteDebuggerRegistered != aRegistered);
 
     mRemoteDebuggerRegistered = aRegistered;
-    bool debuggerRegistered = mDebuggerRegistered && mRemoteDebuggerRegistered;
-    if (mRemoteDebuggerReady && mDebuggerReady && debuggerRegistered) {
+    if (mRemoteDebuggerReady && mDebuggerReady) {
       LOGV(
           ("WorkerPrivate::SetIsRemoteDebuggerRegistered [%p] dispatching "
            "the delayed debuggee runnables",
@@ -1856,7 +1854,7 @@ void WorkerPrivate::SetIsRemoteDebuggerReady(const bool& aReady) {
 
   mRemoteDebuggerReady = aReady;
 
-  if (mRemoteDebuggerReady && mDebuggerReady && debuggerRegistered) {
+  if (mRemoteDebuggerReady && mDebuggerReady) {
     LOGV(
         ("WorkerPrivate::SetIsRemoteDebuggerReady [%p] dispatching "
          "the delayed debuggee runnables",
@@ -3384,10 +3382,7 @@ nsresult WorkerPrivate::SetIsDebuggerReady(bool aReady) {
 
   mDebuggerReady = aReady;
 
-  bool debuggerRegistered = mDebuggerRegistered && (mRemoteDebuggerRegistered ||
-                                                    XRE_IsParentProcess());
-
-  if (aReady && debuggerRegistered) {
+  if (mDebuggerReady && mRemoteDebuggerReady) {
     // Dispatch all the delayed runnables without releasing the lock, to ensure
     // that the order in which debuggee runnables execute is the same as the
     // order in which they were originally dispatched.
