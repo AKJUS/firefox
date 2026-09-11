@@ -841,6 +841,14 @@ export class AITab {
       return { error: structured.error };
     }
 
+    // Fill in link-item favicons from Places, before the surface is linked or
+    // stored.
+    await AITab.#hydrateFavicons(structured.surface, signal);
+
+    if (signal?.aborted) {
+      return { error: CANCELED_ERROR };
+    }
+
     const title =
       AITab.#titleFromSurface(structured.surface) ||
       focusText ||
@@ -903,6 +911,97 @@ export class AITab {
       return pageInfo?.previewImageURL ? pageInfo.previewImageURL.href : "";
     } catch (e) {
       lazy.console.debug("getPageImage failed", url, e);
+      return "";
+    }
+  }
+
+  /**
+   * Make the browser the only source of link-item favicons: on the surface's
+   * SourceLink items (the SourceLinks component, Header.references, and each
+   * Highlights item's `sources`) and Card items, drop whatever the model put
+   * in `favicon` — the catalog accepts the property, so instructing the model
+   * to leave it out is no guarantee — and fill it from the favicons Places
+   * has stored. Mutates `surface` in place; best-effort — an item keeps no
+   * `favicon` when Places has none or the lookup fails.
+   *
+   * Places only has favicons for sites the user has visited, so these images
+   * automatically count as seen URLs and are not subject to security
+   * restrictions.
+   *
+   * @param {A2UISurface} surface
+   * @param {AbortSignal} [signal] - Stops the remaining Places lookups (the
+   *   caller re-checks it and discards the surface).
+   */
+  static async #hydrateFavicons(surface, signal) {
+    const dataModel = surface?.dataModel ?? {};
+    const itemsOf = value => {
+      let items = value;
+      if (AITab.#isBinding(value)) {
+        // #resolvePath needs an absolute pointer, and validation skips
+        // relative (template-scope) paths, so those must not resolve here
+        // either. The resolved array is the same object the serialized
+        // surface carries, so mutating its items reaches the output.
+        items = value.path.startsWith("/")
+          ? AITab.#resolvePath(dataModel, value.path)
+          : undefined;
+      }
+      return Array.isArray(items) ? items : [];
+    };
+
+    const linkItems = [];
+    for (const component of surface?.components ?? []) {
+      switch (component?.component) {
+        case "SourceLinks":
+        case "Cards":
+          linkItems.push(...itemsOf(component.items));
+          break;
+        case "Header":
+          linkItems.push(...itemsOf(component.references?.items));
+          break;
+        case "Highlights":
+          for (const item of itemsOf(component.items)) {
+            linkItems.push(...itemsOf(item?.sources?.items));
+          }
+          break;
+      }
+    }
+
+    // One Places lookup per unique href; sources typically repeat across the
+    // header references and per-highlight sources.
+    const faviconByHref = new Map();
+    for (const item of linkItems) {
+      if (!item || typeof item != "object") {
+        continue;
+      }
+      delete item.favicon;
+      if (typeof item.href != "string" || signal?.aborted) {
+        continue;
+      }
+      if (!faviconByHref.has(item.href)) {
+        faviconByHref.set(item.href, await AITab.#getFaviconURL(item.href));
+      }
+      const favicon = faviconByHref.get(item.href);
+      if (favicon) {
+        item.favicon = favicon;
+      }
+    }
+  }
+
+  /**
+   * Look up the URL of a page's stored favicon in Places. Never rejects;
+   * returns "" when no favicon is stored for the page or the lookup fails.
+   *
+   * @param {string} url
+   * @returns {Promise<string>}
+   */
+  static async #getFaviconURL(url) {
+    try {
+      const favicon = await lazy.PlacesUtils.favicons.getFaviconForPage(
+        Services.io.newURI(url)
+      );
+      return favicon?.uri?.spec ?? "";
+    } catch (e) {
+      lazy.console.debug("getFaviconURL failed", url, e);
       return "";
     }
   }

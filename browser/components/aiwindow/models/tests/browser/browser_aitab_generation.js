@@ -270,6 +270,183 @@ add_task(async function test_generateAITab_omits_image_for_denied_url() {
   }
 });
 
+// A decodable favicon payload for Places (setFaviconForPage rejects data it
+// cannot decode as an image).
+const FAVICON_DATA_URL =
+  "data:image/svg+xml;base64," +
+  btoa(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="#424e5a"/></svg>`
+  );
+
+add_task(async function test_generateAITab_hydrates_link_favicons() {
+  // Covers the `items` shapes hydration must handle: a literal array
+  // (Header.references), an absolute data-model binding (SourceLinks), and a
+  // relative binding (left alone — validation does not check those). Also
+  // covers that model-supplied favicons are replaced or stripped, never kept.
+  const mockEngine = new MockEngineManager();
+  const { url: GEN_URL, cleanup: stopServing } = servePage();
+  const FAVICON_URL = "https://example.com/favicon.ico";
+  const NO_FAVICON_URL = "https://example.org/never-visited";
+  const MODEL_FAVICON = "https://model.example/injected.ico";
+  await PlacesTestUtils.addVisits(GEN_URL);
+  await PlacesTestUtils.setFaviconForPage(
+    GEN_URL,
+    FAVICON_URL,
+    FAVICON_DATA_URL
+  );
+  try {
+    const genPromise = generateAITab(
+      { urlList: [GEN_URL], focus: "hotels in Lisbon" },
+      newConversation()
+    );
+
+    await mockEngine.respondTo({
+      purpose: MODEL_FEATURES.AITAB,
+      response: JSON.stringify({
+        components: [
+          {
+            id: "root",
+            component: "Page",
+            header: "hdr",
+            children: ["lead", "links", "more"],
+          },
+          {
+            id: "hdr",
+            component: "Header",
+            title: "Hotels in Lisbon",
+            references: {
+              items: [
+                { href: GEN_URL, title: "Hotels", favicon: MODEL_FAVICON },
+                {
+                  href: NO_FAVICON_URL,
+                  title: "Unvisited",
+                  favicon: MODEL_FAVICON,
+                },
+              ],
+            },
+          },
+          {
+            id: "lead",
+            component: "TextBlock",
+            lead: "Budget Central Hostel is $72 / night.",
+          },
+          {
+            id: "links",
+            component: "SourceLinks",
+            items: { path: "/sources" },
+          },
+          {
+            id: "more",
+            component: "SourceLinks",
+            items: { path: "more" },
+          },
+        ],
+        dataModel: {
+          sources: [{ href: GEN_URL, title: "Hotels" }],
+          more: [{ href: GEN_URL, title: "More" }],
+        },
+      }),
+    });
+
+    const result = await genPromise;
+    Assert.ok(!result.error, `generation should succeed: ${result.error}`);
+    const header = result.surface.components.find(
+      c => c.component === "Header"
+    );
+    Assert.equal(
+      header.references.items[0].favicon,
+      FAVICON_URL,
+      "a literal SourceLink item gets its stored favicon URL, replacing the model's"
+    );
+    Assert.ok(
+      !("favicon" in header.references.items[1]),
+      "a model-supplied favicon is stripped when Places has none stored"
+    );
+    Assert.equal(
+      result.surface.dataModel.sources[0].favicon,
+      FAVICON_URL,
+      "an absolutely-bound SourceLink item gets its stored favicon URL"
+    );
+    Assert.ok(
+      !("favicon" in result.surface.dataModel.more[0]),
+      "a relatively-bound array is not resolved, so its items are not touched"
+    );
+  } finally {
+    await stopServing();
+    mockEngine.cleanupMocks();
+    await PlacesUtils.history.clear();
+  }
+});
+
+add_task(async function test_generateAITab_hydrates_favicon_for_denied_url() {
+  // Unlike the og:image path above, favicon hydration is not subject to the
+  // conversation's access-control decision: Places only has favicons for
+  // sites the user has visited, so they already count as seen. A visited
+  // page's favicon hydrates (replacing the model's value) even when the
+  // conversation refuses to read the page itself.
+  const mockEngine = new MockEngineManager();
+  const DENIED_URL = "https://example.com/denied-sourcelink-page";
+  const FAVICON_URL = "https://example.com/denied-favicon.ico";
+  await PlacesTestUtils.addVisits(DENIED_URL);
+  await PlacesTestUtils.setFaviconForPage(
+    DENIED_URL,
+    FAVICON_URL,
+    FAVICON_DATA_URL
+  );
+  const conversation = newConversation();
+  conversation.securityProperties.setPrivateData();
+  conversation.securityProperties.setUntrustedInput();
+  conversation.securityProperties.commit();
+  try {
+    const genPromise = generateAITab({ urlList: [DENIED_URL] }, conversation);
+
+    await mockEngine.respondTo({
+      purpose: MODEL_FEATURES.AITAB,
+      response: JSON.stringify({
+        components: [
+          {
+            id: "root",
+            component: "Page",
+            header: "hdr",
+            children: ["lead", "links"],
+          },
+          { id: "hdr", component: "Header", title: "Hotels in Lisbon" },
+          {
+            id: "lead",
+            component: "TextBlock",
+            lead: "Budget Central Hostel is $72 / night.",
+          },
+          {
+            id: "links",
+            component: "SourceLinks",
+            items: [
+              {
+                href: DENIED_URL,
+                favicon: "https://model.example/injected.ico",
+              },
+            ],
+          },
+        ],
+        dataModel: {},
+      }),
+    });
+
+    const result = await genPromise;
+    Assert.ok(!result.error, `generation should succeed: ${result.error}`);
+    const links = result.surface.components.find(
+      c => c.component === "SourceLinks"
+    );
+    Assert.equal(
+      links.items[0].favicon,
+      FAVICON_URL,
+      "the visited page's stored favicon hydrates despite the content refusal"
+    );
+  } finally {
+    mockEngine.cleanupMocks();
+    await PlacesUtils.history.clear();
+  }
+});
+
 add_task(async function test_generateAITab_rejects_invalid_page() {
   const mockEngine = new MockEngineManager();
   const { url: GEN_URL, cleanup: stopServing } = servePage();
