@@ -1514,8 +1514,24 @@ export const tokensTable = {
       name: "--message-bar-border-radius",
     },
     {
-      value: "var(--border-radius-circle)",
+      value: { default: "var(--border-radius-circle)" },
       name: "--message-bar-icon-container-border-radius",
+    },
+    {
+      value: { default: "var(--message-bar-icon-container-border-radius)" },
+      name: "--message-bar-icon-container-border-radius-start-start",
+    },
+    {
+      value: { default: "var(--message-bar-icon-container-border-radius)" },
+      name: "--message-bar-icon-container-border-radius-start-end",
+    },
+    {
+      value: { default: "var(--message-bar-icon-container-border-radius)" },
+      name: "--message-bar-icon-container-border-radius-end-start",
+    },
+    {
+      value: { default: "var(--message-bar-icon-container-border-radius)" },
+      name: "--message-bar-icon-container-border-radius-end-end",
     },
     {
       value: "var(--button-border-radius)",
@@ -2114,9 +2130,7 @@ export const tokensTable = {
     { value: "var(--space-small)", name: "--card-gap-compact" },
     { value: "var(--space-small)", name: "--card-gap-article" },
     { value: "var(--space-small)", name: "--checkbox-margin-inline" },
-    { value: "4px", name: "--info-bar-margin-block-start" },
-    { value: { default: "4px" }, name: "--info-bar-margin-block-end" },
-    { value: "4px", name: "--info-bar-margin-inline" },
+    { value: { default: "4px" }, name: "--info-bar-margin" },
     { value: "var(--space-medium)", name: "--input-folder-gap" },
     { value: { brand: { default: "64px" } }, name: "--page-space-block-start" },
     {
@@ -2169,9 +2183,17 @@ export const tokensTable = {
       name: "--message-bar-actions-button-padding",
     },
     { value: "var(--space-small)", name: "--message-bar-actions-gap" },
+    {
+      value: { default: "0px" },
+      name: "--message-bar-close-margin-inline-end",
+    },
+    {
+      value: { default: "0px" },
+      name: "--message-bar-close-margin-block-start",
+    },
     { value: "var(--space-small)", name: "--message-bar-container-gap" },
     {
-      value: "var(--space-small)",
+      value: { default: "var(--space-small)" },
       name: "--message-bar-container-padding-block",
     },
     {
@@ -2182,6 +2204,8 @@ export const tokensTable = {
       value: "var(--space-small) var(--space-medium)",
       name: "--message-bar-content-gap",
     },
+    { value: { default: "0" }, name: "--message-bar-content-padding-block" },
+    { value: { default: "0" }, name: "--message-bar-content-padding-inline" },
     {
       value: { default: "var(--space-small)" },
       name: "--message-bar-icon-container-margin-block-start",
@@ -2194,6 +2218,10 @@ export const tokensTable = {
     {
       value: { default: "0px" },
       name: "--message-bar-icon-container-padding-offset",
+    },
+    {
+      value: { default: "var(--message-bar-icon-container-padding)" },
+      name: "--message-bar-icon-container-padding-block-start",
     },
     {
       value: "var(--space-xsmall)",
@@ -3002,6 +3030,10 @@ export const tokensTable = {
     { value: "center", name: "--button-content-alignment" },
     { value: "cover", name: "--card-cover-image-object-fit-default" },
     { value: "center", name: "--card-cover-image-object-position-default" },
+    {
+      value: { default: "center" },
+      name: "--message-bar-icon-container-align-items",
+    },
     {
       value: {
         light: "var(--color-blue-50)",
@@ -4543,9 +4575,7 @@ export const variableLookupTable = {
       },
     },
   },
-  "info-bar-margin-block-start": "4px",
-  "info-bar-margin-block-end": { default: "4px" },
-  "info-bar-margin-inline": "4px",
+  "info-bar-margin": { default: "4px" },
   "input-border-color": "var(--border-color-interactive)",
   "input-folder-gap": "var(--space-medium)",
   "input-height": "var(--size-item-small)",
@@ -5129,13 +5159,17 @@ export const variableLookupTable = {
   },
   "message-bar-border-radius": "var(--border-radius-medium)",
   "message-bar-border-width": "var(--border-width)",
+  "message-bar-close-margin-inline-end": { default: "0px" },
+  "message-bar-close-margin-block-start": { default: "0px" },
   "message-bar-container-gap": "var(--space-small)",
   "message-bar-container-min-height": "var(--size-item-large)",
-  "message-bar-container-padding-block": "var(--space-small)",
+  "message-bar-container-padding-block": { default: "var(--space-small)" },
   "message-bar-container-padding-inline": {
     default: "var(--space-medium) var(--space-small)",
   },
   "message-bar-content-gap": "var(--space-small) var(--space-medium)",
+  "message-bar-content-padding-block": { default: "0" },
+  "message-bar-content-padding-inline": { default: "0" },
   "message-bar-icon-background-color": "var(--background-color-information)",
   "message-bar-icon-background-color-warning":
     "var(--background-color-warning)",
@@ -5144,9 +5178,24 @@ export const variableLookupTable = {
   "message-bar-icon-background-color-critical":
     "var(--background-color-critical)",
   "message-bar-icon-color": "var(--icon-color-information)",
+  "message-bar-icon-container-align-items": { default: "center" },
   "message-bar-icon-container-border": { default: "none" },
   "message-bar-icon-container-border-color": "transparent",
-  "message-bar-icon-container-border-radius": "var(--border-radius-circle)",
+  "message-bar-icon-container-border-radius": {
+    default: "var(--border-radius-circle)",
+  },
+  "message-bar-icon-container-border-radius-start-start": {
+    default: "var(--message-bar-icon-container-border-radius)",
+  },
+  "message-bar-icon-container-border-radius-start-end": {
+    default: "var(--message-bar-icon-container-border-radius)",
+  },
+  "message-bar-icon-container-border-radius-end-start": {
+    default: "var(--message-bar-icon-container-border-radius)",
+  },
+  "message-bar-icon-container-border-radius-end-end": {
+    default: "var(--message-bar-icon-container-border-radius)",
+  },
   "message-bar-icon-container-height": { default: "min-content" },
   "message-bar-icon-container-margin-block-start": {
     default: "var(--space-small)",
@@ -5154,6 +5203,9 @@ export const variableLookupTable = {
   "message-bar-icon-container-margin-block-start-offset": { default: "2px" },
   "message-bar-icon-container-padding": { default: "0px" },
   "message-bar-icon-container-padding-offset": { default: "0px" },
+  "message-bar-icon-container-padding-block-start": {
+    default: "var(--message-bar-icon-container-padding)",
+  },
   "message-bar-icon-size": "var(--icon-size)",
   "message-bar-message-margin-inline-end": "var(--space-xsmall)",
   "message-bar-text-color": "var(--text-color)",

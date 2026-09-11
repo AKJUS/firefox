@@ -632,8 +632,7 @@ toolbarpaletteitem > #personal-bookmarks > #PlacesToolbar,
   flex-direction: column;
 
   @media -moz-pref("browser.nova.enabled") {
-    --info-bar-margin-block-start: 0;
-    --info-bar-margin-inline: 0;
+    --info-bar-margin: 0;
   }
 }
 

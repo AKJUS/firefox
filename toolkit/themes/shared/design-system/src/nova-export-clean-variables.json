@@ -2851,24 +2851,24 @@
           "Private": "{background/color/box}",
           "Smart Light (WIP)": "{background/color/box}",
           "warning": {
-            "Light": "{message-bar/background/color}",
-            "Dark": "{message-bar/background/color}",
-            "HCM": "{message-bar/background/color}",
-            "Private": "{message-bar/background/color}",
+            "Light": "{background/color/box}",
+            "Dark": "{background/color/box}",
+            "HCM": "{background/color/box}",
+            "Private": "{background/color/box}",
             "Smart Light (WIP)": "{message-bar/background/color}"
           },
           "success": {
-            "Light": "{message-bar/background/color}",
-            "Dark": "{message-bar/background/color}",
-            "HCM": "{message-bar/background/color}",
-            "Private": "{message-bar/background/color}",
+            "Light": "{background/color/box}",
+            "Dark": "{background/color/box}",
+            "HCM": "{background/color/box}",
+            "Private": "{background/color/box}",
             "Smart Light (WIP)": "{message-bar/background/color}"
           },
           "critical": {
-            "Light": "{message-bar/background/color}",
-            "Dark": "{message-bar/background/color}",
-            "HCM": "{message-bar/background/color}",
-            "Private": "{message-bar/background/color}",
+            "Light": "{background/color/box}",
+            "Dark": "{background/color/box}",
+            "HCM": "{background/color/box}",
+            "Private": "{background/color/box}",
             "Smart Light (WIP)": "{message-bar/background/color}"
           }
         }

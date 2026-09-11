@@ -1330,6 +1330,31 @@
     "dark": "{Theme$icon/color/information}",
     "forcedColors": "{Theme$icon/color/information}"
   },
+  "message-bar/icon/container/border/radius-start-start": {
+    "light": "{Primitives$message-bar/icon/container/border/radius}",
+    "dark": "{Primitives$message-bar/icon/container/border/radius}",
+    "forcedColors": "{Primitives$message-bar/icon/container/border/radius}"
+  },
+  "message-bar/icon/container/border/radius-start-end": {
+    "light": "{Primitives$message-bar/icon/container/border/radius}",
+    "dark": "{Primitives$message-bar/icon/container/border/radius}",
+    "forcedColors": "{Primitives$message-bar/icon/container/border/radius}"
+  },
+  "message-bar/icon/container/border/radius-end-start": {
+    "light": "{Primitives$message-bar/icon/container/border/radius}",
+    "dark": "{Primitives$message-bar/icon/container/border/radius}",
+    "forcedColors": "{Primitives$message-bar/icon/container/border/radius}"
+  },
+  "message-bar/icon/container/border/radius-end-end": {
+    "light": "{Primitives$message-bar/icon/container/border/radius}",
+    "dark": "{Primitives$message-bar/icon/container/border/radius}",
+    "forcedColors": "{Primitives$message-bar/icon/container/border/radius}"
+  },
+  "message-bar/icon/container/padding-block-start": {
+    "light": "{Primitives$message-bar/icon/container/padding}",
+    "dark": "{Primitives$message-bar/icon/container/padding}",
+    "forcedColors": "{Primitives$message-bar/icon/container/padding}"
+  },
   "message-bar/text/color": {
     "light": "{Theme$text/color}",
     "dark": "{Theme$text/color}",

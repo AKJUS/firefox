@@ -640,24 +640,29 @@
     "forcedColors": "{Theme$background/color/box}"
   },
   "message-bar/background/color/warning": {
-    "light": "{Theme$message-bar/background/color}",
-    "dark": "{Theme$message-bar/background/color}",
-    "forcedColors": "{Theme$message-bar/background/color}"
+    "light": "{Theme$background/color/box}",
+    "dark": "{Theme$background/color/box}",
+    "forcedColors": "{Theme$background/color/box}"
   },
   "message-bar/background/color/success": {
-    "light": "{Theme$message-bar/background/color}",
-    "dark": "{Theme$message-bar/background/color}",
-    "forcedColors": "{Theme$message-bar/background/color}"
+    "light": "{Theme$background/color/box}",
+    "dark": "{Theme$background/color/box}",
+    "forcedColors": "{Theme$background/color/box}"
   },
   "message-bar/background/color/critical": {
-    "light": "{Theme$message-bar/background/color}",
-    "dark": "{Theme$message-bar/background/color}",
-    "forcedColors": "{Theme$message-bar/background/color}"
+    "light": "{Theme$background/color/box}",
+    "dark": "{Theme$background/color/box}",
+    "forcedColors": "{Theme$background/color/box}"
   },
   "message-bar/icon/container/border/color": {
     "light": "transparent",
     "dark": "transparent",
     "forcedColors": "{Theme$message-bar/icon/color}"
+  },
+  "message-bar/border/color": {
+    "light": "oklch(from {Theme$message-bar/icon/color} l c h / 12%)",
+    "dark": "oklch(from {Theme$message-bar/icon/color} l c h / 12%)",
+    "forcedColors": "oklch(from {Theme$message-bar/icon/color} l c h / 12%)"
   },
   "page-nav/button/background/color/hover": {
     "light": "{Theme$button/background/color/hover}",
