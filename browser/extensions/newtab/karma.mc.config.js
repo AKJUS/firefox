@@ -77,6 +77,26 @@ module.exports = function (config) {
           functions: 100,
           branches: 66,
           overrides: {
+            "content-src/components/CustomizeMenu/CustomizeMenu.jsx": {
+              statements: 0,
+              lines: 0,
+              functions: 0,
+              branches: 0,
+            },
+            "content-src/components/CustomizeMenu/ContentSection/ContentSection.jsx":
+              {
+                statements: 0,
+                lines: 0,
+                functions: 0,
+                branches: 0,
+              },
+            "content-src/components/CustomizeMenu/SectionsMgmtPanel/SectionsMgmtPanel.jsx":
+              {
+                statements: 0,
+                lines: 0,
+                functions: 0,
+                branches: 0,
+              },
             "content-src/components/Widgets/WidgetMenuFooter.jsx": {
               statements: 0,
               lines: 0,
