@@ -221,7 +221,6 @@ linux64-marannon:
 
 macosx64-xz:
     description: "xz development library"
-    worker-type: b-osx-1015
     treeherder:
         symbol: TM(xz)
     worker:
@@ -229,17 +228,17 @@ macosx64-xz:
     use-python: system  # dependency of taskcluster python
     run:
         script: build-xz.sh
+        arguments: ['x86_64-apple-darwin']
         toolchain-artifact: public/build/xz.tar.zst
     fetches:
         fetch:
             - xz
         toolchain:
-            - macosx64-clang-toolchain
+            - linux64-clang-toolchain
             - macosx64-sdk-toolchain
 
 macosx64-aarch64-xz:
     description: "xz development library"
-    worker-type: b-osx-arm64
     treeherder:
         symbol: TMA64(xz)
     worker:
@@ -247,17 +246,17 @@ macosx64-aarch64-xz:
     use-python: system  # dependency of taskcluster python
     run:
         script: build-xz.sh
+        arguments: ['aarch64-apple-darwin']
         toolchain-artifact: public/build/xz.tar.zst
     fetches:
         fetch:
             - xz
         toolchain:
-            - macosx64-aarch64-clang
+            - linux64-clang-toolchain
             - macosx64-sdk-toolchain
 
 macosx64-aarch64-openssl:
     description: "openssl development library"
-    worker-type: b-osx-arm64
     treeherder:
         symbol: TMA64(openssl)
     worker:
@@ -265,12 +264,13 @@ macosx64-aarch64-openssl:
     use-python: system  # dependency of taskcluster python
     run:
         script: build-openssl.sh
+        arguments: ['aarch64-apple-darwin']
         toolchain-artifact: public/build/openssl.tar.zst
     fetches:
         fetch:
             - openssl-1.1.1w
         toolchain:
-            - macosx64-aarch64-clang
+            - linux64-clang-toolchain
             - macosx64-sdk-toolchain
 
 browsertime:
