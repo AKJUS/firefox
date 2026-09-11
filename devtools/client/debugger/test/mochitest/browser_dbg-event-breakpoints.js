@@ -59,6 +59,9 @@ add_task(async function () {
 
   await toggleEventBreakpoint(dbg, "Control", "event.control.focusin");
   await toggleEventBreakpoint(dbg, "Control", "event.control.focusout");
+  // Not awaited here, nor for #invoker and #popover-toggle below: the invoked
+  // action pauses the debuggee inside the SpecialPowers.spawn callback, so the
+  // promise it returns only settles once the test resumes.
   invokeOnElement("#focus-text", "focus");
   await waitForPaused(dbg);
   await assertPausedAtSourceAndLine(dbg, eventBreakpointsSource.id, 47);
@@ -112,7 +115,7 @@ add_task(async function () {
     "Keyboard",
     "event.keyboard.compositionstart"
   );
-  invokeOnElement("#focus-text", "focus");
+  await invokeOnElement("#focus-text", "focus");
 
   info("Type some characters during composition");
   invokeComposition();
@@ -120,6 +123,7 @@ add_task(async function () {
   await waitForPaused(dbg);
   await assertPausedAtSourceAndLine(dbg, eventBreakpointsSource.id, 57);
   await resume(dbg);
+  await flushPendingContentEvents();
 
   info("Deselect compositionstart and select compositionupdate");
   await toggleEventBreakpoint(
@@ -133,7 +137,7 @@ add_task(async function () {
     "event.keyboard.compositionupdate"
   );
 
-  invokeOnElement("#focus-text", "focus");
+  await invokeOnElement("#focus-text", "focus");
 
   info("Type some characters during composition");
   invokeComposition();
@@ -141,6 +145,7 @@ add_task(async function () {
   await waitForPaused(dbg);
   await assertPausedAtSourceAndLine(dbg, eventBreakpointsSource.id, 62);
   await resume(dbg);
+  await flushPendingContentEvents();
 
   info("Deselect compositionupdate and select compositionend");
   await toggleEventBreakpoint(
@@ -149,7 +154,7 @@ add_task(async function () {
     "event.keyboard.compositionupdate"
   );
   await toggleEventBreakpoint(dbg, "Keyboard", "event.keyboard.compositionend");
-  invokeOnElement("#focus-text", "focus");
+  await invokeOnElement("#focus-text", "focus");
 
   info("Type some characters during composition");
   invokeComposition();
@@ -166,10 +171,11 @@ add_task(async function () {
 
   info("Deselect compositionend");
   await toggleEventBreakpoint(dbg, "Keyboard", "event.keyboard.compositionend");
+  await flushPendingContentEvents();
 
   info("Test textInput");
   await toggleEventBreakpoint(dbg, "Keyboard", "event.keyboard.textInput");
-  invokeOnElement("#focus-text", "focus");
+  await invokeOnElement("#focus-text", "focus");
   EventUtils.sendChar("N");
   await waitForPaused(dbg);
   await assertPausedAtSourceAndLine(dbg, eventBreakpointsSource.id, 102);
@@ -326,6 +332,13 @@ async function invokeOnElement(selector, action) {
       content.document.querySelector(_selector)[_action]();
     }
   );
+}
+
+// An empty spawn used as a flush: composition events reach the content process at
+// input priority, ahead of this round trip's normal-priority message on the same
+// channel, so anything queued before it has been handled once it resolves.
+function flushPendingContentEvents() {
+  return SpecialPowers.spawn(gBrowser.selectedBrowser, [], () => {});
 }
 
 function invokeComposition() {
