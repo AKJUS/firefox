@@ -1,4 +1,4 @@
-// |jit-test| skip-if: !('interruptRegexp' in this) || getBuildConfiguration('pbl'); exitstatus: 6
+// |jit-test| skip-if: !('interruptRegexp' in this); exitstatus: 6
 
 gczeal(0);
 let re = /(.........).*?\1/;
