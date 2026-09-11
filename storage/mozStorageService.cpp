@@ -24,6 +24,7 @@
 #include "mozilla/LateWriteChecks.h"
 #include "mozIStorageCompletionCallback.h"
 #include "mozIStoragePendingStatement.h"
+#include "mozilla/glean/GleanPings.h"
 #include "mozilla/StaticPrefs_security.h"
 #include "mozilla/StaticPrefs_storage.h"
 #include "mozilla/intl/Collator.h"
@@ -312,6 +313,11 @@ static const char* sObserverTopics[] = {"memory-pressure",
 
 nsresult Service::initialize() {
   MOZ_ASSERT(NS_IsMainThread(), "Must be initialized on the main thread");
+
+#ifdef NIGHTLY_BUILD
+  // Submit last session's slow SQL, if any.
+  glean_pings::SlowSql.Submit("startup"_ns);
+#endif  // NIGHTLY_BUILD
 
   int rc = AutoSQLiteLifetime::getInitResult();
   if (rc != SQLITE_OK) {
