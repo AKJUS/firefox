@@ -268,14 +268,10 @@ EditContextMenu.addItems({
 // Support context menus on html textareas in the parent process:
 window.addEventListener("contextmenu", e => {
   const HTML_NS = "http://www.w3.org/1999/xhtml";
-  const XUL_NS =
-    "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
   let target = e.composedTarget;
-  let parent = target.parentNode;
   let needsContextMenu =
     target.ownerDocument == document &&
     !e.defaultPrevented &&
-    !(parent.namespaceURI == XUL_NS && parent.localName == "moz-input-box") &&
     ["textarea", "input"].includes(target.localName) &&
     target.namespaceURI == HTML_NS;
 

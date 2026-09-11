@@ -618,12 +618,9 @@ this.AccessibilityUtils = (function () {
       return false;
     }
     let ariaRole = node.getAttribute("role");
-    // There are only two cases of this pattern: <moz-input-box> and <searchbar>
-    const isMozInputBox =
-      node.tagName == "moz-input-box" &&
-      node.classList.contains("urlbar-input-box");
+    // <searchbar> is the only case of this pattern.
     const isSearchbar = node.tagName == "searchbar" && node.id == "searchbar";
-    return (isMozInputBox || isSearchbar) && ariaRole == "combobox";
+    return isSearchbar && ariaRole == "combobox";
   }
 
   /**

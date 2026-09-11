@@ -669,9 +669,9 @@ export class MultilineEditor extends MozLitElement {
           }
           // TODO(Bug 2047067): right-clicks on the inner contenteditable show
           // a native context menu on Windows whose Paste command does not
-          // reach ProseMirror. Forward the event to the host so moz-input-box
-          // can show its menu. Remove this workaround once the platform bug
-          // is fixed.
+          // reach ProseMirror. Forward the event to the host so it can show
+          // its own menu. Remove this workaround once the platform bug is
+          // fixed.
           event.preventDefault();
           const host = view.dom.getRootNode().host;
           if (host && host != view.dom) {

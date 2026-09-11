@@ -256,8 +256,6 @@ skip-if = [
 
 ["test_mousescroll.xhtml"]
 
-["test_mozinputbox_dictionary.xhtml"]
-
 ["test_named_deck.html"]
 
 ["test_navigate_persist.html"]
