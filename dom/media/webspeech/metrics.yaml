@@ -147,17 +147,33 @@ media.speech_recognition:
     type: labeled_counter
     description: >
       Why a recognition session failed to start, recorded wherever the cause
-      is still known, which for these labels is the content process. The
-      spec-mandated DOM error code is coarser than this, so this is what
-      tells apart the causes that share one.
+      is still known: the content process for the first three labels, the
+      inference process for the rest. The spec-mandated DOM error code is
+      coarser than this, so this is what tells apart the causes that share
+      one: `concurrent_session`, `language_not_supported`,
+      `model_install_unavailable` and `backend_creation_failed` all reach
+      content as `service-not-allowed`, and every inference-process failure
+      below reaches it as `network`.
 
       `language_not_supported` is recorded before the session reaches
       [[started]], so it has no `session_started` and no `session_ended`; it
       is exactly the count that makes `error` and `session_ended` disagree.
+
+      The labels name the step that failed rather than a category, so that a
+      spike says where init broke and not merely that it did.
     labels:
       - language_not_supported
       - model_install_unavailable
       - backend_creation_failed
+      - concurrent_session
+      - no_utility_process
+      - model_not_installed
+      - model_fetch_failed
+      - model_fd_failed
+      - thread_creation_failed
+      - engine_library_load_failed
+      - model_load_failed
+      - stream_begin_failed
     bugs:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=2062329
     data_reviews:
@@ -198,6 +214,54 @@ media.speech_recognition:
       capture time of the audio each result covers to the moment the `result`
       event is dispatched in the content process. One sample per session that
       produced results.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=2062329
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=2062329
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - padenot@mozilla.com
+      - media-alerts@mozilla.com
+    expires: never
+
+  model_load_time:
+    type: timing_distribution
+    time_unit: millisecond
+    description: >
+      How long the engine took to load the model, which reads the whole GGUF
+      into memory. Recorded in the inference process.
+
+      Only recorded when the load succeeds, so read it against
+      `init_failure.model_load_failed` rather than alone.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=2062329
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=2062329
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - padenot@mozilla.com
+      - media-alerts@mozilla.com
+    expires: never
+
+  inference_realtime_factor:
+    type: custom_distribution
+    range_min: 1
+    range_max: 10000
+    bucket_count: 51
+    histogram_type: exponential
+    description: >
+      The mean of how much faster than real time the audio chunks in a session
+      were processed, as a multiple of real time times 100: 400 means 4x
+      faster than real time. Under 100 means the recognizer fell behind. One
+      sample is recorded per session in the inference process.
+
+      The range reaches 100x because hardware that handles this model
+      comfortably sits well above 20x, which would otherwise pile every such
+      session into the top bucket and saturate the high percentiles. These
+      bounds also put a bucket boundary exactly at 100, so "fell behind real
+      time" is a clean cut rather than a threshold buried mid-bucket.
     bugs:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=2062329
     data_reviews:

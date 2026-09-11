@@ -326,6 +326,90 @@ add_task(
   }
 );
 
+// Initialization failures that do not need a loaded model are exercised here.
+// The timing metrics need the speech-recognition subsuite's real model/audio.
+add_task(
+  {
+    skip_if: () =>
+      Services.prefs.getBoolPref("telemetry.fog.artifact_build", false),
+  },
+  async function test_init_failure_concurrent_session() {
+    await flushAndReset();
+
+    await BrowserTestUtils.withNewTab(PAGE, async browser => {
+      is(await startSession(browser), "start", "First session started");
+
+      const second = await SpecialPowers.spawn(browser, [], async () => {
+        const stream = await content.navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+        const recognition = new content.SpeechRecognition();
+        recognition.processLocally = true;
+        content.wrappedJSObject._second = recognition;
+        return new Promise(resolve => {
+          recognition.onstart = () => resolve("start");
+          recognition.onerror = e => resolve(`error: ${e.error}`);
+          recognition.start(stream.getAudioTracks()[0]);
+        });
+      });
+      is(
+        second,
+        "error: service-not-allowed",
+        "The second concurrent session is refused"
+      );
+
+      await Services.fog.testFlushAllChildren();
+      is(
+        Glean.mediaSpeechRecognition.initFailure.concurrent_session.testGetValue(),
+        1,
+        "init_failure[concurrent_session] recorded in the inference process"
+      );
+      is(
+        Glean.mediaSpeechRecognition.error.service_not_allowed.testGetValue(),
+        1,
+        "error[service_not_allowed] recorded in the content process"
+      );
+    });
+  }
+);
+
+add_task(
+  {
+    skip_if: () =>
+      Services.prefs.getBoolPref("telemetry.fog.artifact_build", false),
+  },
+  async function test_init_failure_model_not_installed() {
+    await flushAndReset();
+    await SpecialPowers.pushPrefEnv({
+      set: [
+        ["browser.ml.modelHub.testing", false],
+        // This label is about the path that fails instead of offering the
+        // download, so opt out of install-on-start here.
+        ["media.webspeech.recognition.install_on_start", false],
+      ],
+    });
+
+    try {
+      await BrowserTestUtils.withNewTab(PAGE, async browser => {
+        is(
+          await startSession(browser, { lang: "fr" }),
+          "error: network",
+          "Starting without an installed model fails asynchronously"
+        );
+
+        await Services.fog.testFlushAllChildren();
+        is(
+          Glean.mediaSpeechRecognition.initFailure.model_not_installed.testGetValue(),
+          1,
+          "init_failure[model_not_installed] is reachable from start()"
+        );
+      });
+    } finally {
+      await SpecialPowers.popPrefEnv();
+    }
+  }
+);
+
 // available() reports its answer through the availability counter on every
 // path, including the early-outs that never reach the backend.
 add_task(
