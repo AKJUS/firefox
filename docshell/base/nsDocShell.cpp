@@ -3756,12 +3756,6 @@ nsDocShell::DisplayLoadError(nsresult aError, nsIURI* aURI,
   // Display the error as a page or an alert prompt
   NS_ENSURE_FALSE(messageStr.IsEmpty(), NS_ERROR_FAILURE);
 
-  if ((NS_ERROR_NET_INTERRUPT == aError || NS_ERROR_NET_RESET == aError) &&
-      aURI->SchemeIs("https")) {
-    // Maybe TLS intolerant. Treat this as an SSL error.
-    error = "nssFailure2";
-  }
-
   if (mBrowsingContext->GetUseErrorPages()) {
     // Display an error page
     nsresult loadedPage =

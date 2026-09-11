@@ -323,6 +323,8 @@ support-files = [
 ["browser_dataURI_unique_opaque_origin.js"]
 https_first_disabled = true
 
+["browser_displayLoadError_netReset.js"]
+
 ["browser_fall_back_to_https.js"]
 https_first_disabled = true
 skip-if = [
