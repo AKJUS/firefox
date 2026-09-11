@@ -650,6 +650,7 @@ export class UrlbarView {
 
   clear() {
     this.#rows.textContent = "";
+    this.#rows.toggleAttribute("actionmode", false);
     this.input.toggleAttribute("noresults", true);
     this.clearSelection();
     this.visibleResults = [];

@@ -721,3 +721,58 @@ add_task(async function test_query_context_supplied_without_query() {
     "Every onSearchSessionEnd got a query context"
   );
 });
+
+add_task(async function test_actionmode_flicker() {
+  const tab = await BrowserTestUtils.openNewForegroundTab({ gBrowser });
+
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({
+    window,
+    value: "@act",
+  });
+  EventUtils.synthesizeKey("KEY_Tab");
+  await UrlbarTestUtils.assertSearchMode(window, {
+    source: UrlbarShared.RESULT_SOURCE.ACTIONS,
+    entry: "keywordoffer",
+    restrictType: "keyword",
+  });
+
+  let rows = gURLBar.view.panel.querySelector(".urlbarView-results");
+  Assert.ok(
+    rows.hasAttribute("actionmode"),
+    "The actions are laid out as actions"
+  );
+
+  const newTab = await BrowserTestUtils.openNewForegroundTab({
+    gBrowser,
+    opening: "about:blank",
+  });
+
+  let actionmodeWhenRowsAdded = null;
+  let observer = new MutationObserver(mutations => {
+    if (
+      actionmodeWhenRowsAdded === null &&
+      mutations.some(m => m.addedNodes.length)
+    ) {
+      actionmodeWhenRowsAdded = rows.hasAttribute("actionmode");
+    }
+  });
+  observer.observe(rows, { childList: true });
+
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({ window, value: "" });
+  observer.disconnect();
+
+  Assert.greater(
+    UrlbarTestUtils.getResultCount(window),
+    0,
+    "The new tab's view has results"
+  );
+  Assert.strictEqual(
+    actionmodeWhenRowsAdded,
+    false,
+    "The rows of the new tab's first query are never laid out as actions"
+  );
+
+  await UrlbarTestUtils.promisePopupClose(window);
+  BrowserTestUtils.removeTab(newTab);
+  BrowserTestUtils.removeTab(tab);
+});
