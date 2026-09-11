@@ -3350,16 +3350,16 @@ static mozilla::Maybe<uint64_t> ReadInstallTimestamp(nsIFile* aJsonFile,
   nsAutoCString converted;
   std::string_view utf8View;
   if (aIsUTF16LE) {
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+#  if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
     const char16_t* chars = reinterpret_cast<const char16_t*>(buf.get());
     uint32_t charLen = len / 2;
     CopyUTF16toUTF8(Span(chars, charLen), converted);
     utf8View = std::string_view(converted.get(), converted.Length());
-#else
+#  else
     MOZ_ASSERT_UNREACHABLE(
         "UTF-16LE reading not supported on big-endian architectures");
     return mozilla::Nothing();
-#endif
+#  endif
   } else {
     utf8View = std::string_view(reinterpret_cast<const char*>(buf.get()), len);
   }
