@@ -595,7 +595,6 @@ win32-WindowsAppSDK:
     description: "WindowsAppSDK headers and libraries (x86)"
     attributes:
         local-toolchain: true
-    worker-type: b-win2022
     treeherder:
         symbol: TW32(WindowsAppSDK)
     run:
@@ -611,7 +610,6 @@ win64-aarch64-WindowsAppSDK:
     description: "WindowsAppSDK headers and libraries (aarch64)"
     attributes:
         local-toolchain: true
-    worker-type: b-win2022
     treeherder:
         symbol: TWA64(WindowsAppSDK)
     run:
