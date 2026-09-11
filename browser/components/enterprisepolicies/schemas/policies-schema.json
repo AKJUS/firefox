@@ -315,7 +315,7 @@
       "x-compatibility": {
         "firefox": { "version_added": "62" },
         "firefox_esr": { "version_added": "60.2.0" },
-        "firefox_enterprise": { "version_added": false }
+        "firefox_enterprise": { "version_added": "149" }
       },
       "x-restart-required": true,
       "description": "Change the URL for application update if you are providing Firefox updates from a custom update server.",
@@ -533,7 +533,7 @@
       "x-compatibility": {
         "firefox": { "version_added": "60" },
         "firefox_esr": { "version_added": "60" },
-        "firefox_enterprise": { "version_added": "149" }
+        "firefox_enterprise": { "version_added": false }
       },
       "x-restart-required": true,
       "description": "Add bookmarks in either the bookmarks toolbar or menu. Use 'ManagedBookmarks' instead.",
@@ -1378,7 +1378,7 @@
       "x-compatibility": {
         "firefox": { "version_added": "60" },
         "firefox_esr": { "version_added": "60" },
-        "firefox_enterprise": { "version_added": "149" }
+        "firefox_enterprise": { "version_added": false }
       },
       "x-restart-required": true,
       "description": "Remove access to private browsing.",
