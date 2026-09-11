@@ -3063,7 +3063,6 @@ JS_PUBLIC_API bool JS::RejectPromise(JSContext* cx, JS::HandleObject promiseObj,
   return ResolveOrRejectPromise(cx, promiseObj, rejectionValue, true);
 }
 
-#ifdef NIGHTLY_BUILD
 JS_PUBLIC_API bool JS::SafeResolve(JSContext* cx, JS::HandleObject promiseObj,
                                    JS::HandleValue resolutionValue) {
   AssertHeapIsIdle();
@@ -3091,7 +3090,6 @@ JS_PUBLIC_API bool JS::SafeResolve(JSContext* cx, JS::HandleObject promiseObj,
 
   return js::SafeResolvePromise(cx, promise, resolution);
 }
-#endif  // NIGHTLY_BUILD
 
 JS_PUBLIC_API JSObject* JS::CallOriginalPromiseThen(
     JSContext* cx, JS::HandleObject promiseObj, JS::HandleObject onFulfilled,
