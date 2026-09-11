@@ -252,6 +252,16 @@ add_task(async function () {
   await wait(100);
   assertNotPaused(dbg);
 
+  // The XHR load and the 50ms timer above outlive their `wait(100)` on a slow
+  // machine. Turn their breakpoints off while the source is still blackboxed:
+  // otherwise one of them pauses just after it is unblackboxed, the navigation
+  // below then fires "beforeunload" inside that pause, and the engine refuses
+  // to run the debuggee there, so the breakpoint the test waits for never hits.
+  await toggleEventBreakpoint(dbg, "Mouse", "event.mouse.click");
+  await toggleEventBreakpoint(dbg, "XHR", "event.xhr.load");
+  await toggleEventBreakpoint(dbg, "Timer", "timer.timeout.set");
+  await toggleEventBreakpoint(dbg, "Timer", "timer.timeout.fire");
+
   // Cleanup - unblackbox the source
   await clickElement(dbg, "blackbox");
   await waitForDispatch(dbg.store, "UNBLACKBOX_WHOLE_SOURCES");
