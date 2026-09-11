@@ -365,10 +365,6 @@ browser-layout-vertical-tabs2 =
     .title = Tabs on the side, in the sidebar
     .description = Tabs on the side, in the sidebar
 
-browser-layout-show-sidebar2 =
-    .label = Show sidebar
-    .description = Quickly access bookmarks, tabs from your phone, AI chatbots, and more without leaving your main view.
-
 page-navigation-group =
     .label = Page navigation
 

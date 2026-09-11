@@ -67,13 +67,6 @@ XPCOMUtils.defineLazyPreferenceGetter(
     if (!newVal) {
       // Disable vertical tabs if revamped sidebar is turned off
       Services.prefs.setBoolPref("sidebar.verticalTabs", false);
-    } else if (newVal && !lazy.verticalTabsEnabled) {
-      // Horizontal tabs with sidebar.revamp default to "hide-on-close"; users
-      // can opt into the switcher-only "hide-launcher" from the customize panel.
-      Services.prefs.setStringPref(
-        VISIBILITY_SETTING_PREF,
-        DEFAULT_HORIZONTAL_VISIBILITY
-      );
     }
   }
 );
