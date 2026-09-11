@@ -295,6 +295,13 @@
       this.getElement("find-closebutton").addEventListener("command", () =>
         this.close()
       );
+
+      this.addEventListener("focusin", event =>
+        this._updateCloseButtonTooltip(event.target)
+      );
+      this.addEventListener("focusout", event =>
+        this._updateCloseButtonTooltip(event.relatedTarget)
+      );
     }
 
     connectedMoveCallback() {
@@ -984,6 +991,23 @@
         l10nId = "findbar-normal-find";
       }
       document.l10n.setAttributes(this._findField, l10nId);
+    }
+
+    /**
+     * Escape is handled by a listener on the find bar itself, so it only
+     * closes the find bar while focus is inside it. Advertise the shortcut in
+     * the close button's tooltip only while that holds.
+     *
+     * @param {Element} focusTarget The element focus is moving to, or `null`
+     *                              when focus is leaving the window.
+     */
+    _updateCloseButtonTooltip(focusTarget) {
+      document.l10n.setAttributes(
+        this.getElement("find-closebutton"),
+        this.contains(focusTarget)
+          ? "findbar-find-button-close-with-shortcut"
+          : "findbar-find-button-close"
+      );
     }
 
     _find(value) {
