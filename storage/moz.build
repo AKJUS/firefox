@@ -113,6 +113,9 @@ LOCAL_INCLUDES += [
     "/third_party/sqlite3/src",
 ]
 
+# sqlite3_normalized_sql is guarded in sqlite3.h.
+DEFINES["SQLITE_ENABLE_NORMALIZE"] = 1
+
 if CONFIG["MOZ_FOLD_LIBS"]:
     DEFINES["MOZ_FOLD_LIBS"] = True
 
