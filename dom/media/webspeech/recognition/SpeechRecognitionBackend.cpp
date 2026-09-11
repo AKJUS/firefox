@@ -746,11 +746,20 @@ void SpeechRecognitionBackend::HandleRecognitionError(
   AssertOnIPCThread();
   LOGE("HandleRecognitionError: {}", nsCString(aError).get());
 
-  DispatchToParentIfAlive(
-      "SpeechRecognitionBackend::HandleRecognitionError",
-      [error = nsCString(aError)](SpeechRecognition* aParent) {
-        aParent->HandleRecognitionErrorFromBackend(error);
-      });
+  // A stopped session ends through stop()'s own path, with "nomatch" and
+  // "end". A failure the engine reports while it winds down - an init
+  // abandoned because the session went away, say - is not the page's problem,
+  // and firing "error" here would claim the session broke when it merely
+  // ended.
+  DispatchToParentIfAlive("SpeechRecognitionBackend::HandleRecognitionError",
+                          [self = RefPtr{this}, error = nsCString(aError)](
+                              SpeechRecognition* aParent) {
+                            AssertIsOnMainThread();
+                            if (self->mStopped) {
+                              return;
+                            }
+                            aParent->HandleRecognitionErrorFromBackend(error);
+                          });
 }
 
 void SpeechRecognitionBackend::NotifyTrackEnded() {

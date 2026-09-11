@@ -97,6 +97,15 @@ skip-if = [
   "verify", # skip under test-verify: it runs outside the subsuite, so serve_model.py (the model hub) is never started
 ]
 
+["test_parakeet_stop_during_init.html"]
+subsuite = "speech-recognition"
+tags = "mtg parakeet-asr"
+# No assertion here depends on real audio reaching the engine, so this one runs
+# under Wayland too.
+skip-if = [
+  "verify", # skip under test-verify: it runs outside the subsuite, so serve_model.py (the model hub) is never started
+]
+
 ["test_preference_enable.html"]
 
 ["test_result_item_out_of_range.html"]
