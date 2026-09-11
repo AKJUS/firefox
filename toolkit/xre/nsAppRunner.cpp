@@ -3322,51 +3322,31 @@ struct FileWriteFunc final : public JSONWriteFunc {
   }
 };
 
-static void SubmitDowngradeTelemetry(const nsCString& aLastVersion,
-                                     bool aHasSync, int32_t aButton) {
+Maybe<PathString> GenerateDowngradeTelemetry(const nsACString& aPingId,
+                                             const nsCString& aLastVersion,
+                                             bool aHasSync, int32_t aButton,
+                                             const nsACString& aChannel) {
   nsCOMPtr<nsIPrefService> prefSvc =
       do_GetService("@mozilla.org/preferences-service;1");
-  NS_ENSURE_TRUE_VOID(prefSvc);
+  NS_ENSURE_TRUE(prefSvc, Nothing());
 
   nsCOMPtr<nsIPrefBranch> prefBranch = do_QueryInterface(prefSvc);
-  NS_ENSURE_TRUE_VOID(prefBranch);
-
-  bool enabled;
-  nsresult rv =
-      prefBranch->GetBoolPref(kPrefHealthReportUploadEnabled, &enabled);
-  NS_ENSURE_SUCCESS_VOID(rv);
-  if (!enabled) {
-    return;
-  }
-
-  nsCString server;
-  rv = prefBranch->GetCharPref("toolkit.telemetry.server", server);
-  NS_ENSURE_SUCCESS_VOID(rv);
+  NS_ENSURE_TRUE(prefBranch, Nothing());
 
   nsCString clientId;
-  rv = prefBranch->GetCharPref("toolkit.telemetry.cachedClientID", clientId);
-  NS_ENSURE_SUCCESS_VOID(rv);
+  nsresult rv =
+      prefBranch->GetCharPref("toolkit.telemetry.cachedClientID", clientId);
+  NS_ENSURE_SUCCESS(rv, Nothing());
 
   nsCString profileGroupId;
   rv = prefBranch->GetCharPref("toolkit.telemetry.cachedProfileGroupID",
                                profileGroupId);
-  NS_ENSURE_SUCCESS_VOID(rv);
-
-  rv = prefSvc->GetDefaultBranch(nullptr, getter_AddRefs(prefBranch));
-  NS_ENSURE_SUCCESS_VOID(rv);
-
-  nsCString channel("default");
-  rv = prefBranch->GetCharPref("app.update.channel", channel);
-  NS_ENSURE_SUCCESS_VOID(rv);
-
-  nsID uuid;
-  rv = nsID::GenerateUUIDInPlace(uuid);
-  NS_ENSURE_SUCCESS_VOID(rv);
+  NS_ENSURE_SUCCESS(rv, Nothing());
 
   nsCString arch("null");
   nsCOMPtr<nsIPropertyBag2> sysInfo =
       do_GetService("@mozilla.org/system-info;1");
-  NS_ENSURE_TRUE_VOID(sysInfo);
+  NS_ENSURE_TRUE(sysInfo, Nothing());
   sysInfo->GetPropertyAsACString(u"arch"_ns, arch);
 
   bool isMSIX = false;
@@ -3383,63 +3363,39 @@ static void SubmitDowngradeTelemetry(const nsCString& aLastVersion,
   char date[sizeof "YYYY-MM-DDThh:mm:ss.000Z"];
   strftime(date, sizeof date, "%FT%T.000Z", gmtime(&now));
 
-  NSID_TrimBracketsASCII pingId(uuid);
   constexpr auto pingType = "downgrade"_ns;
 
   int32_t pos = aLastVersion.Find("_");
   if (pos == kNotFound) {
-    return;
+    return Nothing();
   }
 
   const nsDependentCSubstring lastVersion = Substring(aLastVersion, 0, pos);
   const nsDependentCSubstring lastBuildId =
       Substring(aLastVersion, pos + 1, 14);
 
-  nsPrintfCString url("%s/submit/telemetry/%s/%s/%s/%s/%s/%s?v=%d",
-                      server.get(), PromiseFlatCString(pingId).get(),
-                      pingType.get(), (const char*)gAppData->name,
-                      (const char*)gAppData->version, channel.get(),
-                      (const char*)gAppData->buildID,
-                      TELEMETRY_PING_FORMAT_VERSION);
-
   nsCOMPtr<nsIFile> pingFile;
   rv = NS_GetSpecialDirectory(XRE_USER_APP_DATA_DIR, getter_AddRefs(pingFile));
-  NS_ENSURE_SUCCESS_VOID(rv);
+  NS_ENSURE_SUCCESS(rv, Nothing());
   rv = pingFile->Append(u"Pending Pings"_ns);
-  NS_ENSURE_SUCCESS_VOID(rv);
+  NS_ENSURE_SUCCESS(rv, Nothing());
   rv = pingFile->Create(nsIFile::DIRECTORY_TYPE, 0755);
   if (NS_FAILED(rv) && rv != NS_ERROR_FILE_ALREADY_EXISTS) {
-    return;
+    return Nothing();
   }
-  rv = pingFile->Append(NS_ConvertUTF8toUTF16(pingId));
-  NS_ENSURE_SUCCESS_VOID(rv);
-
-  nsCOMPtr<nsIFile> pingSender;
-  rv = NS_GetSpecialDirectory(NS_GRE_BIN_DIR, getter_AddRefs(pingSender));
-  NS_ENSURE_SUCCESS_VOID(rv);
-#  ifdef XP_WIN
-  pingSender->Append(u"pingsender.exe"_ns);
-#  else
-  pingSender->Append(u"pingsender"_ns);
-#  endif
-
-  bool exists;
-  rv = pingSender->Exists(&exists);
-  NS_ENSURE_SUCCESS_VOID(rv);
-  if (!exists) {
-    return;
-  }
+  rv = pingFile->Append(NS_ConvertUTF8toUTF16(aPingId));
+  NS_ENSURE_SUCCESS(rv, Nothing());
 
   FILE* file;
   rv = pingFile->OpenANSIFileDesc("w", &file);
-  NS_ENSURE_SUCCESS_VOID(rv);
+  NS_ENSURE_SUCCESS(rv, Nothing());
 
   JSONWriter w(MakeUnique<FileWriteFunc>(file));
   w.Start();
   {
     w.StringProperty("type",
                      Span<const char>(pingType.Data(), pingType.Length()));
-    w.StringProperty("id", PromiseFlatCString(pingId));
+    w.StringProperty("id", PromiseFlatCString(aPingId));
     w.StringProperty("creationDate", MakeStringSpan(date));
     w.IntProperty("version", TELEMETRY_PING_FORMAT_VERSION);
     w.StringProperty("clientId", clientId);
@@ -3465,7 +3421,7 @@ static void SubmitDowngradeTelemetry(const nsCString& aLastVersion,
 #  else
       w.StringProperty("xpcomAbi", "unknown");
 #  endif
-      w.StringProperty("channel", channel);
+      w.StringProperty("channel", PromiseFlatCString(aChannel));
     }
     w.EndObject();
     w.StartObjectProperty("payload");
@@ -3481,8 +3437,87 @@ static void SubmitDowngradeTelemetry(const nsCString& aLastVersion,
   w.End();
 
   fclose(file);
+  return Some(pingFile->NativePath());
+}
 
-  PathString filePath = pingFile->NativePath();
+bool BuildDowngradePingUrl(const nsACString& aPingId,
+                           const nsACString& aChannel, nsACString& aUrlOut) {
+  nsCOMPtr<nsIPrefService> prefSvc =
+      do_GetService("@mozilla.org/preferences-service;1");
+  NS_ENSURE_TRUE(prefSvc, false);
+
+  nsCOMPtr<nsIPrefBranch> prefBranch = do_QueryInterface(prefSvc);
+  NS_ENSURE_TRUE(prefBranch, false);
+
+  nsCString server;
+  nsresult rv = prefBranch->GetCharPref("toolkit.telemetry.server", server);
+  NS_ENSURE_SUCCESS(rv, false);
+
+  aUrlOut = nsPrintfCString(
+      "%s/submit/telemetry/%s/%s/%s/%s/%s/%s?v=%d", server.get(),
+      PromiseFlatCString(aPingId).get(), "downgrade",
+      (const char*)gAppData->name, (const char*)gAppData->version,
+      PromiseFlatCString(aChannel).get(), (const char*)gAppData->buildID,
+      TELEMETRY_PING_FORMAT_VERSION);
+  return true;
+}
+
+static void SubmitDowngradeTelemetry(const nsCString& aLastVersion,
+                                     bool aHasSync, int32_t aButton) {
+  nsCOMPtr<nsIPrefService> prefSvc =
+      do_GetService("@mozilla.org/preferences-service;1");
+  NS_ENSURE_TRUE_VOID(prefSvc);
+
+  nsCOMPtr<nsIPrefBranch> prefBranch = do_QueryInterface(prefSvc);
+  NS_ENSURE_TRUE_VOID(prefBranch);
+
+  bool enabled;
+  nsresult rv =
+      prefBranch->GetBoolPref(kPrefHealthReportUploadEnabled, &enabled);
+  NS_ENSURE_SUCCESS_VOID(rv);
+  if (!enabled) {
+    return;
+  }
+
+  nsCOMPtr<nsIFile> pingSender;
+  rv = NS_GetSpecialDirectory(NS_GRE_BIN_DIR, getter_AddRefs(pingSender));
+  NS_ENSURE_SUCCESS_VOID(rv);
+#  ifdef XP_WIN
+  pingSender->Append(u"pingsender.exe"_ns);
+#  else
+  pingSender->Append(u"pingsender"_ns);
+#  endif
+
+  bool exists;
+  rv = pingSender->Exists(&exists);
+  NS_ENSURE_SUCCESS_VOID(rv);
+  if (!exists) {
+    return;
+  }
+
+  rv = prefSvc->GetDefaultBranch(nullptr, getter_AddRefs(prefBranch));
+  NS_ENSURE_SUCCESS_VOID(rv);
+
+  nsCString channel("default");
+  rv = prefBranch->GetCharPref("app.update.channel", channel);
+  NS_ENSURE_SUCCESS_VOID(rv);
+
+  nsID uuid;
+  rv = nsID::GenerateUUIDInPlace(uuid);
+  NS_ENSURE_SUCCESS_VOID(rv);
+  NSID_TrimBracketsASCII pingId(uuid);
+
+  nsCString url;
+  if (!BuildDowngradePingUrl(pingId, channel, url)) {
+    return;
+  }
+
+  Maybe<PathString> filePath = GenerateDowngradeTelemetry(
+      pingId, aLastVersion, aHasSync, aButton, channel);
+  if (!filePath) {
+    return;
+  }
+
   const filesystem::Path::value_type* args[2];
 #  ifdef XP_WIN
   nsString urlw = NS_ConvertUTF8toUTF16(url);
@@ -3490,7 +3525,7 @@ static void SubmitDowngradeTelemetry(const nsCString& aLastVersion,
 #  else
   args[0] = url.get();
 #  endif
-  args[1] = filePath.get();
+  args[1] = filePath->get();
 
   nsCOMPtr<nsIProcess> process =
       do_CreateInstance("@mozilla.org/process/util;1");
@@ -3635,9 +3670,9 @@ static ReturnAbortOnError HandleDetectedDowngrade(
  * can only handle 32-bit numbers and in the normal case build IDs are larger
  * than this. So if the build ID is numeric we split it into two version parts.
  */
-static void ExtractCompatVersionInfo(const nsACString& aCompatVersion,
-                                     nsACString& aAppVersion,
-                                     nsACString& aAppBuildID) {
+void ExtractCompatVersionInfo(const nsACString& aCompatVersion,
+                              nsACString& aAppVersion,
+                              nsACString& aAppBuildID) {
   int32_t underscorePos = aCompatVersion.FindChar('_');
   int32_t slashPos = aCompatVersion.FindChar('/');
 
@@ -3686,103 +3721,96 @@ int32_t CompareCompatVersions(const nsACString& aOldCompatVersion,
 
 /**
  * Checks the compatibility.ini file to see if we have updated our application
- * or otherwise invalidated our caches. If the application has been updated,
- * we return false; otherwise, we return true.
- *
- * We also write the status of the caches (valid/invalid) into the return param
- * aCachesOK. The aCachesOK is always invalid if the application has been
- * updated.
- *
- * Finally, aIsDowngrade is set to true if the current application is older
- * than that previously used by the profile.
+ * or otherwise invalidated our caches. The result struct reports whether the
+ * profile is compatible, whether caches are valid, whether this is a
+ * downgrade, and the last-run version info.
  */
-static bool CheckCompatibility(nsIFile* aProfileDir, const nsCString& aVersion,
-                               const nsCString& aOSABI, nsIFile* aXULRunnerDir,
-                               nsIFile* aAppDir, nsIFile* aFlagFile,
-                               bool* aCachesOK, bool* aIsDowngrade,
-                               nsCString& aLastVersion) {
-  *aCachesOK = false;
-  *aIsDowngrade = false;
-  gLastAppVersion.SetIsVoid(true);
-  gLastAppBuildID.SetIsVoid(true);
-  gProfileEncryptedDatabases = false;
+CompatCheckResult CheckCompatibility(nsIFile* aProfileDir,
+                                     const nsCString& aVersion,
+                                     const nsCString& aOSABI,
+                                     nsIFile* aXULRunnerDir, nsIFile* aAppDir,
+                                     nsIFile* aFlagFile) {
+  CompatCheckResult result;
 
   nsCOMPtr<nsIFile> file;
   aProfileDir->Clone(getter_AddRefs(file));
-  if (!file) return false;
+  if (!file) return result;
   file->AppendNative(FILE_COMPATIBILITY_INFO);
 
   nsINIParser parser;
   nsresult rv = parser.Init(file);
-  if (NS_FAILED(rv)) return false;
+  if (NS_FAILED(rv)) return result;
 
   // The EncryptedDatabases marker is independent of version compatibility, so
   // read it here -- compatibility.ini is already parsed -- before the early
   // returns below. Consumed by the encryption gate in XRE_mainStartup.
   {
     nsAutoCString encBuf;
-    gProfileEncryptedDatabases =
+    result.hasEncryptedDatabases =
         NS_SUCCEEDED(
             parser.GetString("Compatibility", "EncryptedDatabases", encBuf)) &&
         encBuf.EqualsLiteral("1");
   }
 
-  rv = parser.GetString("Compatibility", "LastVersion", aLastVersion);
+  rv = parser.GetString("Compatibility", "LastVersion", result.lastVersion);
   if (NS_FAILED(rv)) {
-    return false;
+    return result;
   }
 
-  if (!aLastVersion.Equals(aVersion)) {
+  if (!result.lastVersion.Equals(aVersion)) {
     // The version is not the same. Whether it's a downgrade depends on an
     // actual comparison:
-    *aIsDowngrade = 0 < CompareCompatVersions(aLastVersion, aVersion);
-    ExtractCompatVersionInfo(aLastVersion, gLastAppVersion, gLastAppBuildID);
-    return false;
+    result.isDowngrade =
+        0 < CompareCompatVersions(result.lastVersion, aVersion);
+    ExtractCompatVersionInfo(result.lastVersion, result.lastAppVersion,
+                             result.lastAppBuildID);
+    return result;
   }
 
   // If we get here, the version matched, but there may still be other
   // differences between us and the build that the profile last ran under.
 
-  gLastAppVersion.Assign(gAppData->version);
-  gLastAppBuildID.Assign(gAppData->buildID);
+  result.lastAppVersion.Assign(gAppData->version);
+  result.lastAppBuildID.Assign(gAppData->buildID);
 
   nsAutoCString buf;
   rv = parser.GetString("Compatibility", "LastOSABI", buf);
-  if (NS_FAILED(rv) || !aOSABI.Equals(buf)) return false;
+  if (NS_FAILED(rv) || !aOSABI.Equals(buf)) return result;
 
   rv = parser.GetString("Compatibility", "LastPlatformDir", buf);
-  if (NS_FAILED(rv)) return false;
+  if (NS_FAILED(rv)) return result;
 
   nsCOMPtr<nsIFile> lf;
   rv = NS_NewLocalFileWithPersistentDescriptor(buf, getter_AddRefs(lf));
-  if (NS_FAILED(rv)) return false;
+  if (NS_FAILED(rv)) return result;
 
   bool eq;
   rv = lf->Equals(aXULRunnerDir, &eq);
-  if (NS_FAILED(rv) || !eq) return false;
+  if (NS_FAILED(rv) || !eq) return result;
 
   if (aAppDir) {
     rv = parser.GetString("Compatibility", "LastAppDir", buf);
-    if (NS_FAILED(rv)) return false;
+    if (NS_FAILED(rv)) return result;
 
     rv = NS_NewLocalFileWithPersistentDescriptor(buf, getter_AddRefs(lf));
-    if (NS_FAILED(rv)) return false;
+    if (NS_FAILED(rv)) return result;
 
     rv = lf->Equals(aAppDir, &eq);
-    if (NS_FAILED(rv) || !eq) return false;
+    if (NS_FAILED(rv) || !eq) return result;
   }
 
   // If we see this flag, caches are invalid.
   rv = parser.GetString("Compatibility", "InvalidateCaches", buf);
-  *aCachesOK = (NS_FAILED(rv) || !buf.EqualsLiteral("1"));
+  result.cachesOK = (NS_FAILED(rv) || !buf.EqualsLiteral("1"));
 
   bool purgeCaches = false;
   if (aFlagFile && NS_SUCCEEDED(aFlagFile->Exists(&purgeCaches)) &&
       purgeCaches) {
-    *aCachesOK = false;
+    result.cachesOK = false;
   }
 
-  return true;
+  result.isCompatible = true;
+  return result;
 }
 
 void BuildCompatVersion(const char* aAppVersion, const char* aAppBuildID,
@@ -5629,14 +5657,17 @@ int XREMain::XRE_mainStartup(bool* aExitFlag) {
     flagFile->AppendNative(FILE_INVALIDATE_CACHES);
   }
 
-  bool cachesOK;
-  bool isDowngrade;
-  nsCString lastVersion;
-  bool versionOK = CheckCompatibility(
-      mProfD, version, osABI, mDirProvider.GetGREDir(), mAppData->directory,
-      flagFile, &cachesOK, &isDowngrade, lastVersion);
+  CompatCheckResult compatResult =
+      CheckCompatibility(mProfD, version, osABI, mDirProvider.GetGREDir(),
+                         mAppData->directory, flagFile);
 
-  MOZ_RELEASE_ASSERT(!cachesOK || lastVersion.Equals(version),
+  bool cachesOK = compatResult.cachesOK;
+
+  gLastAppVersion = compatResult.lastAppVersion;
+  gLastAppBuildID = compatResult.lastAppBuildID;
+  gProfileEncryptedDatabases = compatResult.hasEncryptedDatabases;
+
+  MOZ_RELEASE_ASSERT(!cachesOK || compatResult.lastVersion.Equals(version),
                      "Caches cannot be good if the version has changed.");
 
   // Refuse to launch if the profile's on-disk encryption state and the
@@ -5671,12 +5702,13 @@ int XREMain::XRE_mainStartup(bool* aExitFlag) {
 #ifdef MOZ_BLOCK_PROFILE_DOWNGRADE
   // The argument check must come first so the argument is always removed from
   // the command line regardless of whether this is a downgrade or not.
-  if (!CheckArg("allow-downgrade") && isDowngrade &&
+  if (!CheckArg("allow-downgrade") && compatResult.isDowngrade &&
       !EnvHasValue("MOZ_ALLOW_DOWNGRADE")) {
 #  ifdef XP_MACOSX
     InitializeMacApp();
 #  endif
-    rv = HandleDetectedDowngrade(mProfD, mNativeApp, mProfileSvc, lastVersion);
+    rv = HandleDetectedDowngrade(mProfD, mNativeApp, mProfileSvc,
+                                 compatResult.lastVersion);
     if (rv == NS_ERROR_LAUNCHED_CHILD_PROCESS || rv == NS_ERROR_ABORT) {
       *aExitFlag = true;
       return 0;
@@ -5720,7 +5752,8 @@ int XREMain::XRE_mainStartup(bool* aExitFlag) {
   }
 
   CrashReporter::RecordAnnotationBool(
-      CrashReporter::Annotation::StartupCacheValid, cachesOK && versionOK);
+      CrashReporter::Annotation::StartupCacheValid,
+      cachesOK && compatResult.isCompatible);
 
 #ifdef XP_MACOSX
   static bool status = nsCocoaFeatures::ProcessIsRosettaTranslated();
@@ -5738,7 +5771,7 @@ int XREMain::XRE_mainStartup(bool* aExitFlag) {
   //
   bool startupCacheValid = true;
 
-  if (!cachesOK || !versionOK) {
+  if (!cachesOK || !compatResult.isCompatible) {
     QuotaManager::InvalidateQuotaCache(
         QuotaManager::CacheInvalidationLevel::Soft);
 
