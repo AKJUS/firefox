@@ -830,8 +830,13 @@ class MarkerSchema {
     // "Label: 52.23, 0.0054, 123,456.78"
     Decimal,
     // The hexadecimal should be used for integers that are more meaningful in
-    // base 16, like bit flags. Values wider than a 32-bit unsigned integer
-    // might get truncated on the frontend side.
+    // base 16, like bit flags.
+    // Like all the integer formats, values are carried as JS numbers on the
+    // frontend side, so anything above Number.MAX_SAFE_INTEGER (2^53-1) cannot
+    // be represented exactly.
+    // To display a 64-bit value such as an address, the recommendation is
+    // therefore to convert it to a hexadecimal string in StreamJSONMarkerData
+    // and use the String format.
     // "Label: 0x1f, 0xdeadbeef"
     Hexadecimal,
 
