@@ -221,6 +221,15 @@ class NeqoHttp3Conn final {
     return true;
   }
 
+  // Only the connection-level counters; used once neqo has dropped the
+  // session, which leaves the session-scoped datagram counters at 0.
+  void GetWebTransportTransportStats(
+      mozilla::dom::WebTransportStatsData& aStats) {
+    struct WebTransportSessionStats stats = {};
+    neqo_http3conn_webtransport_transport_stats(this, &stats);
+    TranslateWebTransportSessionStats(stats, aStats);
+  }
+
   nsresult WebTransportSetSendOrder(uint64_t aSessionId, int64_t aSendOrder) {
     return neqo_http3conn_webtransport_set_sendorder(this, aSessionId,
                                                      &aSendOrder);

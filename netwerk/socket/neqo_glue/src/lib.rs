@@ -2958,6 +2958,19 @@ pub extern "C" fn neqo_http3conn_webtransport_session_stats(
     }
 }
 
+/// Fill in only the connection-level part of the stats.
+///
+/// Used when the session is already gone (neqo tears it down before the
+/// close event is drained), so the session-scoped datagram counters are
+/// unavailable.
+#[no_mangle]
+pub extern "C" fn neqo_http3conn_webtransport_transport_stats(
+    conn: &NeqoHttp3Conn,
+    stats: &mut WebTransportSessionStats,
+) {
+    populate_transport_stats(stats, &conn.conn.transport_stats());
+}
+
 /// Convert a [`std::io::Error`] into a [`nsresult`].
 ///
 /// Note that this conversion is specific to `neqo_glue`, i.e. does not aim to

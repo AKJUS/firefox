@@ -953,16 +953,16 @@ nsresult Http3Session::ProcessEvents() {
             LOG(("reason.tag=%u err=%u data=%s\n",
                  static_cast<uint32_t>(reasonExternal.tag), status,
                  reason.get()));
-            // Get stats before the session is closed (spec requirement). If
-            // this fails (e.g. right as the session is torn down), fall back
-            // to whatever stats are already cached rather than overwriting
-            // them with zeros.
+            // Get stats before the session is closed (spec requirement).
+            // neqo drops the session as it processes the close, before we get
+            // here to drain the event, so for a server-initiated close only
+            // the connection-level counters are still available -- they cover
+            // everything we report except the session's datagram counters.
             mozilla::dom::WebTransportStatsData stats;
-            if (mHttp3Connection->GetWebTransportSessionStats(id, stats)) {
-              wt->OnSessionClosedWithStats(cleanly, status, reason, stats);
-            } else {
-              wt->OnSessionClosed(cleanly, status, reason);
+            if (!mHttp3Connection->GetWebTransportSessionStats(id, stats)) {
+              mHttp3Connection->GetWebTransportTransportStats(stats);
             }
+            wt->OnSessionClosedWithStats(cleanly, status, reason, stats);
           } break;
           case WebTransportEventExternal::Tag::NewStream: {
             LOG(
