@@ -111,7 +111,6 @@ void FFmpegVideoDecoder<LIBAV_VER>::FFmpegVulkanVideoDecoder::Cleanup() {
 
   mDevice = VK_NULL_HANDLE;
   mCopyQueueCount = 0;
-  mCopyQueueIsDedicatedTransfer = false;
   mCopyQueueRoundRobin = 0;
   mCopyQueue.Clear();
   mCopyCmdPool.Clear();
@@ -153,8 +152,6 @@ struct InstanceFunctionCache {
   uint64_t mGeneration = 0;
   PFN_vkGetDeviceProcAddr mGetDeviceProcAddr = nullptr;
   PFN_vkGetPhysicalDeviceProperties mGetPhysicalDeviceProperties = nullptr;
-  PFN_vkGetPhysicalDeviceQueueFamilyProperties
-      mGetPhysicalDeviceQueueFamilyProperties = nullptr;
   PFN_vkGetPhysicalDeviceMemoryProperties mGetPhysicalDeviceMemoryProperties =
       nullptr;
   PFN_vkGetPhysicalDeviceFormatProperties2 mGetPhysicalDeviceFormatProperties2 =
@@ -215,8 +212,6 @@ void FFmpegVideoDecoder<LIBAV_VER>::FFmpegVulkanVideoDecoder::
       cache->mGetDeviceProcAddr) {
     mGetDeviceProcAddr = cache->mGetDeviceProcAddr;
     mGetPhysicalDeviceProperties = cache->mGetPhysicalDeviceProperties;
-    mGetPhysicalDeviceQueueFamilyProperties =
-        cache->mGetPhysicalDeviceQueueFamilyProperties;
     mGetPhysicalDeviceMemoryProperties =
         cache->mGetPhysicalDeviceMemoryProperties;
     mGetPhysicalDeviceFormatProperties2 =
@@ -245,8 +240,6 @@ void FFmpegVideoDecoder<LIBAV_VER>::FFmpegVulkanVideoDecoder::
 
   load(mGetDeviceProcAddr, "vkGetDeviceProcAddr");
   load(mGetPhysicalDeviceProperties, "vkGetPhysicalDeviceProperties");
-  load(mGetPhysicalDeviceQueueFamilyProperties,
-       "vkGetPhysicalDeviceQueueFamilyProperties");
   load(mGetPhysicalDeviceMemoryProperties,
        "vkGetPhysicalDeviceMemoryProperties");
   load(mGetPhysicalDeviceFormatProperties2,
@@ -260,8 +253,6 @@ void FFmpegVideoDecoder<LIBAV_VER>::FFmpegVulkanVideoDecoder::
   cache->mGeneration = aGeneration;
   cache->mGetDeviceProcAddr = mGetDeviceProcAddr;
   cache->mGetPhysicalDeviceProperties = mGetPhysicalDeviceProperties;
-  cache->mGetPhysicalDeviceQueueFamilyProperties =
-      mGetPhysicalDeviceQueueFamilyProperties;
   cache->mGetPhysicalDeviceMemoryProperties =
       mGetPhysicalDeviceMemoryProperties;
   cache->mGetPhysicalDeviceFormatProperties2 =
@@ -1085,7 +1076,7 @@ bool FFmpegVideoDecoder<LIBAV_VER>::FFmpegVulkanVideoDecoder::InitCtx(
     VkDevice aDevice, VkPhysicalDevice aPhysDev,
     PFN_vkGetInstanceProcAddr aGetProcAddr, VkInstance aInstance,
     uint64_t aGeneration, uint32_t aCopyQueueFamilyIndex,
-    VkDeviceQueueCreateFlags aQueueCreateFlags) {
+    uint32_t aCopyQueueCount, VkDeviceQueueCreateFlags aQueueCreateFlags) {
   // Load instance-level functions once
   if (!mGetDeviceProcAddr) {
     LoadInstanceFunctions(aGetProcAddr, aInstance, aPhysDev, aGeneration);
@@ -1115,42 +1106,18 @@ bool FFmpegVideoDecoder<LIBAV_VER>::FFmpegVulkanVideoDecoder::InitCtx(
     // the decoder queries supported modifiers from the compositor and uses
     // the intersection. This removes the need for a forceLinear flag.
 
-    uint32_t copyQueueFamilyIndex = aCopyQueueFamilyIndex;
-    uint32_t transferOnlyQueueCount = 0;
-    int32_t transferOnlyQueueFamilyIndex = -1;
-    if (mGetPhysicalDeviceQueueFamilyProperties) {
-      uint32_t queueFamilyCount = 0;
-      mGetPhysicalDeviceQueueFamilyProperties(aPhysDev, &queueFamilyCount,
-                                              nullptr);
-      AutoTArray<VkQueueFamilyProperties, 8> props;
-      if (queueFamilyCount > 0) {
-        props.SetLength(queueFamilyCount);
-        mGetPhysicalDeviceQueueFamilyProperties(aPhysDev, &queueFamilyCount,
-                                                props.Elements());
-        for (uint32_t i = 0; i < queueFamilyCount; i++) {
-          if (props[i].queueCount > 0 &&
-              (props[i].queueFlags &
-               (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) == 0 &&
-              (props[i].queueFlags & VK_QUEUE_TRANSFER_BIT)) {
-            copyQueueFamilyIndex = i;
-            transferOnlyQueueFamilyIndex = static_cast<int32_t>(i);
-            transferOnlyQueueCount = static_cast<uint32_t>(props[i].queueCount);
-            break;
-          }
-        }
-      }
-    }
-    if (transferOnlyQueueFamilyIndex >= 0) {
-      mQueueFamilyIndex = transferOnlyQueueFamilyIndex;
-      mCopyQueueCount = transferOnlyQueueCount;
-    } else {
-      mQueueFamilyIndex = copyQueueFamilyIndex;
-    }
-    mCopyQueueCount = std::max(1u, mCopyQueueCount);
+    mQueueFamilyIndex = aCopyQueueFamilyIndex;
+    mCopyQueueCount = std::max(1u, aCopyQueueCount);
     mCopyQueue.SetLength(mCopyQueueCount);
     mCopyCmdPool.SetLength(mCopyQueueCount);
     mCopyCmdBuf.SetLength(mCopyQueueCount);
     mCopyFence.SetLength(mCopyQueueCount);
+    for (uint32_t qi = 0; qi < mCopyQueueCount; qi++) {
+      mCopyQueue[qi] = VK_NULL_HANDLE;
+      mCopyCmdPool[qi] = VK_NULL_HANDLE;
+      mCopyCmdBuf[qi] = VK_NULL_HANDLE;
+      mCopyFence[qi] = VK_NULL_HANDLE;
+    }
     VkCommandPoolCreateInfo poolInfo = {};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
@@ -1159,14 +1126,6 @@ bool FFmpegVideoDecoder<LIBAV_VER>::FFmpegVulkanVideoDecoder::InitCtx(
     for (uint32_t qi = 0; qi < mCopyQueueCount; qi++) {
       VkResult poolRes =
           mCreateCommandPool(aDevice, &poolInfo, nullptr, &mCopyCmdPool[qi]);
-      if (poolRes != VK_SUCCESS &&
-          copyQueueFamilyIndex != aCopyQueueFamilyIndex) {
-        copyQueueFamilyIndex = aCopyQueueFamilyIndex;
-        mQueueFamilyIndex = copyQueueFamilyIndex;
-        poolInfo.queueFamilyIndex = mQueueFamilyIndex;
-        poolRes =
-            mCreateCommandPool(aDevice, &poolInfo, nullptr, &mCopyCmdPool[qi]);
-      }
       if (poolRes != VK_SUCCESS) {
         FFMPEGV_LOG("Failed to create Vulkan command pool for queue {}", qi);
         return false;

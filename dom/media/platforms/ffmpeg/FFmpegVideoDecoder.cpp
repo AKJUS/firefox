@@ -354,17 +354,21 @@ bool FFmpegVideoDecoder<LIBAV_VER>::CreateVAAPIDeviceContext() {
 }
 
 #  ifdef MOZ_USE_HWDECODE_VULKAN
-static uint32_t VulkanTransferQueueFamily(const AVVulkanDeviceContext* aVkCtx) {
+static void VulkanCopyQueues(const AVVulkanDeviceContext* aVkCtx,
+                             uint32_t* aFamily, uint32_t* aCount) {
+  *aFamily = 0;
+  *aCount = 1;
 #    if LIBAVCODEC_VERSION_MAJOR >= 63
-  // FFmpeg 63 replaced queue_family_tx_index with the qf array.
   for (int i = 0; i < aVkCtx->nb_qf; i++) {
     if (aVkCtx->qf[i].flags & VK_QUEUE_TRANSFER_BIT) {
-      return (uint32_t)std::max(aVkCtx->qf[i].idx, 0);
+      *aFamily = (uint32_t)std::max(aVkCtx->qf[i].idx, 0);
+      *aCount = (uint32_t)std::max(aVkCtx->qf[i].num, 1);
+      return;
     }
   }
-  return 0;
 #    else
-  return (uint32_t)std::max<int>(aVkCtx->queue_family_tx_index, 0);
+  *aFamily = (uint32_t)std::max<int>(aVkCtx->queue_family_tx_index, 0);
+  *aCount = (uint32_t)std::max(aVkCtx->nb_tx_queues, 1);
 #    endif
 }
 
@@ -415,10 +419,13 @@ bool FFmpegVideoDecoder<LIBAV_VER>::CreateVulkanDeviceContext(
 #    if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(60, 32, 100)
   queueCreateFlags = vkCtx->queue_flags;
 #    endif
-  if (!mVulkanDecoder.InitCtx(
-          vkCtx->act_dev, vkCtx->phys_dev, vkCtx->get_proc_addr, vkCtx->inst,
-          mVulkanDeviceHolder->Generation(), VulkanTransferQueueFamily(vkCtx),
-          queueCreateFlags)) {
+  uint32_t copyFamily = 0;
+  uint32_t copyCount = 1;
+  VulkanCopyQueues(vkCtx, &copyFamily, &copyCount);
+  if (!mVulkanDecoder.InitCtx(vkCtx->act_dev, vkCtx->phys_dev,
+                              vkCtx->get_proc_addr, vkCtx->inst,
+                              mVulkanDeviceHolder->Generation(), copyFamily,
+                              copyCount, queueCreateFlags)) {
     FFMPEG_LOG("Failed to init Vulkan Context structure");
     return false;
   }
@@ -2317,10 +2324,13 @@ MediaResult FFmpegVideoDecoder<LIBAV_VER>::CreateImageVulkan(
 #    if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(60, 32, 100)
   queueCreateFlags = vkDevCtx->queue_flags;
 #    endif
-  if (!mVulkanDecoder.InitCtx(
-          vkDevCtx->act_dev, vkDevCtx->phys_dev, vkDevCtx->get_proc_addr,
-          vkDevCtx->inst, mVulkanDeviceHolder->Generation(),
-          VulkanTransferQueueFamily(vkDevCtx), queueCreateFlags)) {
+  uint32_t copyFamily = 0;
+  uint32_t copyCount = 1;
+  VulkanCopyQueues(vkDevCtx, &copyFamily, &copyCount);
+  if (!mVulkanDecoder.InitCtx(vkDevCtx->act_dev, vkDevCtx->phys_dev,
+                              vkDevCtx->get_proc_addr, vkDevCtx->inst,
+                              mVulkanDeviceHolder->Generation(), copyFamily,
+                              copyCount, queueCreateFlags)) {
     return MediaResult(
         NS_ERROR_DOM_MEDIA_FATAL_ERR,
         RESULT_DETAIL("Failed to init Vulkan Context structure"));
