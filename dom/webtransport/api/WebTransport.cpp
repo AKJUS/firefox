@@ -887,8 +887,13 @@ already_AddRefed<Promise> WebTransport::ExportKeyingMaterial(
 WebTransportReliabilityMode WebTransport::Reliability() { return mReliability; }
 
 WebTransportCongestionControl WebTransport::CongestionControl() {
-  // XXX not implemented
+  // XXX We only implement cubic congestion control currently in QUIC
   return WebTransportCongestionControl::Default;
+}
+
+bool WebTransport::SupportsReliableOnly(const GlobalObject& aGlobal) {
+  // XXX Change to true when we land http/2 support if on http2 (Bug 2071107)
+  return false;
 }
 
 void WebTransport::GetProtocol(nsAString& aProtocol) { aProtocol = mProtocol; }

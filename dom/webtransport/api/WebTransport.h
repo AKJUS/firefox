@@ -118,6 +118,7 @@ class WebTransport final : public nsISupports, public nsWrapperCache {
   already_AddRefed<Promise> Ready() { return do_AddRef(mReady); }
   WebTransportReliabilityMode Reliability();
   WebTransportCongestionControl CongestionControl();
+  static bool SupportsReliableOnly(const GlobalObject& aGlobal);
   void GetProtocol(nsAString& aProtocol);
   already_AddRefed<Promise> Draining() { return do_AddRef(mDraining); }
   already_AddRefed<Promise> Closed() { return do_AddRef(mClosed); }

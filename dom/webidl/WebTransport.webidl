@@ -107,6 +107,8 @@ interface WebTransport {
 
   [NewObject, Throws]
   WebTransportSendGroup createSendGroup();
+
+  static readonly attribute boolean supportsReliableOnly;
 };
 
 enum WebTransportReliabilityMode {
