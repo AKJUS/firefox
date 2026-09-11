@@ -265,6 +265,7 @@ class RenderSourceNLRS : public profiler_screenshots::RenderSource {
  public:
   explicit RenderSourceNLRS(UniquePtr<gl::MozFramebuffer>&& aFramebuffer);
   auto& FB() { return *mFramebuffer; }
+  ~RenderSourceNLRS() override;
 
  protected:
   UniquePtr<gl::MozFramebuffer> mFramebuffer;
