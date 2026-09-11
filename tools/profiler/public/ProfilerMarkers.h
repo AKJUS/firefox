@@ -265,24 +265,11 @@ MarkerSchema::getDefaultFormatForType<nsCString>() {
 }  // namespace mozilla
 
 namespace geckoprofiler::markers {
-// Wraps a string literal so that it can be used as a non-type template
-// parameter.
-template <size_t N>
-struct MOZ_IMPLICIT MarkerFieldName {
-  char mName[N];
-
-  constexpr MarkerFieldName(const char (&aName)[N]) {
-    for (size_t i = 0; i < N; ++i) {
-      mName[i] = aName[i];
-    }
-  }
-};
-
 // This allows us to bundle the argument name and its type into a single class
 // so they may be passed to the SimplePayloadMarkerTemplate class.
-template <MarkerFieldName ArgName, typename ArgType>
+template <const char* ArgName, typename ArgType>
 struct FieldDescription {
-  static constexpr const char* name = ArgName.mName;
+  static constexpr const char* name = ArgName;
   using type = ArgType;
 };
 
@@ -312,8 +299,17 @@ struct SimplePayloadMarkerTemplate
 };
 }  // namespace geckoprofiler::markers
 
-#define MARKER_GET_ARG_TYPE(arg) \
-  ::geckoprofiler::markers::FieldDescription<#arg, decltype(arg)>
+// This defines the classes needed for the template class.
+#define DEFINE_FIELD_STRUCT(arg)                                   \
+  static constexpr char defined_name_##arg[] = #arg;               \
+  using FieldDescription##arg =                                    \
+      geckoprofiler::markers::FieldDescription<defined_name_##arg, \
+                                               decltype(arg)>;
+
+#define DEFINE_FIELD_STRUCTS(...) \
+  MOZ_FOR_EACH(DEFINE_FIELD_STRUCT, (), (__VA_ARGS__))
+
+#define MARKER_GET_ARG_TYPE(arg) FieldDescription##arg
 
 // This adds a profiler marker with a schema for payload based on the arguments
 // passed. Note that each marker must have a unique name so you can only use
@@ -334,6 +330,7 @@ struct SimplePayloadMarkerTemplate
   do {                                                                       \
     static constexpr char marker_name[] = markerName;                        \
     static constexpr char table_label[] = label;                             \
+    DEFINE_FIELD_STRUCTS(__VA_ARGS__)                                        \
     using SimplePayloadMarkerImpl =                                          \
         geckoprofiler::markers::SimplePayloadMarkerTemplate<                 \
             marker_name, table_label,                                        \
