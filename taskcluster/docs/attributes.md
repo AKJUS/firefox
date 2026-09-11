@@ -19,7 +19,14 @@ A task's `kind` attribute gives the name of the kind that generated it, e.g.,
 ## run_on_repo_type
 
 The types of repositories where this task should be in the target task set. Typically
-"hg" (the default), "git" or both.
+"hg", "git" or both (the default).
+
+This attribute is temporary and will be used during the transition from hg.mozilla.org
+to Github.
+
+## clone_with
+
+The VCS a task uses to clone the checkout, either "hg" or "git".
 
 This attribute is temporary and will be used during the transition from hg.mozilla.org
 to Github.
