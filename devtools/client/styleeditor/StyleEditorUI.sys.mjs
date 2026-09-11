@@ -1844,7 +1844,7 @@ export class StyleEditorUI extends EventEmitter {
       editor.onShow(options);
 
       this.#updatePrettyPrintButton();
-
+      Glean.devtoolsStyleeditorStylesheets.stylesheetsOpenedCount.add(1);
       this.emit("editor-selected", editor);
     } catch (e) {
       console.error(e);

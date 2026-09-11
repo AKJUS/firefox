@@ -4750,7 +4750,7 @@ class Toolbox extends EventEmitter {
       Glean.devtoolsDebuggerStylesheets.linksOpenedInDebuggerCount.add(1);
       return viewSource.viewSourceInDebugger(this, url, line, column, null);
     }
-
+    Glean.devtoolsStyleeditorStylesheets.linksOpenedInStyleEditorCount.add(1);
     return viewSource.viewSourceInStyleEditor(this, url, line, column);
   }
 
@@ -4786,7 +4786,7 @@ class Toolbox extends EventEmitter {
         stylesheetResource.resourceId
       );
     }
-
+    Glean.devtoolsStyleeditorStylesheets.linksOpenedInStyleEditorCount.add(1);
     return viewSource.viewSourceInStyleEditor(
       this,
       stylesheetResource,
