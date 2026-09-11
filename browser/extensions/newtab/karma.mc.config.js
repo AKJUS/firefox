@@ -36,6 +36,10 @@ module.exports = function (config) {
   const browsers = isTDD ? ["Firefox"] : ["FirefoxHeadless"]; // require("karma-firefox-launcher")
   config.set({
     singleRun: !isTDD,
+    // Every karma test has been migrated to jest; the runner itself is removed
+    // in bug 2024073. Until then an empty suite is the expected state, not a
+    // failure.
+    failOnEmptyTestSuite: false,
     browsers,
     customLaunchers: {
       FirefoxHeadless: {

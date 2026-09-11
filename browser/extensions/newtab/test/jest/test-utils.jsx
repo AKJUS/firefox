@@ -72,11 +72,13 @@ const SERVICE_STUBS = {
     removeObserver: jest.fn(),
     clearUserPref: jest.fn(),
     getBoolPref: jest.fn((_pref, defaultValue) => defaultValue),
+    getCharPref: jest.fn((_pref, defaultValue) => defaultValue),
     getIntPref: jest.fn((_pref, defaultValue) => defaultValue),
     getStringPref: jest.fn((_pref, defaultValue) => defaultValue),
     getPrefType: jest.fn(() => 0),
     prefHasUserValue: jest.fn(() => false),
     setBoolPref: jest.fn(),
+    setCharPref: jest.fn(),
     setIntPref: jest.fn(),
     setStringPref: jest.fn(),
     getDefaultBranch: jest.fn(),
@@ -87,6 +89,9 @@ const SERVICE_STUBS = {
   }),
   // Version comparator; defaults to reporting equal versions so that
   // backward-compat gates read as supported.
+  uuid: () => ({
+    generateUUID: jest.fn(),
+  }),
   vc: () => ({ compare: jest.fn(() => 0) }),
   scriptSecurityManager: () => ({
     createContentPrincipalFromOrigin: jest.fn(origin => ({ origin })),

@@ -1,10 +1,14 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import {
   actionCreators as ac,
   actionTypes as at,
   actionUtils as au,
 } from "common/Actions.mjs";
 import { combineReducers, createStore } from "redux";
-import { GlobalOverrider } from "test/unit/utils";
+import { mockServices, stubGlobals } from "test/jest/test-utils";
 import { DiscoveryStreamFeed } from "lib/DiscoveryStreamFeed.sys.mjs";
 import { reducers } from "common/Reducers.sys.mjs";
 
@@ -30,11 +34,20 @@ const DEFAULT_ROW_COUNT = 6;
 describe("DiscoveryStreamFeed", () => {
   let feed;
   let feeds;
-  let sandbox;
   let fetchStub;
-  let clock;
   let fakeNewTabUtils;
-  let globals;
+  let services;
+  let restoreGlobals;
+  let surfaceIdSet;
+
+  // The feed logs the failures these cases drive it into. Swap out the spy the
+  // jest-setup console.error guard installed for the duration of the case, so
+  // that expected logging is not reported against it. jest-setup puts the real
+  // console.error back in its afterEach.
+  const expectConsoleError = () => {
+    console.error = jest.fn();
+    return console.error;
+  };
 
   const setPref = (name, value) => {
     const action = {
@@ -49,7 +62,7 @@ describe("DiscoveryStreamFeed", () => {
   };
 
   const stubOutFetchFromEndpointWithRealisticData = () => {
-    sandbox.stub(feed, "fetchFromEndpoint").resolves({
+    jest.spyOn(feed, "fetchFromEndpoint").mockResolvedValue({
       recommendedAt: 1755834072383,
       surfaceId: "NEW_TAB_EN_US",
       data: [
@@ -91,18 +104,46 @@ describe("DiscoveryStreamFeed", () => {
   };
 
   beforeEach(() => {
-    sandbox = sinon.createSandbox();
-
     // Fetch
-    fetchStub = sandbox.stub(global, "fetch");
+    fetchStub = jest.fn();
 
     // Time
-    clock = sinon.useFakeTimers();
+    jest.useFakeTimers({ now: 0 });
 
-    globals = new GlobalOverrider();
-    globals.set({
-      gUUIDGenerator: { generateUUID: () => FAKE_UUID },
+    fakeNewTabUtils = {
+      blockedLinks: {
+        links: [],
+        isBlocked: () => false,
+      },
+      getUtcOffset: () => 0,
+    };
+
+    services = mockServices(["locale", "obs", "prefs", "uuid"]);
+    services.uuid.generateUUID.mockReturnValue(FAKE_UUID);
+    services.prefs.getBoolPref.mockImplementation(name =>
+      name === "browser.newtabpage.activity-stream.discoverystream.enabled"
+        ? true
+        : undefined
+    );
+
+    surfaceIdSet = jest.fn();
+    restoreGlobals = stubGlobals({
+      fetch: fetchStub,
+      Glean: { newtabContent: { surfaceId: { set: surfaceIdSet } } },
+      Services: services,
       PersistentCache,
+      PathUtils: {
+        join: (...parts) => parts[parts.length - 1],
+        localProfileDir: "localProfileDir",
+      },
+      IOUtils: {
+        readJSON: () => Promise.resolve({}),
+        writeJSON: () => Promise.resolve(0),
+      },
+      NewTabUtils: fakeNewTabUtils,
+      ContextId: {
+        request: () => "ContextId",
+      },
       AdsClient: {
         isEnabled: () => false,
         getClient: () => null,
@@ -118,12 +159,32 @@ describe("DiscoveryStreamFeed", () => {
         }
       },
       MozAdsIabContentTaxonomy: {},
+      NimbusFeatures: {
+        pocketNewtab: {
+          getEnrollmentMetadata: jest.fn(),
+          onUpdate: jest.fn(),
+          offUpdate: jest.fn(),
+        },
+      },
+      ObliviousHTTP: {
+        getOHTTPConfig: () => {},
+        ohttpRequest: () => {},
+      },
+      Region: { home: "US" },
+      RemoteSettings: { pollChanges: jest.fn() },
+      // Only read through the lazy.userAgent getter.
+      Cc: {
+        "@mozilla.org/network/protocol;1?name=http": {
+          getService() {
+            return this;
+          },
+        },
+      },
+      Ci: { nsIHttpProtocolHandler: {} },
+      // The layout globals are only installed by the tests that need them.
+      SectionsLayoutManager: undefined,
+      maskLayoutAds: undefined,
     });
-
-    sandbox
-      .stub(global.Services.prefs, "getBoolPref")
-      .withArgs("browser.newtabpage.activity-stream.discoverystream.enabled")
-      .returns(true);
 
     // Feed
     feed = new DiscoveryStreamFeed();
@@ -146,41 +207,19 @@ describe("DiscoveryStreamFeed", () => {
     feed.store.feeds = {
       get: name => feeds[name],
     };
-    global.fetch.resetHistory();
 
-    sandbox.stub(feed, "_maybeUpdateCachedData").resolves();
-
-    globals.set("setTimeout", callback => {
-      callback();
-    });
-
-    fakeNewTabUtils = {
-      blockedLinks: {
-        links: [],
-        isBlocked: () => false,
-      },
-      getUtcOffset: () => 0,
-    };
-    globals.set("NewTabUtils", fakeNewTabUtils);
-    globals.set("ClientEnvironmentBase", {
-      os: "0",
-    });
-
-    globals.set("ObliviousHTTP", {
-      getOHTTPConfig: () => {},
-      ohttpRequest: () => {},
-    });
+    jest.spyOn(feed, "_maybeUpdateCachedData").mockResolvedValue();
   });
 
   afterEach(() => {
-    clock.restore();
-    sandbox.restore();
-    globals.restore();
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+    restoreGlobals();
   });
 
   describe("#fetchFromEndpoint", () => {
     beforeEach(() => {
-      fetchStub.resolves({
+      fetchStub.mockResolvedValue({
         json: () => Promise.resolve("hi"),
         ok: true,
       });
@@ -188,21 +227,23 @@ describe("DiscoveryStreamFeed", () => {
     it("should get a response", async () => {
       const response = await feed.fetchFromEndpoint(DUMMY_ENDPOINT);
 
-      assert.equal(response, "hi");
+      expect(response).toBe("hi");
     });
     it("should not send cookies", async () => {
       await feed.fetchFromEndpoint(DUMMY_ENDPOINT);
 
-      assert.propertyVal(fetchStub.firstCall.args[1], "credentials", "omit");
+      expect(fetchStub.mock.calls[0][1]).toHaveProperty("credentials", "omit");
     });
     it("should allow unexpected response", async () => {
-      fetchStub.resolves({ ok: false });
+      expectConsoleError();
+      fetchStub.mockResolvedValue({ ok: false });
 
       const response = await feed.fetchFromEndpoint(DUMMY_ENDPOINT);
 
-      assert.equal(response, null);
+      expect(response).toBe(null);
     });
     it("should disallow unexpected endpoints", async () => {
+      expectConsoleError();
       feed.store.getState = () => ({
         Prefs: {
           values: {
@@ -213,7 +254,7 @@ describe("DiscoveryStreamFeed", () => {
 
       const response = await feed.fetchFromEndpoint(DUMMY_ENDPOINT);
 
-      assert.equal(response, null);
+      expect(response).toBe(null);
     });
     it("should allow multiple endpoints", async () => {
       feed.store.getState = () => ({
@@ -226,7 +267,7 @@ describe("DiscoveryStreamFeed", () => {
 
       const response = await feed.fetchFromEndpoint(DUMMY_ENDPOINT);
 
-      assert.equal(response, "hi");
+      expect(response).toBe("hi");
     });
     it("should ignore white-space added to multiple endpoints", async () => {
       feed.store.getState = () => ({
@@ -239,7 +280,7 @@ describe("DiscoveryStreamFeed", () => {
 
       const response = await feed.fetchFromEndpoint(DUMMY_ENDPOINT);
 
-      assert.equal(response, "hi");
+      expect(response).toBe("hi");
     });
     it("should allow POST and with other options", async () => {
       await feed.fetchFromEndpoint("https://getpocket.cdn.mozilla.net/dummy", {
@@ -247,41 +288,40 @@ describe("DiscoveryStreamFeed", () => {
         body: "{}",
       });
 
-      assert.calledWithMatch(
-        fetchStub,
+      expect(fetchStub).toHaveBeenCalledWith(
         "https://getpocket.cdn.mozilla.net/dummy",
-        {
+        expect.objectContaining({
           credentials: "omit",
           method: "POST",
           body: "{}",
-        }
+        })
       );
     });
 
     it("should use OHTTP when configured and enabled", async () => {
-      sandbox
-        .stub(global.Services.prefs, "getStringPref")
-        .withArgs(
-          "browser.newtabpage.activity-stream.discoverystream.ohttp.relayURL"
-        )
-        .returns("https://relay.url")
-        .withArgs(
-          "browser.newtabpage.activity-stream.discoverystream.ohttp.configURL"
-        )
-        .returns("https://config.url");
+      services.prefs.getStringPref.mockImplementation(name => {
+        switch (name) {
+          case "browser.newtabpage.activity-stream.discoverystream.ohttp.relayURL":
+            return "https://relay.url";
+          case "browser.newtabpage.activity-stream.discoverystream.ohttp.configURL":
+            return "https://config.url";
+          default:
+            return undefined;
+        }
+      });
 
       const fakeOhttpConfig = { config: "config" };
-      sandbox
-        .stub(global.ObliviousHTTP, "getOHTTPConfig")
-        .resolves(fakeOhttpConfig);
+      jest
+        .spyOn(globalThis.ObliviousHTTP, "getOHTTPConfig")
+        .mockResolvedValue(fakeOhttpConfig);
 
       const ohttpResponse = {
         json: () => Promise.resolve("ohttp response"),
         ok: true,
       };
-      const ohttpRequestStub = sandbox
-        .stub(global.ObliviousHTTP, "ohttpRequest")
-        .resolves(ohttpResponse);
+      const ohttpRequestStub = jest
+        .spyOn(globalThis.ObliviousHTTP, "ohttpRequest")
+        .mockResolvedValue(ohttpResponse);
 
       // Allow the endpoint
       feed.store.getState = () => ({
@@ -294,40 +334,40 @@ describe("DiscoveryStreamFeed", () => {
 
       const result = await feed.fetchFromEndpoint(DUMMY_ENDPOINT, {}, true);
 
-      assert.equal(result, "ohttp response");
-      assert.calledOnce(ohttpRequestStub);
-      assert.calledWithMatch(
-        ohttpRequestStub,
+      expect(result).toBe("ohttp response");
+      expect(ohttpRequestStub).toHaveBeenCalledTimes(1);
+      expect(ohttpRequestStub).toHaveBeenCalledWith(
         "https://relay.url",
         fakeOhttpConfig,
-        DUMMY_ENDPOINT
+        DUMMY_ENDPOINT,
+        expect.anything()
       );
     });
 
     it("should cast headers from a Headers object to JS object when using OHTTP", async () => {
-      sandbox
-        .stub(global.Services.prefs, "getStringPref")
-        .withArgs(
-          "browser.newtabpage.activity-stream.discoverystream.ohttp.relayURL"
-        )
-        .returns("https://relay.url")
-        .withArgs(
-          "browser.newtabpage.activity-stream.discoverystream.ohttp.configURL"
-        )
-        .returns("https://config.url");
+      services.prefs.getStringPref.mockImplementation(name => {
+        switch (name) {
+          case "browser.newtabpage.activity-stream.discoverystream.ohttp.relayURL":
+            return "https://relay.url";
+          case "browser.newtabpage.activity-stream.discoverystream.ohttp.configURL":
+            return "https://config.url";
+          default:
+            return undefined;
+        }
+      });
 
       const fakeOhttpConfig = { config: "config" };
-      sandbox
-        .stub(global.ObliviousHTTP, "getOHTTPConfig")
-        .resolves(fakeOhttpConfig);
+      jest
+        .spyOn(globalThis.ObliviousHTTP, "getOHTTPConfig")
+        .mockResolvedValue(fakeOhttpConfig);
 
       const ohttpResponse = {
         json: () => Promise.resolve("ohttp response"),
         ok: true,
       };
-      const ohttpRequestStub = sandbox
-        .stub(global.ObliviousHTTP, "ohttpRequest")
-        .resolves(ohttpResponse);
+      const ohttpRequestStub = jest
+        .spyOn(globalThis.ObliviousHTTP, "ohttpRequest")
+        .mockResolvedValue(ohttpResponse);
 
       // Allow the endpoint
       feed.store.getState = () => ({
@@ -347,50 +387,55 @@ describe("DiscoveryStreamFeed", () => {
         true
       );
 
-      assert.equal(result, "ohttp response");
-      assert.calledOnce(ohttpRequestStub);
-      assert.calledWithMatch(
-        ohttpRequestStub,
+      expect(result).toBe("ohttp response");
+      expect(ohttpRequestStub).toHaveBeenCalledTimes(1);
+      expect(ohttpRequestStub).toHaveBeenCalledWith(
         "https://relay.url",
         fakeOhttpConfig,
         DUMMY_ENDPOINT,
-        { headers: Object.fromEntries(headers), credentials: "omit" }
+        expect.objectContaining({
+          headers: Object.fromEntries(headers),
+          credentials: "omit",
+        })
       );
     });
   });
 
   describe("#getOrCreateImpressionId", () => {
     it("should create impression id in constructor", async () => {
-      assert.equal(feed._impressionId, FAKE_UUID);
+      expect(feed._impressionId).toBe(FAKE_UUID);
     });
     it("should create impression id if none exists", async () => {
-      sandbox.stub(global.Services.prefs, "getCharPref").returns("");
-      sandbox.stub(global.Services.prefs, "setCharPref").returns();
+      services.prefs.getCharPref.mockReturnValue("");
+      // The constructor already created one, so only count this call.
+      services.prefs.setCharPref.mockClear();
 
       const result = feed.getOrCreateImpressionId();
 
-      assert.equal(result, FAKE_UUID);
-      assert.calledOnce(global.Services.prefs.setCharPref);
+      expect(result).toBe(FAKE_UUID);
+      expect(globalThis.Services.prefs.setCharPref).toHaveBeenCalledTimes(1);
     });
     it("should use impression id if exists", async () => {
-      sandbox.stub(global.Services.prefs, "getCharPref").returns("from get");
+      services.prefs.getCharPref.mockReturnValue("from get");
+      // The constructor already read the pref, so only count this call.
+      services.prefs.getCharPref.mockClear();
 
       const result = feed.getOrCreateImpressionId();
 
-      assert.equal(result, "from get");
-      assert.calledOnce(global.Services.prefs.getCharPref);
+      expect(result).toBe("from get");
+      expect(globalThis.Services.prefs.getCharPref).toHaveBeenCalledTimes(1);
     });
   });
 
   describe("#parseGridPositions", () => {
     it("should return an equivalent array for an array of non negative integers", async () => {
-      assert.deepEqual(feed.parseGridPositions([0, 2, 3]), [0, 2, 3]);
+      expect(feed.parseGridPositions([0, 2, 3])).toEqual([0, 2, 3]);
     });
     it("should return undefined for an array containing negative integers", async () => {
-      assert.equal(feed.parseGridPositions([-2, 2, 3]), undefined);
+      expect(feed.parseGridPositions([-2, 2, 3])).toBe(undefined);
     });
     it("should return undefined for an undefined input", async () => {
-      assert.equal(feed.parseGridPositions(undefined), undefined);
+      expect(feed.parseGridPositions(undefined)).toBe(undefined);
     });
   });
 
@@ -400,13 +445,11 @@ describe("DiscoveryStreamFeed", () => {
 
       await feed.loadLayout(feed.store.dispatch);
 
-      assert.equal(
-        feed.store.getState().DiscoveryStream.spocs.spocs_endpoint,
+      expect(feed.store.getState().DiscoveryStream.spocs.spocs_endpoint).toBe(
         "https://spocs.getpocket.com/spocs"
       );
       const { layout } = feed.store.getState().DiscoveryStream;
-      assert.equal(
-        layout[0].components[2].properties.items,
+      expect(layout[0].components[2].properties.items).toBe(
         DEFAULT_COLUMN_COUNT
       );
     });
@@ -428,8 +471,7 @@ describe("DiscoveryStreamFeed", () => {
       await feed.loadLayout(feed.store.dispatch);
 
       const { layout } = feed.store.getState().DiscoveryStream;
-      assert.equal(
-        layout[0].components[2].properties.items,
+      expect(layout[0].components[2].properties.items).toBe(
         DEFAULT_COLUMN_COUNT
       );
     });
@@ -451,8 +493,7 @@ describe("DiscoveryStreamFeed", () => {
       await feed.loadLayout(feed.store.dispatch);
 
       const { layout } = feed.store.getState().DiscoveryStream;
-      assert.equal(
-        layout[0].components[2].properties.items,
+      expect(layout[0].components[2].properties.items).toBe(
         DEFAULT_ROW_COUNT * DEFAULT_COLUMN_COUNT
       );
     });
@@ -473,13 +514,11 @@ describe("DiscoveryStreamFeed", () => {
 
       await feed.loadLayout(feed.store.dispatch);
 
-      assert.equal(
-        feed.store.getState().DiscoveryStream.spocs.spocs_endpoint,
+      expect(feed.store.getState().DiscoveryStream.spocs.spocs_endpoint).toBe(
         "https://spocs.getpocket.com/spocs"
       );
       const { layout } = feed.store.getState().DiscoveryStream;
-      assert.equal(
-        layout[0].components[2].properties.items,
+      expect(layout[0].components[2].properties.items).toBe(
         DEFAULT_COLUMN_COUNT
       );
     });
@@ -501,12 +540,12 @@ describe("DiscoveryStreamFeed", () => {
 
       await feed.loadLayout(feed.store.dispatch);
 
-      assert.equal(
-        feed.store.getState().DiscoveryStream.spocs.spocs_endpoint,
+      expect(feed.store.getState().DiscoveryStream.spocs.spocs_endpoint).toBe(
         "https://spocs.getpocket.com/spocs2"
       );
     });
     it("should return enough stories to fill a four card layout", async () => {
+      expectConsoleError();
       feed.store = createStore(combineReducers(reducers), {
         Prefs: {
           values: {
@@ -518,12 +557,12 @@ describe("DiscoveryStreamFeed", () => {
       await feed.loadLayout(feed.store.dispatch);
 
       const { layout } = feed.store.getState().DiscoveryStream;
-      assert.equal(
-        layout[0].components[2].properties.items,
+      expect(layout[0].components[2].properties.items).toBe(
         DEFAULT_ROW_COUNT * DEFAULT_COLUMN_COUNT
       );
     });
     it("should create a layout with spoc and widget positions", async () => {
+      expectConsoleError();
       feed.store = createStore(combineReducers(reducers), {
         Prefs: {
           values: {
@@ -538,16 +577,17 @@ describe("DiscoveryStreamFeed", () => {
       await feed.loadLayout(feed.store.dispatch);
 
       const { layout } = feed.store.getState().DiscoveryStream;
-      assert.deepEqual(layout[0].components[2].spocs.positions, [
+      expect(layout[0].components[2].spocs.positions).toEqual([
         { index: 1 },
         { index: 2 },
       ]);
-      assert.deepEqual(layout[0].components[2].widgets.positions, [
+      expect(layout[0].components[2].widgets.positions).toEqual([
         { index: 3 },
         { index: 4 },
       ]);
     });
     it("should create a layout with spoc position data", async () => {
+      expectConsoleError();
       feed.store = createStore(combineReducers(reducers), {
         Prefs: {
           values: {
@@ -562,13 +602,11 @@ describe("DiscoveryStreamFeed", () => {
       await feed.loadLayout(feed.store.dispatch);
 
       const { layout } = feed.store.getState().DiscoveryStream;
-      assert.deepEqual(layout[0].components[2].placement.ad_types, [1230]);
-      assert.deepEqual(
-        layout[0].components[2].placement.zone_ids,
-        [4560, 7890]
-      );
+      expect(layout[0].components[2].placement.ad_types).toEqual([1230]);
+      expect(layout[0].components[2].placement.zone_ids).toEqual([4560, 7890]);
     });
     it("should create a layout with proper spoc url with a site id", async () => {
+      expectConsoleError();
       feed.store = createStore(combineReducers(reducers), {
         Prefs: {
           values: {
@@ -581,8 +619,7 @@ describe("DiscoveryStreamFeed", () => {
 
       await feed.loadLayout(feed.store.dispatch);
       const { spocs } = feed.store.getState().DiscoveryStream;
-      assert.deepEqual(
-        spocs.spocs_endpoint,
+      expect(spocs.spocs_endpoint).toEqual(
         "https://spocs.getpocket.com/spocs?site=1234"
       );
     });
@@ -590,7 +627,7 @@ describe("DiscoveryStreamFeed", () => {
 
   describe("#updatePlacements", () => {
     it("should dispatch DISCOVERY_STREAM_SPOCS_PLACEMENTS", () => {
-      sandbox.spy(feed.store, "dispatch");
+      jest.spyOn(feed.store, "dispatch");
       feed.store.getState = () => ({
         Prefs: {
           values: { showSponsored: true, "system.showSponsored": true },
@@ -606,19 +643,19 @@ describe("DiscoveryStreamFeed", () => {
 
       feed.updatePlacements(feed.store.dispatch, fakeLayout);
 
-      assert.calledOnce(feed.store.dispatch);
-      assert.calledWith(feed.store.dispatch, {
+      expect(feed.store.dispatch).toHaveBeenCalledTimes(1);
+      expect(feed.store.dispatch).toHaveBeenCalledWith({
         type: "DISCOVERY_STREAM_SPOCS_PLACEMENTS",
         data: { placements: [{ name: "first" }, { name: "second" }] },
         meta: { isStartup: false },
       });
     });
     it("should fire update placements from loadLayout", async () => {
-      sandbox.spy(feed, "updatePlacements");
+      jest.spyOn(feed, "updatePlacements");
 
       await feed.loadLayout(feed.store.dispatch);
 
-      assert.calledOnce(feed.updatePlacements);
+      expect(feed.updatePlacements).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -636,7 +673,7 @@ describe("DiscoveryStreamFeed", () => {
 
       feed.placementsForEach(item => items.push(item.name));
 
-      assert.deepEqual(items, ["first", "second"]);
+      expect(items).toEqual(["first", "second"]);
     });
   });
 
@@ -659,59 +696,61 @@ describe("DiscoveryStreamFeed", () => {
         },
       };
       fakeCache = {};
-      sandbox.stub(feed.store, "getState").returns(fakeDiscoveryStream);
-      sandbox.stub(feed.cache, "set").returns(Promise.resolve());
+      jest.spyOn(feed.store, "getState").mockReturnValue(fakeDiscoveryStream);
+      jest.spyOn(feed.cache, "set").mockReturnValue(Promise.resolve());
     });
 
     afterEach(() => {
-      sandbox.restore();
+      jest.restoreAllMocks();
     });
 
     it("should not dispatch updates when layout is not defined", async () => {
       fakeDiscoveryStream = {
         DiscoveryStream: {},
       };
-      feed.store.getState.returns(fakeDiscoveryStream);
-      sandbox.spy(feed.store, "dispatch");
+      feed.store.getState.mockReturnValue(fakeDiscoveryStream);
+      jest.spyOn(feed.store, "dispatch");
 
       await feed.loadComponentFeeds(feed.store.dispatch);
 
-      assert.notCalled(feed.store.dispatch);
+      expect(feed.store.dispatch).not.toHaveBeenCalled();
     });
 
     it("should populate feeds cache", async () => {
       fakeCache = {
         feeds: { "foo.com": { lastUpdated: Date.now(), data: "data" } },
       };
-      sandbox.stub(feed.cache, "get").returns(Promise.resolve(fakeCache));
+      jest.spyOn(feed.cache, "get").mockReturnValue(Promise.resolve(fakeCache));
 
       await feed.loadComponentFeeds(feed.store.dispatch);
 
-      assert.calledWith(feed.cache.set, "feeds", {
+      expect(feed.cache.set).toHaveBeenCalledWith("feeds", {
         "foo.com": { data: "data", lastUpdated: 0 },
       });
     });
 
     it("should send feed update events with new feed data", async () => {
-      sandbox.stub(feed.cache, "get").returns(Promise.resolve(fakeCache));
-      sandbox.spy(feed.store, "dispatch");
+      expectConsoleError();
+      jest.spyOn(feed.cache, "get").mockReturnValue(Promise.resolve(fakeCache));
+      jest.spyOn(feed.store, "dispatch");
 
       await feed.loadComponentFeeds(feed.store.dispatch);
 
-      assert.calledWith(feed.store.dispatch.firstCall, {
+      expect(feed.store.dispatch).toHaveBeenNthCalledWith(1, {
         type: at.DISCOVERY_STREAM_FEED_UPDATE,
         data: { feed: { data: { status: "failed" } }, url: "foo.com" },
         meta: { isStartup: false },
       });
-      assert.calledWith(feed.store.dispatch.secondCall, {
+      expect(feed.store.dispatch).toHaveBeenNthCalledWith(2, {
         type: at.DISCOVERY_STREAM_FEEDS_UPDATE,
         meta: { isStartup: false },
       });
     });
 
     it("should return number of promises equal to unique urls", async () => {
-      sandbox.stub(feed.cache, "get").returns(Promise.resolve(fakeCache));
-      sandbox.stub(global.Promise, "all").resolves();
+      expectConsoleError();
+      jest.spyOn(feed.cache, "get").mockReturnValue(Promise.resolve(fakeCache));
+      jest.spyOn(Promise, "all").mockResolvedValue();
       fakeDiscoveryStream = {
         DiscoveryStream: {
           layout: [
@@ -727,150 +766,122 @@ describe("DiscoveryStreamFeed", () => {
           ],
         },
       };
-      feed.store.getState.returns(fakeDiscoveryStream);
+      feed.store.getState.mockReturnValue(fakeDiscoveryStream);
 
       await feed.loadComponentFeeds(feed.store.dispatch);
 
-      assert.calledOnce(global.Promise.all);
-      const { args } = global.Promise.all.firstCall;
-      assert.equal(args[0].length, 3);
+      expect(Promise.all).toHaveBeenCalledTimes(1);
+      const [args] = Promise.all.mock.lastCall;
+      expect(args.length).toBe(3);
     });
   });
 
   describe("#getComponentFeed", () => {
     it("should fetch fresh feed data if cache is empty", async () => {
       const fakeCache = {};
-      sandbox.stub(feed.cache, "get").returns(Promise.resolve(fakeCache));
-      sandbox.stub(feed, "rotate").callsFake(val => val);
-      sandbox
-        .stub(feed, "scoreItemsInferred")
-        .callsFake(val => ({ data: val, filtered: [] }));
+      jest.spyOn(feed.cache, "get").mockReturnValue(Promise.resolve(fakeCache));
+      jest.spyOn(feed, "rotate").mockImplementation(val => val);
+      jest
+        .spyOn(feed, "scoreItemsInferred")
+        .mockImplementation(val => ({ data: val, filtered: [] }));
       stubOutFetchFromEndpointWithRealisticData();
 
       const feedResp = await feed.getComponentFeed("foo.com");
-      assert.equal(feedResp.data.recommendations.length, 2);
+      expect(feedResp.data.recommendations.length).toBe(2);
     });
     it("should fetch fresh feed data if cache is old", async () => {
       const fakeCache = { feeds: { "foo.com": { lastUpdated: Date.now() } } };
-      sandbox.stub(feed.cache, "get").returns(Promise.resolve(fakeCache));
+      jest.spyOn(feed.cache, "get").mockReturnValue(Promise.resolve(fakeCache));
       stubOutFetchFromEndpointWithRealisticData();
-      sandbox.stub(feed, "rotate").callsFake(val => val);
-      sandbox
-        .stub(feed, "scoreItemsInferred")
-        .callsFake(val => ({ data: val, filtered: [] }));
-      clock.tick(THIRTY_MINUTES + 1);
+      jest.spyOn(feed, "rotate").mockImplementation(val => val);
+      jest
+        .spyOn(feed, "scoreItemsInferred")
+        .mockImplementation(val => ({ data: val, filtered: [] }));
+      jest.advanceTimersByTime(THIRTY_MINUTES + 1);
 
       const feedResp = await feed.getComponentFeed("foo.com");
 
-      assert.equal(feedResp.data.recommendations.length, 2);
+      expect(feedResp.data.recommendations.length).toBe(2);
     });
     it("should return feed data from cache if it is fresh", async () => {
       const fakeCache = {
         feeds: { "foo.com": { lastUpdated: Date.now(), data: "data" } },
       };
-      sandbox.stub(feed.cache, "get").resolves(fakeCache);
-      sandbox.stub(feed, "fetchFromEndpoint").resolves("old data");
-      clock.tick(THIRTY_MINUTES - 1);
+      jest.spyOn(feed.cache, "get").mockResolvedValue(fakeCache);
+      jest.spyOn(feed, "fetchFromEndpoint").mockResolvedValue("old data");
+      jest.advanceTimersByTime(THIRTY_MINUTES - 1);
 
       const feedResp = await feed.getComponentFeed("foo.com");
 
-      assert.equal(feedResp.data, "data");
+      expect(feedResp.data).toBe("data");
     });
     it("should return null if no response was received", async () => {
-      sandbox.stub(feed, "fetchFromEndpoint").resolves(null);
+      expectConsoleError();
+      jest.spyOn(feed, "fetchFromEndpoint").mockResolvedValue(null);
 
       const feedResp = await feed.getComponentFeed("foo.com");
 
-      assert.deepEqual(feedResp, { data: { status: "failed" } });
+      expect(feedResp).toEqual({ data: { status: "failed" } });
     });
-    it("should record surfaceId in Glean when the private ping is enabled", async () => {
-      const surfaceIdStub = sandbox.stub(
-        global.Glean.newtabContent.surfaceId,
-        "set"
-      );
-      sandbox.stub(feed.cache, "get").resolves({});
-      sandbox.stub(feed, "rotate").callsFake(val => val);
-      sandbox
-        .stub(feed, "scoreItemsInferred")
-        .callsFake(val => ({ data: val, filtered: [] }));
+    function stubOutComponentFeedDeps() {
+      jest.spyOn(feed.cache, "get").mockResolvedValue({});
+      jest.spyOn(feed, "rotate").mockImplementation(val => val);
+      jest
+        .spyOn(feed, "scoreItemsInferred")
+        .mockImplementation(val => ({ data: val, filtered: [] }));
       stubOutFetchFromEndpointWithRealisticData();
+    }
+
+    function setPrefCalledFor(dispatchSpy, name) {
+      return dispatchSpy.mock.calls.some(
+        ([action]) =>
+          action?.type === at.SET_PREF && action?.data?.name === name
+      );
+    }
+
+    it("should record surfaceId in Glean when the private ping is enabled", async () => {
+      stubOutComponentFeedDeps();
       setPref("telemetry.privatePing.enabled", true);
 
       await feed.getComponentFeed("foo.com");
 
-      assert.calledWith(surfaceIdStub, "NEW_TAB_EN_US");
+      expect(surfaceIdSet).toHaveBeenCalledWith("NEW_TAB_EN_US");
     });
     it("should record surfaceId in Glean when the private ping is disabled", async () => {
-      const surfaceIdStub = sandbox.stub(
-        global.Glean.newtabContent.surfaceId,
-        "set"
-      );
-      sandbox.stub(feed.cache, "get").resolves({});
-      sandbox.stub(feed, "rotate").callsFake(val => val);
-      sandbox
-        .stub(feed, "scoreItemsInferred")
-        .callsFake(val => ({ data: val, filtered: [] }));
-      stubOutFetchFromEndpointWithRealisticData();
+      stubOutComponentFeedDeps();
       setPref("telemetry.privatePing.enabled", false);
 
       await feed.getComponentFeed("foo.com");
 
-      assert.calledWith(surfaceIdStub, "NEW_TAB_EN_US");
+      expect(surfaceIdSet).toHaveBeenCalledWith("NEW_TAB_EN_US");
     });
     it("should not update the surfaceId pref when the private ping is disabled", async () => {
-      sandbox.stub(global.Glean.newtabContent.surfaceId, "set");
-      sandbox.stub(feed.cache, "get").resolves({});
-      sandbox.stub(feed, "rotate").callsFake(val => val);
-      sandbox
-        .stub(feed, "scoreItemsInferred")
-        .callsFake(val => ({ data: val, filtered: [] }));
-      stubOutFetchFromEndpointWithRealisticData();
+      stubOutComponentFeedDeps();
       setPref("telemetry.privatePing.enabled", false);
-      const dispatchStub = sandbox.stub(feed.store, "dispatch");
+      const dispatchSpy = jest.spyOn(feed.store, "dispatch");
 
       await feed.getComponentFeed("foo.com");
 
-      assert.isFalse(
-        dispatchStub
-          .getCalls()
-          .some(
-            call =>
-              call.args[0]?.type === at.SET_PREF &&
-              call.args[0]?.data?.name === "telemetry.surfaceId"
-          )
-      );
+      expect(setPrefCalledFor(dispatchSpy, "telemetry.surfaceId")).toBe(false);
     });
     it("should update the surfaceId pref when the private ping is enabled", async () => {
-      sandbox.stub(global.Glean.newtabContent.surfaceId, "set");
-      sandbox.stub(feed.cache, "get").resolves({});
-      sandbox.stub(feed, "rotate").callsFake(val => val);
-      sandbox
-        .stub(feed, "scoreItemsInferred")
-        .callsFake(val => ({ data: val, filtered: [] }));
-      stubOutFetchFromEndpointWithRealisticData();
+      stubOutComponentFeedDeps();
       setPref("telemetry.privatePing.enabled", true);
-      const dispatchStub = sandbox.stub(feed.store, "dispatch");
+      const dispatchSpy = jest.spyOn(feed.store, "dispatch");
 
       await feed.getComponentFeed("foo.com");
 
-      assert.isTrue(
-        dispatchStub
-          .getCalls()
-          .some(
-            call =>
-              call.args[0]?.type === at.SET_PREF &&
-              call.args[0]?.data?.name === "telemetry.surfaceId"
-          )
-      );
+      expect(setPrefCalledFor(dispatchSpy, "telemetry.surfaceId")).toBe(true);
     });
   });
 
   describe("#loadSpocs", () => {
     beforeEach(() => {
-      sandbox.stub(feed, "getPlacements").returns([{ name: "spocs" }]);
+      jest.spyOn(feed, "getPlacements").mockReturnValue([{ name: "spocs" }]);
       Object.defineProperty(feed, "showSponsoredStories", { get: () => true });
     });
     it("should not fetch or update cache if no spocs endpoint is defined", async () => {
+      expectConsoleError();
       feed.store.dispatch(
         ac.BroadcastToContent({
           type: at.DISCOVERY_STREAM_SPOCS_ENDPOINT,
@@ -878,12 +889,12 @@ describe("DiscoveryStreamFeed", () => {
         })
       );
 
-      sandbox.spy(feed.cache, "set");
+      jest.spyOn(feed.cache, "set");
 
       await feed.loadSpocs(feed.store.dispatch);
 
-      assert.notCalled(global.fetch);
-      assert.calledWith(feed.cache.set, "spocs", {
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+      expect(feed.cache.set).toHaveBeenCalledWith("spocs", {
         lastUpdated: 0,
         spocs: {},
         spocsOnDemand: undefined,
@@ -891,20 +902,21 @@ describe("DiscoveryStreamFeed", () => {
       });
     });
     it("should fetch fresh spocs data if cache is empty", async () => {
-      sandbox.stub(feed.cache, "get").returns(Promise.resolve());
-      sandbox.stub(feed, "fetchFromEndpoint").resolves({ placement: "data" });
-      sandbox.stub(feed.cache, "set").returns(Promise.resolve());
+      jest.spyOn(feed.cache, "get").mockReturnValue(Promise.resolve());
+      jest
+        .spyOn(feed, "fetchFromEndpoint")
+        .mockResolvedValue({ placement: "data" });
+      jest.spyOn(feed.cache, "set").mockReturnValue(Promise.resolve());
 
       await feed.loadSpocs(feed.store.dispatch);
 
-      assert.calledWith(feed.cache.set, "spocs", {
+      expect(feed.cache.set).toHaveBeenCalledWith("spocs", {
         spocs: { placement: "data" },
         lastUpdated: 0,
         spocsOnDemand: undefined,
         spocsCacheUpdateTime: 30 * 60 * 1000,
       });
-      assert.equal(
-        feed.store.getState().DiscoveryStream.spocs.data.placement,
+      expect(feed.store.getState().DiscoveryStream.spocs.data.placement).toBe(
         "data"
       );
     });
@@ -914,15 +926,18 @@ describe("DiscoveryStreamFeed", () => {
         lastUpdated: Date.now(),
       };
       const cachedData = { spocs: cachedSpoc };
-      sandbox.stub(feed.cache, "get").returns(Promise.resolve(cachedData));
-      sandbox.stub(feed, "fetchFromEndpoint").resolves({ placement: "new" });
-      sandbox.stub(feed.cache, "set").returns(Promise.resolve());
-      clock.tick(THIRTY_MINUTES + 1);
+      jest
+        .spyOn(feed.cache, "get")
+        .mockReturnValue(Promise.resolve(cachedData));
+      jest
+        .spyOn(feed, "fetchFromEndpoint")
+        .mockResolvedValue({ placement: "new" });
+      jest.spyOn(feed.cache, "set").mockReturnValue(Promise.resolve());
+      jest.advanceTimersByTime(THIRTY_MINUTES + 1);
 
       await feed.loadSpocs(feed.store.dispatch);
 
-      assert.equal(
-        feed.store.getState().DiscoveryStream.spocs.data.placement,
+      expect(feed.store.getState().DiscoveryStream.spocs.data.placement).toBe(
         "new"
       );
     });
@@ -932,30 +947,33 @@ describe("DiscoveryStreamFeed", () => {
         lastUpdated: Date.now(),
       };
       const cachedData = { spocs: cachedSpoc };
-      sandbox.stub(feed.cache, "get").returns(Promise.resolve(cachedData));
-      sandbox.stub(feed, "fetchFromEndpoint").resolves({ placement: "new" });
-      sandbox.stub(feed.cache, "set").returns(Promise.resolve());
-      clock.tick(THIRTY_MINUTES - 1);
+      jest
+        .spyOn(feed.cache, "get")
+        .mockReturnValue(Promise.resolve(cachedData));
+      jest
+        .spyOn(feed, "fetchFromEndpoint")
+        .mockResolvedValue({ placement: "new" });
+      jest.spyOn(feed.cache, "set").mockReturnValue(Promise.resolve());
+      jest.advanceTimersByTime(THIRTY_MINUTES - 1);
 
       await feed.loadSpocs(feed.store.dispatch);
 
-      assert.equal(
-        feed.store.getState().DiscoveryStream.spocs.data.placement,
+      expect(feed.store.getState().DiscoveryStream.spocs.data.placement).toBe(
         "old"
       );
     });
     it("should properly transform spocs using placements", async () => {
-      sandbox.stub(feed.cache, "get").returns(Promise.resolve());
-      sandbox.stub(feed, "fetchFromEndpoint").resolves({
+      jest.spyOn(feed.cache, "get").mockReturnValue(Promise.resolve());
+      jest.spyOn(feed, "fetchFromEndpoint").mockResolvedValue({
         spocs: { items: [{ id: "data" }] },
       });
-      sandbox.stub(feed.cache, "set").returns(Promise.resolve());
+      jest.spyOn(feed.cache, "set").mockReturnValue(Promise.resolve());
       const loadTimestamp = 100;
-      clock.tick(loadTimestamp);
+      jest.advanceTimersByTime(loadTimestamp);
 
       await feed.loadSpocs(feed.store.dispatch);
 
-      assert.calledWith(feed.cache.set, "spocs", {
+      expect(feed.cache.set).toHaveBeenCalledWith("spocs", {
         spocs: {
           spocs: {
             context: "",
@@ -970,35 +988,33 @@ describe("DiscoveryStreamFeed", () => {
         spocsCacheUpdateTime: 30 * 60 * 1000,
       });
 
-      assert.deepEqual(
-        feed.store.getState().DiscoveryStream.spocs.data.spocs.items[0],
-        { id: "data", score: 1 }
-      );
+      expect(
+        feed.store.getState().DiscoveryStream.spocs.data.spocs.items[0]
+      ).toEqual({ id: "data", score: 1 });
     });
     it("should normalizeSpocsItems for older spoc data", async () => {
-      sandbox.stub(feed.cache, "get").returns(Promise.resolve());
-      sandbox
-        .stub(feed, "fetchFromEndpoint")
-        .resolves({ spocs: [{ id: "data" }] });
-      sandbox.stub(feed.cache, "set").returns(Promise.resolve());
+      jest.spyOn(feed.cache, "get").mockReturnValue(Promise.resolve());
+      jest
+        .spyOn(feed, "fetchFromEndpoint")
+        .mockResolvedValue({ spocs: [{ id: "data" }] });
+      jest.spyOn(feed.cache, "set").mockReturnValue(Promise.resolve());
 
       await feed.loadSpocs(feed.store.dispatch);
 
-      assert.deepEqual(
-        feed.store.getState().DiscoveryStream.spocs.data.spocs.items[0],
-        { id: "data", score: 1 }
-      );
+      expect(
+        feed.store.getState().DiscoveryStream.spocs.data.spocs.items[0]
+      ).toEqual({ id: "data", score: 1 });
     });
     it("should return expected data if normalizeSpocsItems returns no spoc data", async () => {
       // We don't need this for just this test, we are setting placements
       // manually.
-      feed.getPlacements.restore();
+      feed.getPlacements.mockRestore();
 
-      sandbox.stub(feed.cache, "get").returns(Promise.resolve());
-      sandbox
-        .stub(feed, "fetchFromEndpoint")
-        .resolves({ placement1: [{ id: "data" }], placement2: [] });
-      sandbox.stub(feed.cache, "set").returns(Promise.resolve());
+      jest.spyOn(feed.cache, "get").mockReturnValue(Promise.resolve());
+      jest
+        .spyOn(feed, "fetchFromEndpoint")
+        .mockResolvedValue({ placement1: [{ id: "data" }], placement2: [] });
+      jest.spyOn(feed.cache, "set").mockReturnValue(Promise.resolve());
 
       const fakeComponents = {
         components: [
@@ -1010,7 +1026,7 @@ describe("DiscoveryStreamFeed", () => {
 
       await feed.loadSpocs(feed.store.dispatch);
 
-      assert.deepEqual(feed.store.getState().DiscoveryStream.spocs.data, {
+      expect(feed.store.getState().DiscoveryStream.spocs.data).toEqual({
         placement1: {
           title: "",
           context: "",
@@ -1028,9 +1044,9 @@ describe("DiscoveryStreamFeed", () => {
     it("should use title and context on spoc data", async () => {
       // We don't need this for just this test, we are setting placements
       // manually.
-      feed.getPlacements.restore();
-      sandbox.stub(feed.cache, "get").returns(Promise.resolve());
-      sandbox.stub(feed, "fetchFromEndpoint").resolves({
+      feed.getPlacements.mockRestore();
+      jest.spyOn(feed.cache, "get").mockReturnValue(Promise.resolve());
+      jest.spyOn(feed, "fetchFromEndpoint").mockResolvedValue({
         placement1: {
           title: "title",
           context: "context",
@@ -1039,7 +1055,7 @@ describe("DiscoveryStreamFeed", () => {
           items: [{ id: "data" }],
         },
       });
-      sandbox.stub(feed.cache, "set").returns(Promise.resolve());
+      jest.spyOn(feed.cache, "set").mockReturnValue(Promise.resolve());
 
       const fakeComponents = {
         components: [{ placement: { name: "placement1" }, spocs: {} }],
@@ -1048,7 +1064,7 @@ describe("DiscoveryStreamFeed", () => {
 
       await feed.loadSpocs(feed.store.dispatch);
 
-      assert.deepEqual(feed.store.getState().DiscoveryStream.spocs.data, {
+      expect(feed.store.getState().DiscoveryStream.spocs.data).toEqual({
         placement1: {
           title: "title",
           context: "context",
@@ -1059,14 +1075,19 @@ describe("DiscoveryStreamFeed", () => {
       });
     });
     it("should fetch MARS pre flight info", async () => {
-      sandbox
-        .stub(feed, "fetchFromEndpoint")
-        .withArgs("unifiedAdEndpoint/v1/ads-preflight", { method: "GET" })
-        .resolves({
-          normalized_ua: "normalized_ua",
-          geoname_id: "geoname_id",
-          geo_location: "geo_location",
-        });
+      expectConsoleError();
+      jest
+        .spyOn(feed, "fetchFromEndpoint")
+        .mockImplementation((endpoint, options) =>
+          endpoint === "unifiedAdEndpoint/v1/ads-preflight" &&
+          options?.method === "GET"
+            ? Promise.resolve({
+                normalized_ua: "normalized_ua",
+                geoname_id: "geoname_id",
+                geo_location: "geo_location",
+              })
+            : undefined
+        );
 
       feed.store = createStore(combineReducers(reducers), {
         Prefs: {
@@ -1083,27 +1104,22 @@ describe("DiscoveryStreamFeed", () => {
 
       await feed.loadSpocs(feed.store.dispatch);
 
-      assert.equal(
-        feed.fetchFromEndpoint.firstCall.args[0],
+      expect(feed.fetchFromEndpoint.mock.calls[0][0]).toBe(
         "unifiedAdEndpoint/v1/ads-preflight"
       );
-      assert.equal(feed.fetchFromEndpoint.firstCall.args[1].method, "GET");
-      assert.equal(
-        feed.fetchFromEndpoint.secondCall.args[0],
+      expect(feed.fetchFromEndpoint.mock.calls[0][1].method).toBe("GET");
+      expect(feed.fetchFromEndpoint.mock.calls[1][0]).toBe(
         "unifiedAdEndpoint/v1/ads"
       );
-      assert.equal(
-        feed.fetchFromEndpoint.secondCall.args[1].headers.get("X-User-Agent"),
-        "normalized_ua"
-      );
-      assert.equal(
-        feed.fetchFromEndpoint.secondCall.args[1].headers.get("X-Geoname-ID"),
-        "geoname_id"
-      );
-      assert.equal(
-        feed.fetchFromEndpoint.secondCall.args[1].headers.get("X-Geo-Location"),
-        "geo_location"
-      );
+      expect(
+        feed.fetchFromEndpoint.mock.calls[1][1].headers.get("X-User-Agent")
+      ).toBe("normalized_ua");
+      expect(
+        feed.fetchFromEndpoint.mock.calls[1][1].headers.get("X-Geoname-ID")
+      ).toBe("geoname_id");
+      expect(
+        feed.fetchFromEndpoint.mock.calls[1][1].headers.get("X-Geo-Location")
+      ).toBe("geo_location");
     });
     it("should fetch ads with empty flags if adsBackend flags are empty", async () => {
       feed.store = createStore(combineReducers(reducers), {
@@ -1119,7 +1135,7 @@ describe("DiscoveryStreamFeed", () => {
         },
       });
 
-      sandbox.stub(feed, "fetchFromEndpoint").resolves({
+      jest.spyOn(feed, "fetchFromEndpoint").mockResolvedValue({
         newtab_stories_1: [
           {
             format: "spoc",
@@ -1130,12 +1146,10 @@ describe("DiscoveryStreamFeed", () => {
 
       await feed.loadSpocs(feed.store.dispatch);
 
-      assert.equal(
-        feed.fetchFromEndpoint.secondCall.args[0],
+      expect(feed.fetchFromEndpoint.mock.calls[1][0]).toBe(
         "unifiedAdEndpoint/v1/ads"
       );
-      assert.equal(
-        feed.fetchFromEndpoint.secondCall.args[1].body,
+      expect(feed.fetchFromEndpoint.mock.calls[1][1].body).toBe(
         JSON.stringify({
           context_id: "ContextId",
           flags: {},
@@ -1167,7 +1181,7 @@ describe("DiscoveryStreamFeed", () => {
         },
       });
 
-      sandbox.stub(feed, "fetchFromEndpoint").resolves({
+      jest.spyOn(feed, "fetchFromEndpoint").mockResolvedValue({
         newtab_stories_1: [
           {
             format: "spoc",
@@ -1178,12 +1192,10 @@ describe("DiscoveryStreamFeed", () => {
 
       await feed.loadSpocs(feed.store.dispatch);
 
-      assert.equal(
-        feed.fetchFromEndpoint.secondCall.args[0],
+      expect(feed.fetchFromEndpoint.mock.calls[1][0]).toBe(
         "unifiedAdEndpoint/v1/ads"
       );
-      assert.equal(
-        feed.fetchFromEndpoint.secondCall.args[1].body,
+      expect(feed.fetchFromEndpoint.mock.calls[1][1].body).toBe(
         JSON.stringify({
           context_id: "ContextId",
           flags: {
@@ -1201,8 +1213,9 @@ describe("DiscoveryStreamFeed", () => {
       );
     });
     it("should use adsClient when enabled", async () => {
-      sandbox.stub(feed.cache, "get").returns(Promise.resolve());
-      sandbox.stub(feed.cache, "set").returns(Promise.resolve());
+      expectConsoleError();
+      jest.spyOn(feed.cache, "get").mockReturnValue(Promise.resolve());
+      jest.spyOn(feed.cache, "set").mockReturnValue(Promise.resolve());
 
       feed.store = createStore(combineReducers(reducers), {
         Prefs: {
@@ -1216,7 +1229,7 @@ describe("DiscoveryStreamFeed", () => {
       });
 
       const ADS_CLIENT = {
-        requestSpocAds: sinon.fake.resolves(
+        requestSpocAds: jest.fn().mockResolvedValue(
           new Map([
             [
               "newtab_stories_1",
@@ -1254,37 +1267,38 @@ describe("DiscoveryStreamFeed", () => {
       };
 
       const AdsClient = {
-        isEnabled: sinon.fake.returns(true),
-        getClient: sinon.fake.returns(ADS_CLIENT),
-        requestOptions: sinon.fake.returns(REQUEST_OPTIONS),
+        isEnabled: jest.fn().mockReturnValue(true),
+        getClient: jest.fn().mockReturnValue(ADS_CLIENT),
+        requestOptions: jest.fn().mockReturnValue(REQUEST_OPTIONS),
       };
 
-      globals.set({ AdsClient });
+      globalThis.AdsClient = AdsClient;
 
       await feed.onAction({
         type: at.INIT,
       });
-      assert.calledOnce(AdsClient.isEnabled);
-      assert.calledOnce(AdsClient.getClient);
+      expect(AdsClient.isEnabled).toHaveBeenCalledTimes(1);
+      expect(AdsClient.getClient).toHaveBeenCalledTimes(1);
 
       await feed.loadSpocs(feed.store.dispatch);
 
       // The flags in adsBackendConfig only reach MARS if the prefs are passed.
-      assert.calledWith(
-        AdsClient.requestOptions,
+      expect(AdsClient.requestOptions).toHaveBeenCalledWith(
         feed.store.getState().Prefs.values
       );
-      assert.calledOnceWithMatch(
-        ADS_CLIENT.requestSpocAds,
-        [sinon.match.any],
+      expect(ADS_CLIENT.requestSpocAds).toHaveBeenCalledTimes(1);
+      expect(ADS_CLIENT.requestSpocAds).toHaveBeenCalledWith(
+        [expect.anything()],
         REQUEST_OPTIONS
       );
     });
+
     it("should not read the spocs cache when adsClient is set", async () => {
-      sandbox.stub(feed.cache, "get").resolves({
+      expectConsoleError();
+      jest.spyOn(feed.cache, "get").mockResolvedValue({
         spocs: { lastUpdated: Date.now(), spocs: {} },
       });
-      sandbox.stub(feed.cache, "set").resolves();
+      jest.spyOn(feed.cache, "set").mockResolvedValue();
 
       feed.store = createStore(combineReducers(reducers), {
         Prefs: {
@@ -1298,50 +1312,53 @@ describe("DiscoveryStreamFeed", () => {
       });
 
       const ADS_CLIENT = {
-        requestSpocAds: sinon.fake.resolves(
-          new Map([["newtab_stories_1", [{ blockKey: "b1" }]]])
-        ),
+        requestSpocAds: jest
+          .fn()
+          .mockResolvedValue(
+            new Map([["newtab_stories_1", [{ blockKey: "b1" }]]])
+          ),
       };
-      globals.set({
-        AdsClient: {
-          isEnabled: sinon.fake.returns(true),
-          getClient: sinon.fake.returns(ADS_CLIENT),
-          requestOptions: sinon.fake.returns({}),
-        },
-      });
+      globalThis.AdsClient = {
+        isEnabled: jest.fn().mockReturnValue(true),
+        getClient: jest.fn().mockReturnValue(ADS_CLIENT),
+        requestOptions: jest.fn().mockReturnValue({}),
+      };
 
       await feed.onAction({ type: at.INIT });
 
-      feed.cache.get.resetHistory();
+      feed.cache.get.mockClear();
       await feed.loadSpocs(feed.store.dispatch);
 
       // A later, unrelated read happens while processing the results, so it is
       // the ordering that shows the guarded read was skipped.
-      assert.callOrder(ADS_CLIENT.requestSpocAds, feed.cache.get);
-      assert.calledOnce(ADS_CLIENT.requestSpocAds);
-      assert.neverCalledWith(feed.cache.set, "spocs", sinon.match.any);
+      expect(ADS_CLIENT.requestSpocAds).toHaveBeenCalledTimes(1);
+      expect(
+        ADS_CLIENT.requestSpocAds.mock.invocationCallOrder[0]
+      ).toBeLessThan(feed.cache.get.mock.invocationCallOrder[0]);
+      expect(
+        feed.cache.set.mock.calls.some(([key]) => key === "spocs")
+      ).toBe(false);
 
       // The same entry does suppress the fetch on the direct MARS path, which
       // is what made it suppress the ads-client one too.
       feed.adsClient = null;
-      sandbox.stub(feed, "fetchFromEndpoint").resolves({});
+      jest.spyOn(feed, "fetchFromEndpoint").mockResolvedValue({});
       await feed.loadSpocs(feed.store.dispatch);
 
-      assert.notCalled(feed.fetchFromEndpoint);
+      expect(feed.fetchFromEndpoint).not.toHaveBeenCalled();
     });
+
     it("should seed placements the ads client omitted with empty arrays", async () => {
       feed.adsClient = {
-        requestSpocAds: sinon.fake.resolves(
-          new Map([["newtab_stories_1", []]])
-        ),
+        requestSpocAds: jest
+          .fn()
+          .mockResolvedValue(new Map([["newtab_stories_1", []]])),
       };
-      globals.set({
-        AdsClient: {
-          isEnabled: sinon.fake.returns(true),
-          getClient: sinon.fake.returns(feed.adsClient),
-          requestOptions: sinon.fake.returns({}),
-        },
-      });
+      globalThis.AdsClient = {
+        isEnabled: jest.fn().mockReturnValue(true),
+        getClient: jest.fn().mockReturnValue(feed.adsClient),
+        requestOptions: jest.fn().mockReturnValue({}),
+      };
 
       const result = await feed._fetchSpocsWithAdsClient([
         { placement: "newtab_stories_1", count: 1 },
@@ -1350,8 +1367,8 @@ describe("DiscoveryStreamFeed", () => {
 
       // loadSpocs concats by placement, so a missing key folds an undefined
       // into the spocs list.
-      assert.deepEqual(result.newtab_stories_1, []);
-      assert.deepEqual(result.newtab_stories_2, []);
+      expect(result.newtab_stories_1).toEqual([]);
+      expect(result.newtab_stories_2).toEqual([]);
     });
   });
 
@@ -1365,14 +1382,14 @@ describe("DiscoveryStreamFeed", () => {
         items: [{ id: "id" }],
       };
       const result = feed.normalizeSpocsItems(spocs);
-      assert.deepEqual(result, spocs);
+      expect(result).toEqual(spocs);
     });
     it("should return normalized data if new data passed in without title or context", async () => {
       const spocs = {
         items: [{ id: "id" }],
       };
       const result = feed.normalizeSpocsItems(spocs);
-      assert.deepEqual(result, {
+      expect(result).toEqual({
         title: "",
         context: "",
         sponsor: "",
@@ -1383,7 +1400,7 @@ describe("DiscoveryStreamFeed", () => {
     it("should return normalized data if old data passed in", async () => {
       const spocs = [{ id: "id" }];
       const result = feed.normalizeSpocsItems(spocs);
-      assert.deepEqual(result, {
+      expect(result).toEqual({
         title: "",
         context: "",
         sponsor: "",
@@ -1401,7 +1418,7 @@ describe("DiscoveryStreamFeed", () => {
         },
       });
 
-      assert.isFalse(feed.showSponsoredStories);
+      expect(feed.showSponsoredStories).toBe(false);
     });
     it("should return false from showSponsoredStories if DiscoveryStream pref system.showSponsored is false", async () => {
       feed.store.getState = () => ({
@@ -1410,7 +1427,7 @@ describe("DiscoveryStreamFeed", () => {
         },
       });
 
-      assert.isFalse(feed.showSponsoredStories);
+      expect(feed.showSponsoredStories).toBe(false);
     });
     it("should return true from showSponsoredStories if both prefs are true", async () => {
       feed.store.getState = () => ({
@@ -1419,7 +1436,7 @@ describe("DiscoveryStreamFeed", () => {
         },
       });
 
-      assert.isTrue(feed.showSponsoredStories);
+      expect(feed.showSponsoredStories).toBe(true);
     });
   });
 
@@ -1433,7 +1450,7 @@ describe("DiscoveryStreamFeed", () => {
           },
         },
       });
-      assert.isFalse(feed.showStories);
+      expect(feed.showStories).toBe(false);
     });
     it("should return false from showStories if system pref is false", async () => {
       feed.store.getState = () => ({
@@ -1444,7 +1461,7 @@ describe("DiscoveryStreamFeed", () => {
           },
         },
       });
-      assert.isFalse(feed.showStories);
+      expect(feed.showStories).toBe(false);
     });
     it("should return true from showStories if both prefs are true", async () => {
       feed.store.getState = () => ({
@@ -1455,7 +1472,7 @@ describe("DiscoveryStreamFeed", () => {
           },
         },
       });
-      assert.isTrue(feed.showStories);
+      expect(feed.showStories).toBe(true);
     });
   });
 
@@ -1482,50 +1499,48 @@ describe("DiscoveryStreamFeed", () => {
       feed.store.getState = () => defaultState;
     });
     it("should not fail with no endpoint", async () => {
-      sandbox.stub(feed.store, "getState").returns({
+      jest.spyOn(feed.store, "getState").mockReturnValue({
         Prefs: {
           values: { PREF_SPOCS_CLEAR_ENDPOINT: null },
         },
       });
-      sandbox.stub(feed, "fetchFromEndpoint").resolves(null);
+      jest.spyOn(feed, "fetchFromEndpoint").mockResolvedValue(null);
 
       await feed.clearSpocs();
 
-      assert.notCalled(feed.fetchFromEndpoint);
+      expect(feed.fetchFromEndpoint).not.toHaveBeenCalled();
     });
     it("should call DELETE with endpoint", async () => {
-      sandbox.stub(feed.store, "getState").returns({
+      jest.spyOn(feed.store, "getState").mockReturnValue({
         Prefs: {
           values: {
             "discoverystream.endpointSpocsClear": "https://spocs/user",
           },
         },
       });
-      sandbox.stub(feed, "fetchFromEndpoint").resolves(null);
+      jest.spyOn(feed, "fetchFromEndpoint").mockResolvedValue(null);
       feed._impressionId = "1234";
 
       await feed.clearSpocs();
 
-      assert.equal(
-        feed.fetchFromEndpoint.firstCall.args[0],
+      expect(feed.fetchFromEndpoint.mock.calls[0][0]).toBe(
         "https://spocs/user"
       );
-      assert.equal(feed.fetchFromEndpoint.firstCall.args[1].method, "DELETE");
-      assert.equal(
-        feed.fetchFromEndpoint.firstCall.args[1].body,
+      expect(feed.fetchFromEndpoint.mock.calls[0][1].method).toBe("DELETE");
+      expect(feed.fetchFromEndpoint.mock.calls[0][1].body).toBe(
         '{"pocket_id":"1234"}'
       );
     });
     it("should properly call clearSpocs when sponsored content is changed", async () => {
-      sandbox.stub(feed, "clearSpocs").returns(Promise.resolve());
-      sandbox.stub(feed, "loadSpocs").returns();
+      jest.spyOn(feed, "clearSpocs").mockReturnValue(Promise.resolve());
+      jest.spyOn(feed, "loadSpocs").mockImplementation(() => {});
 
       await feed.onAction({
         type: at.PREF_CHANGED,
         data: { name: "showSponsored" },
       });
 
-      assert.notCalled(feed.clearSpocs);
+      expect(feed.clearSpocs).not.toHaveBeenCalled();
 
       Prefs.values.showSponsored = false;
 
@@ -1534,10 +1549,10 @@ describe("DiscoveryStreamFeed", () => {
         data: { name: "showSponsored" },
       });
 
-      assert.calledOnce(feed.clearSpocs);
+      expect(feed.clearSpocs).toHaveBeenCalledTimes(1);
     });
     it("should call clearSpocs when top stories are turned off", async () => {
-      sandbox.stub(feed, "clearSpocs").returns(Promise.resolve());
+      jest.spyOn(feed, "clearSpocs").mockReturnValue(Promise.resolve());
       Prefs.values["feeds.section.topstories"] = false;
 
       await feed.onAction({
@@ -1545,7 +1560,7 @@ describe("DiscoveryStreamFeed", () => {
         data: { name: "feeds.section.topstories" },
       });
 
-      assert.calledOnce(feed.clearSpocs);
+      expect(feed.clearSpocs).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -1574,46 +1589,46 @@ describe("DiscoveryStreamFeed", () => {
       const cache = {
         recsImpressions: fakeImpressions,
       };
-      sandbox.stub(feed.cache, "get").returns(Promise.resolve());
-      feed.cache.get.resolves(cache);
+      jest.spyOn(feed.cache, "get").mockReturnValue(Promise.resolve());
+      feed.cache.get.mockResolvedValue(cache);
 
       const result = await feed.rotate(feedResponse.recommendations);
 
-      assert.equal(result[3].id, "first");
+      expect(result[3].id).toBe("first");
     });
   });
 
   describe("#reset", () => {
     it("should fire all reset based functions", async () => {
-      sandbox.stub(global.Services.obs, "removeObserver").returns();
+      jest
+        .spyOn(globalThis.Services.obs, "removeObserver")
+        .mockImplementation(() => {});
 
-      sandbox.stub(feed, "resetDataPrefs").returns();
-      sandbox.stub(feed, "resetCache").returns(Promise.resolve());
-      sandbox.stub(feed, "resetState").returns();
+      jest.spyOn(feed, "resetDataPrefs").mockImplementation(() => {});
+      jest.spyOn(feed, "resetCache").mockReturnValue(Promise.resolve());
+      jest.spyOn(feed, "resetState").mockImplementation(() => {});
 
       feed.loaded = true;
 
       await feed.reset();
 
-      assert.calledOnce(feed.resetDataPrefs);
-      assert.calledOnce(feed.resetCache);
-      assert.calledOnce(feed.resetState);
+      expect(feed.resetDataPrefs).toHaveBeenCalledTimes(1);
+      expect(feed.resetCache).toHaveBeenCalledTimes(1);
+      expect(feed.resetState).toHaveBeenCalledTimes(1);
     });
   });
 
   describe("#resetCache", () => {
     it("should set .feeds and .spocs and to {}", async () => {
-      sandbox.stub(feed.cache, "set").returns(Promise.resolve());
+      jest.spyOn(feed.cache, "set").mockReturnValue(Promise.resolve());
 
       await feed.resetCache();
 
-      assert.callCount(feed.cache.set, 3);
-      const firstCall = feed.cache.set.getCall(0);
-      const secondCall = feed.cache.set.getCall(1);
-      const thirdCall = feed.cache.set.getCall(2);
-      assert.deepEqual(firstCall.args, ["feeds", {}]);
-      assert.deepEqual(secondCall.args, ["spocs", {}]);
-      assert.deepEqual(thirdCall.args, ["recsImpressions", {}]);
+      expect(feed.cache.set).toHaveBeenCalledTimes(3);
+      const [firstCall, secondCall, thirdCall] = feed.cache.set.mock.calls;
+      expect(firstCall).toEqual(["feeds", {}]);
+      expect(secondCall).toEqual(["spocs", {}]);
+      expect(thirdCall).toEqual(["recsImpressions", {}]);
     });
   });
 
@@ -1621,31 +1636,31 @@ describe("DiscoveryStreamFeed", () => {
     it("should return initial data from filterBlocked if spocs are empty", async () => {
       const { data: result } = await feed.filterBlocked([]);
 
-      assert.equal(result.length, 0);
+      expect(result.length).toBe(0);
     });
     it("should return initial data if links are not blocked", async () => {
       const { data: result } = await feed.filterBlocked([
         { url: "https://foo.com" },
         { url: "test.com" },
       ]);
-      assert.equal(result.length, 2);
+      expect(result.length).toBe(2);
     });
     it("should return filtered data if links are blocked", async () => {
       const fakeBlocks = {
         flight_id_3: 1,
       };
-      sandbox.stub(feed, "readDataPref").returns(fakeBlocks);
-      sandbox
-        .stub(fakeNewTabUtils.blockedLinks, "isBlocked")
-        .callsFake(({ url }) => url === "https://blocked_url.com");
+      jest.spyOn(feed, "readDataPref").mockReturnValue(fakeBlocks);
+      jest
+        .spyOn(fakeNewTabUtils.blockedLinks, "isBlocked")
+        .mockImplementation(({ url }) => url === "https://blocked_url.com");
       const cache = {
         recsBlocks: {
           id_4: 1,
         },
       };
-      sandbox.stub(feed.cache, "get").returns(Promise.resolve());
-      sandbox.stub(feed.cache, "set");
-      feed.cache.get.resolves(cache);
+      jest.spyOn(feed.cache, "get").mockReturnValue(Promise.resolve());
+      jest.spyOn(feed.cache, "set").mockImplementation(() => {});
+      feed.cache.get.mockResolvedValue(cache);
       const { data: result } = await feed.filterBlocked([
         {
           url: "https://not_blocked.com",
@@ -1664,8 +1679,8 @@ describe("DiscoveryStreamFeed", () => {
         },
         { url: "https://blocked_id.com", flight_id: "flight_id_4", id: "id_4" },
       ]);
-      assert.equal(result.length, 1);
-      assert.equal(result[0].url, "https://not_blocked.com");
+      expect(result.length).toBe(1);
+      expect(result[0].url).toBe("https://not_blocked.com");
     });
     it("filterRecommendations based on blockedlist by passing feed data", () => {
       fakeNewTabUtils.blockedLinks.links = [{ url: "https://foo.com" }];
@@ -1679,11 +1694,10 @@ describe("DiscoveryStreamFeed", () => {
         },
       });
 
-      assert.equal(result.lastUpdated, 4);
-      assert.lengthOf(result.data.recommendations, 1);
-      assert.equal(result.data.recommendations[0].url, "test.com");
-      assert.notInclude(
-        result.data.recommendations,
+      expect(result.lastUpdated).toBe(4);
+      expect(result.data.recommendations).toHaveLength(1);
+      expect(result.data.recommendations[0].url).toBe("test.com");
+      expect(result.data.recommendations).not.toContain(
         fakeNewTabUtils.blockedLinks.links[0]
       );
     });
@@ -1718,19 +1732,19 @@ describe("DiscoveryStreamFeed", () => {
       const fakeImpressions = {
         seen: [Date.now() - 1],
       };
-      sandbox.stub(feed, "readDataPref").returns(fakeImpressions);
+      jest.spyOn(feed, "readDataPref").mockReturnValue(fakeImpressions);
 
       const { data: result, filtered } = feed.frequencyCapSpocs(fakeSpocs);
 
-      assert.equal(result.length, 1);
-      assert.equal(result[0].flight_id, "not-seen");
-      assert.deepEqual(filtered, [fakeSpocs[0]]);
+      expect(result.length).toBe(1);
+      expect(result[0].flight_id).toBe("not-seen");
+      expect(filtered).toEqual([fakeSpocs[0]]);
     });
     it("should return simple structure and do nothing with no spocs", () => {
       const { data: result, filtered } = feed.frequencyCapSpocs([]);
 
-      assert.equal(result.length, 0);
-      assert.equal(filtered.length, 0);
+      expect(result.length).toBe(0);
+      expect(filtered.length).toBe(0);
     });
   });
 
@@ -1751,7 +1765,7 @@ describe("DiscoveryStreamFeed", () => {
       ];
       const { data: result } = feed.migrateFlightId(fakeSpocs);
 
-      assert.deepEqual(result[0], {
+      expect(result[0]).toEqual({
         id: 1,
         flight_id: "campaign",
         campaign_id: "campaign",
@@ -1772,12 +1786,12 @@ describe("DiscoveryStreamFeed", () => {
       const fakeSpocs = [{ id: 1 }];
       const { data: result } = feed.migrateFlightId(fakeSpocs);
 
-      assert.deepEqual(result[0], { id: 1 });
+      expect(result[0]).toEqual({ id: 1 });
     });
     it("should return simple structure and do nothing with no spocs", () => {
       const { data: result } = feed.migrateFlightId([]);
 
-      assert.equal(result.length, 0);
+      expect(result.length).toBe(0);
     });
   });
 
@@ -1799,7 +1813,7 @@ describe("DiscoveryStreamFeed", () => {
 
       const result = feed.isBelowFrequencyCap(fakeImpressions, fakeSpoc);
 
-      assert.isTrue(result);
+      expect(result).toBe(true);
     });
     it("should return true if there are no flight caps", () => {
       const fakeImpressions = {
@@ -1814,7 +1828,7 @@ describe("DiscoveryStreamFeed", () => {
 
       const result = feed.isBelowFrequencyCap(fakeImpressions, fakeSpoc);
 
-      assert.isTrue(result);
+      expect(result).toBe(true);
     });
 
     it("should return false if lifetime cap is hit", () => {
@@ -1834,7 +1848,7 @@ describe("DiscoveryStreamFeed", () => {
 
       const result = feed.isBelowFrequencyCap(fakeImpressions, fakeSpoc);
 
-      assert.isFalse(result);
+      expect(result).toBe(false);
     });
 
     it("should return false if time based cap is hit", () => {
@@ -1854,24 +1868,23 @@ describe("DiscoveryStreamFeed", () => {
 
       const result = feed.isBelowFrequencyCap(fakeImpressions, fakeSpoc);
 
-      assert.isFalse(result);
+      expect(result).toBe(false);
     });
   });
 
   describe("#retryFeed", () => {
     it("should retry a feed fetch", async () => {
-      sandbox.stub(feed, "getComponentFeed").returns(Promise.resolve({}));
-      sandbox.spy(feed.store, "dispatch");
+      jest.spyOn(feed, "getComponentFeed").mockReturnValue(Promise.resolve({}));
+      jest.spyOn(feed.store, "dispatch");
 
       await feed.retryFeed({ url: "https://feed.com" });
 
-      assert.calledOnce(feed.getComponentFeed);
-      assert.calledOnce(feed.store.dispatch);
-      assert.equal(
-        feed.store.dispatch.firstCall.args[0].type,
+      expect(feed.getComponentFeed).toHaveBeenCalledTimes(1);
+      expect(feed.store.dispatch).toHaveBeenCalledTimes(1);
+      expect(feed.store.dispatch.mock.calls[0][0].type).toBe(
         "DISCOVERY_STREAM_FEED_UPDATE"
       );
-      assert.deepEqual(feed.store.dispatch.firstCall.args[0].data, {
+      expect(feed.store.dispatch.mock.calls[0][0].data).toEqual({
         feed: {},
         url: "https://feed.com",
       });
@@ -1880,29 +1893,35 @@ describe("DiscoveryStreamFeed", () => {
 
   describe("#recordFlightImpression", () => {
     it("should return false if time based cap is hit", () => {
-      sandbox.stub(feed, "readDataPref").returns({});
-      sandbox.stub(feed, "writeDataPref").returns();
+      jest.spyOn(feed, "readDataPref").mockReturnValue({});
+      jest.spyOn(feed, "writeDataPref").mockImplementation(() => {});
 
       feed.recordFlightImpression("seen");
 
-      assert.calledWith(feed.writeDataPref, SPOC_IMPRESSION_TRACKING_PREF, {
-        seen: [0],
-      });
+      expect(feed.writeDataPref).toHaveBeenCalledWith(
+        SPOC_IMPRESSION_TRACKING_PREF,
+        {
+          seen: [0],
+        }
+      );
     });
   });
 
   describe("#recordBlockFlightId", () => {
     it("should call writeDataPref with new flight id added", () => {
-      sandbox.stub(feed, "readDataPref").returns({ 1234: 1 });
-      sandbox.stub(feed, "writeDataPref").returns();
+      jest.spyOn(feed, "readDataPref").mockReturnValue({ 1234: 1 });
+      jest.spyOn(feed, "writeDataPref").mockImplementation(() => {});
 
       feed.recordBlockFlightId("5678");
 
-      assert.calledOnce(feed.readDataPref);
-      assert.calledWith(feed.writeDataPref, "discoverystream.flight.blocks", {
-        1234: 1,
-        5678: 1,
-      });
+      expect(feed.readDataPref).toHaveBeenCalledTimes(1);
+      expect(feed.writeDataPref).toHaveBeenCalledWith(
+        "discoverystream.flight.blocks",
+        {
+          1234: 1,
+          5678: 1,
+        }
+      );
     });
   });
 
@@ -1938,15 +1957,18 @@ describe("DiscoveryStreamFeed", () => {
         "flight-2": [Date.now() - 1],
         "flight-3": [Date.now() - 1],
       };
-      sandbox.stub(feed, "getPlacements").returns([{ name: "spocs" }]);
-      sandbox.stub(feed, "readDataPref").returns(fakeImpressions);
-      sandbox.stub(feed, "writeDataPref").returns();
+      jest.spyOn(feed, "getPlacements").mockReturnValue([{ name: "spocs" }]);
+      jest.spyOn(feed, "readDataPref").mockReturnValue(fakeImpressions);
+      jest.spyOn(feed, "writeDataPref").mockImplementation(() => {});
 
       feed.cleanUpFlightImpressionPref(fakeSpocs);
 
-      assert.calledWith(feed.writeDataPref, SPOC_IMPRESSION_TRACKING_PREF, {
-        "flight-2": [-1],
-      });
+      expect(feed.writeDataPref).toHaveBeenCalledWith(
+        SPOC_IMPRESSION_TRACKING_PREF,
+        {
+          "flight-2": [-1],
+        }
+      );
     });
   });
 
@@ -1955,13 +1977,13 @@ describe("DiscoveryStreamFeed", () => {
       const cache = {
         recsImpressions: {},
       };
-      sandbox.stub(feed.cache, "get").returns(Promise.resolve());
-      sandbox.stub(feed.cache, "set");
-      feed.cache.get.resolves(cache);
+      jest.spyOn(feed.cache, "get").mockReturnValue(Promise.resolve());
+      jest.spyOn(feed.cache, "set").mockImplementation(() => {});
+      feed.cache.get.mockResolvedValue(cache);
 
       await feed.recordTopRecImpression("rec");
 
-      assert.calledWith(feed.cache.set, "recsImpressions", {
+      expect(feed.cache.set).toHaveBeenCalledWith("recsImpressions", {
         rec: 0,
       });
     });
@@ -1969,13 +1991,13 @@ describe("DiscoveryStreamFeed", () => {
       const cache = {
         recsImpressions: { rec: 4 },
       };
-      sandbox.stub(feed.cache, "get").returns(Promise.resolve());
-      sandbox.stub(feed.cache, "set");
-      feed.cache.get.resolves(cache);
+      jest.spyOn(feed.cache, "get").mockReturnValue(Promise.resolve());
+      jest.spyOn(feed.cache, "set").mockImplementation(() => {});
+      feed.cache.get.mockResolvedValue(cache);
 
       await feed.recordTopRecImpression("rec");
 
-      assert.notCalled(feed.cache.set);
+      expect(feed.cache.set).not.toHaveBeenCalled();
     });
   });
 
@@ -1990,13 +2012,13 @@ describe("DiscoveryStreamFeed", () => {
       const cache = {
         recsImpressions: fakeImpressions,
       };
-      sandbox.stub(feed.cache, "get").returns(Promise.resolve());
-      sandbox.stub(feed.cache, "set");
-      feed.cache.get.resolves(cache);
+      jest.spyOn(feed.cache, "get").mockReturnValue(Promise.resolve());
+      jest.spyOn(feed.cache, "set").mockImplementation(() => {});
+      feed.cache.get.mockResolvedValue(cache);
 
       await feed.cleanUpTopRecImpressions();
 
-      assert.calledWith(feed.cache.set, "recsImpressions", {
+      expect(feed.cache.set).toHaveBeenCalledWith("recsImpressions", {
         rec2: 0,
         rec3: 0,
       });
@@ -2005,7 +2027,7 @@ describe("DiscoveryStreamFeed", () => {
 
   describe("#writeDataPref", () => {
     it("should call Services.prefs.setStringPref", () => {
-      sandbox.spy(feed.store, "dispatch");
+      jest.spyOn(feed.store, "dispatch");
       const fakeImpressions = {
         foo: [Date.now() - 1],
         bar: [Date.now() - 1],
@@ -2013,13 +2035,15 @@ describe("DiscoveryStreamFeed", () => {
 
       feed.writeDataPref(SPOC_IMPRESSION_TRACKING_PREF, fakeImpressions);
 
-      assert.calledWithMatch(feed.store.dispatch, {
-        data: {
-          name: SPOC_IMPRESSION_TRACKING_PREF,
-          value: JSON.stringify(fakeImpressions),
-        },
-        type: at.SET_PREF,
-      });
+      expect(feed.store.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: {
+            name: SPOC_IMPRESSION_TRACKING_PREF,
+            value: JSON.stringify(fakeImpressions),
+          },
+          type: at.SET_PREF,
+        })
+      );
     });
   });
 
@@ -2028,13 +2052,13 @@ describe("DiscoveryStreamFeed", () => {
 
     it("should return same url with no query", () => {
       const result = feed.addEndpointQuery(url, "");
-      assert.equal(result, url);
+      expect(result).toBe(url);
     });
 
     it("should add multiple query params to standard url", () => {
       const params = "?first=first&second=second";
       const result = feed.addEndpointQuery(url, params);
-      assert.equal(result, url + params);
+      expect(result).toBe(url + params);
     });
 
     it("should add multiple query params to url with a query already", () => {
@@ -2044,7 +2068,7 @@ describe("DiscoveryStreamFeed", () => {
         `${url}${initialParams}`,
         `?${params}`
       );
-      assert.equal(result, `${url}${initialParams}&${params}`);
+      expect(result).toBe(`${url}${initialParams}&${params}`);
     });
   });
 
@@ -2058,23 +2082,23 @@ describe("DiscoveryStreamFeed", () => {
 
       const result = feed.readDataPref(SPOC_IMPRESSION_TRACKING_PREF);
 
-      assert.deepEqual(result, fakeImpressions);
+      expect(result).toEqual(fakeImpressions);
     });
   });
 
   describe("#setupPrefs", () => {
     it("should call setupPrefs", async () => {
-      sandbox.spy(feed, "setupPrefs");
+      jest.spyOn(feed, "setupPrefs");
       feed.onAction({
         type: at.INIT,
       });
-      assert.calledOnce(feed.setupPrefs);
+      expect(feed.setupPrefs).toHaveBeenCalledTimes(1);
     });
     it("should dispatch to at.DISCOVERY_STREAM_PREFS_SETUP with proper data", async () => {
-      sandbox.spy(feed.store, "dispatch");
-      sandbox
-        .stub(global.NimbusFeatures.pocketNewtab, "getEnrollmentMetadata")
-        .returns({
+      jest.spyOn(feed.store, "dispatch");
+      jest
+        .spyOn(globalThis.NimbusFeatures.pocketNewtab, "getEnrollmentMetadata")
+        .mockReturnValue({
           slug: "experimentId",
           branch: "branchId",
           isRollout: false,
@@ -2097,12 +2121,12 @@ describe("DiscoveryStreamFeed", () => {
         },
       });
       feed.setupPrefs();
-      assert.deepEqual(feed.store.dispatch.firstCall.args[0].data, {
+      expect(feed.store.dispatch.mock.calls[0][0].data).toEqual({
         utmSource: "pocket-newtab",
         utmCampaign: "experimentId",
         utmContent: "branchId",
       });
-      assert.deepEqual(feed.store.dispatch.secondCall.args[0].data, {
+      expect(feed.store.dispatch.mock.calls[1][0].data).toEqual({
         hideDescriptions: true,
         compactImages: true,
         imageGradient: true,
@@ -2116,13 +2140,13 @@ describe("DiscoveryStreamFeed", () => {
 
   describe("#onAction: DISCOVERY_STREAM_IMPRESSION_STATS", () => {
     it("should call recordTopRecImpressions from DISCOVERY_STREAM_IMPRESSION_STATS", async () => {
-      sandbox.stub(feed, "recordTopRecImpression").returns();
+      jest.spyOn(feed, "recordTopRecImpression").mockImplementation(() => {});
       await feed.onAction({
         type: at.DISCOVERY_STREAM_IMPRESSION_STATS,
         data: { tiles: [{ id: "seen" }] },
       });
 
-      assert.calledWith(feed.recordTopRecImpression, "seen");
+      expect(feed.recordTopRecImpression).toHaveBeenCalledWith("seen");
     });
   });
 
@@ -2156,7 +2180,7 @@ describe("DiscoveryStreamFeed", () => {
           ],
         },
       };
-      sandbox.stub(feed.store, "getState").returns({
+      jest.spyOn(feed.store, "getState").mockReturnValue({
         DiscoveryStream: {
           spocs: {
             data,
@@ -2171,7 +2195,7 @@ describe("DiscoveryStreamFeed", () => {
     });
 
     it("should call dispatch to ac.AlsoToPreloaded with filtered spoc data", async () => {
-      sandbox.stub(feed, "getPlacements").returns([{ name: "spocs" }]);
+      jest.spyOn(feed, "getPlacements").mockReturnValue([{ name: "spocs" }]);
       Object.defineProperty(feed, "showSponsoredStories", { get: () => true });
       const fakeImpressions = {
         seen: [Date.now() - 1],
@@ -2193,43 +2217,40 @@ describe("DiscoveryStreamFeed", () => {
           ],
         },
       };
-      sandbox.stub(feed, "recordFlightImpression").returns();
-      sandbox.stub(feed, "readDataPref").returns(fakeImpressions);
-      sandbox.spy(feed.store, "dispatch");
+      jest.spyOn(feed, "recordFlightImpression").mockImplementation(() => {});
+      jest.spyOn(feed, "readDataPref").mockReturnValue(fakeImpressions);
+      jest.spyOn(feed.store, "dispatch");
 
       await feed.onAction({
         type: at.DISCOVERY_STREAM_SPOC_IMPRESSION,
         data: { flightId: "seen" },
       });
 
-      assert.deepEqual(
-        feed.store.dispatch.secondCall.args[0].data.spocs,
-        result
-      );
+      expect(feed.store.dispatch.mock.calls[1][0].data.spocs).toEqual(result);
     });
     it("should not call dispatch to ac.AlsoToPreloaded if spocs were not changed by frequency capping", async () => {
-      sandbox.stub(feed, "getPlacements").returns([{ name: "spocs" }]);
+      jest.spyOn(feed, "getPlacements").mockReturnValue([{ name: "spocs" }]);
       Object.defineProperty(feed, "showSponsoredStories", { get: () => true });
       const fakeImpressions = {};
-      sandbox.stub(feed, "recordFlightImpression").returns();
-      sandbox.stub(feed, "readDataPref").returns(fakeImpressions);
-      sandbox.spy(feed.store, "dispatch");
+      jest.spyOn(feed, "recordFlightImpression").mockImplementation(() => {});
+      jest.spyOn(feed, "readDataPref").mockReturnValue(fakeImpressions);
+      jest.spyOn(feed.store, "dispatch");
 
       await feed.onAction({
         type: at.DISCOVERY_STREAM_SPOC_IMPRESSION,
         data: { flight_id: "seen" },
       });
 
-      assert.notCalled(feed.store.dispatch);
+      expect(feed.store.dispatch).not.toHaveBeenCalled();
     });
     it("should attempt feq cap on valid spocs with placements on impression", async () => {
-      sandbox.restore();
+      jest.restoreAllMocks();
       Object.defineProperty(feed, "showSponsoredStories", { get: () => true });
       const fakeImpressions = {};
-      sandbox.stub(feed, "recordFlightImpression").returns();
-      sandbox.stub(feed, "readDataPref").returns(fakeImpressions);
-      sandbox.spy(feed.store, "dispatch");
-      sandbox.spy(feed, "frequencyCapSpocs");
+      jest.spyOn(feed, "recordFlightImpression").mockImplementation(() => {});
+      jest.spyOn(feed, "readDataPref").mockReturnValue(fakeImpressions);
+      jest.spyOn(feed.store, "dispatch");
+      jest.spyOn(feed, "frequencyCapSpocs");
 
       const data = {
         spocs: {
@@ -2248,7 +2269,7 @@ describe("DiscoveryStreamFeed", () => {
           ],
         },
       };
-      sandbox.stub(feed.store, "getState").returns({
+      jest.spyOn(feed.store, "getState").mockReturnValue({
         DiscoveryStream: {
           spocs: {
             data,
@@ -2262,8 +2283,8 @@ describe("DiscoveryStreamFeed", () => {
         data: { flight_id: "doesn't matter" },
       });
 
-      assert.calledOnce(feed.frequencyCapSpocs);
-      assert.calledWith(feed.frequencyCapSpocs, data.spocs.items);
+      expect(feed.frequencyCapSpocs).toHaveBeenCalledTimes(1);
+      expect(feed.frequencyCapSpocs).toHaveBeenCalledWith(data.spocs.items);
     });
   });
 
@@ -2291,7 +2312,7 @@ describe("DiscoveryStreamFeed", () => {
       const feedsData = {
         data: {},
       };
-      sandbox.stub(feed.store, "getState").returns({
+      jest.spyOn(feed.store, "getState").mockReturnValue({
         DiscoveryStream: {
           spocs: spocsData,
           feeds: feedsData,
@@ -2305,30 +2326,26 @@ describe("DiscoveryStreamFeed", () => {
         get: () => 30 * 60 * 1000,
       });
 
-      sandbox.spy(feed.store, "dispatch");
+      jest.spyOn(feed.store, "dispatch");
 
       await feed.onAction({
         type: at.PLACES_LINK_BLOCKED,
         data: { url: "foo.com" },
       });
 
-      assert.deepEqual(
-        feed.store.dispatch.firstCall.args[0].data.url,
-        "foo.com"
-      );
+      expect(feed.store.dispatch.mock.calls[0][0].data.url).toEqual("foo.com");
     });
     it("should dispatch once if the blocked is not a SPOC", async () => {
       Object.defineProperty(feed, "showSponsoredStories", { get: () => true });
-      sandbox.spy(feed.store, "dispatch");
+      jest.spyOn(feed.store, "dispatch");
 
       await feed.onAction({
         type: at.PLACES_LINK_BLOCKED,
         data: { url: "not_a_spoc.com" },
       });
 
-      assert.calledOnce(feed.store.dispatch);
-      assert.deepEqual(
-        feed.store.dispatch.firstCall.args[0].data.url,
+      expect(feed.store.dispatch).toHaveBeenCalledTimes(1);
+      expect(feed.store.dispatch.mock.calls[0][0].data.url).toEqual(
         "not_a_spoc.com"
       );
     });
@@ -2338,15 +2355,14 @@ describe("DiscoveryStreamFeed", () => {
       Object.defineProperty(feed, "spocsCacheUpdateTime", {
         get: () => 30 * 60 * 1000,
       });
-      sandbox.spy(feed.store, "dispatch");
+      jest.spyOn(feed.store, "dispatch");
 
       await feed.onAction({
         type: at.PLACES_LINK_BLOCKED,
         data: { url: "foo.com" },
       });
 
-      assert.equal(
-        feed.store.dispatch.secondCall.args[0].type,
+      expect(feed.store.dispatch.mock.calls[1][0].type).toBe(
         "DISCOVERY_STREAM_SPOC_BLOCKED"
       );
     });
@@ -2354,7 +2370,7 @@ describe("DiscoveryStreamFeed", () => {
 
   describe("#onAction: BLOCK_URL", () => {
     it("should call recordBlockFlightId whith BLOCK_URL", async () => {
-      sandbox.stub(feed, "recordBlockFlightId").returns();
+      jest.spyOn(feed, "recordBlockFlightId").mockImplementation(() => {});
 
       await feed.onAction({
         type: at.BLOCK_URL,
@@ -2365,29 +2381,29 @@ describe("DiscoveryStreamFeed", () => {
         ],
       });
 
-      assert.calledWith(feed.recordBlockFlightId, "1234");
+      expect(feed.recordBlockFlightId).toHaveBeenCalledWith("1234");
     });
   });
 
   describe("#onAction: INIT", () => {
     it("should be .loaded=false before initialization", () => {
-      assert.isFalse(feed.loaded);
+      expect(feed.loaded).toBe(false);
     });
     it("should load data and set .loaded=true if config.enabled is true", async () => {
-      sandbox.stub(feed.cache, "set").returns(Promise.resolve());
+      jest.spyOn(feed.cache, "set").mockReturnValue(Promise.resolve());
       setPref(CONFIG_PREF_NAME, { enabled: true });
-      sandbox.stub(feed, "loadLayout").returns(Promise.resolve());
+      jest.spyOn(feed, "loadLayout").mockReturnValue(Promise.resolve());
 
       await feed.onAction({ type: at.INIT });
 
-      assert.calledOnce(feed.loadLayout);
-      assert.isTrue(feed.loaded);
+      expect(feed.loadLayout).toHaveBeenCalledTimes(1);
+      expect(feed.loaded).toBe(true);
     });
   });
 
-  describe("#onAction: DISCOVERY_STREAM_CONFIG_SET_VALUE", async () => {
+  describe("#onAction: DISCOVERY_STREAM_CONFIG_SET_VALUE", () => {
     it("should add the new value to the pref without changing the existing values", async () => {
-      sandbox.spy(feed.store, "dispatch");
+      jest.spyOn(feed.store, "dispatch");
       setPref(CONFIG_PREF_NAME, { enabled: true, other: "value" });
 
       await feed.onAction({
@@ -2395,119 +2411,128 @@ describe("DiscoveryStreamFeed", () => {
         data: { name: "api_key_pref", value: "foo" },
       });
 
-      assert.calledWithMatch(feed.store.dispatch, {
-        data: {
-          name: CONFIG_PREF_NAME,
-          value: JSON.stringify({
-            enabled: true,
-            other: "value",
-            api_key_pref: "foo",
-          }),
-        },
-        type: at.SET_PREF,
-      });
+      expect(feed.store.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: {
+            name: CONFIG_PREF_NAME,
+            value: JSON.stringify({
+              enabled: true,
+              other: "value",
+              api_key_pref: "foo",
+            }),
+          },
+          type: at.SET_PREF,
+        })
+      );
     });
   });
 
-  describe("#onAction: DISCOVERY_STREAM_CONFIG_RESET", async () => {
+  describe("#onAction: DISCOVERY_STREAM_CONFIG_RESET", () => {
     it("should call configReset", async () => {
-      sandbox.spy(feed, "configReset");
+      jest.spyOn(feed, "configReset");
       feed.onAction({
         type: at.DISCOVERY_STREAM_CONFIG_RESET,
       });
-      assert.calledOnce(feed.configReset);
+      expect(feed.configReset).toHaveBeenCalledTimes(1);
     });
   });
 
-  describe("#onAction: DISCOVERY_STREAM_CONFIG_RESET_DEFAULTS", async () => {
+  describe("#onAction: DISCOVERY_STREAM_CONFIG_RESET_DEFAULTS", () => {
     it("Should dispatch CLEAR_PREF with pref name", async () => {
-      sandbox.spy(feed.store, "dispatch");
+      jest.spyOn(feed.store, "dispatch");
       await feed.onAction({
         type: at.DISCOVERY_STREAM_CONFIG_RESET_DEFAULTS,
       });
 
-      assert.calledWithMatch(feed.store.dispatch, {
-        data: {
-          name: CONFIG_PREF_NAME,
-        },
-        type: at.CLEAR_PREF,
-      });
+      expect(feed.store.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            name: CONFIG_PREF_NAME,
+          }),
+          type: at.CLEAR_PREF,
+        })
+      );
     });
   });
 
-  describe("#onAction: DISCOVERY_STREAM_RETRY_FEED", async () => {
+  describe("#onAction: DISCOVERY_STREAM_RETRY_FEED", () => {
     it("should call retryFeed", async () => {
-      sandbox.spy(feed, "retryFeed");
+      expectConsoleError();
+      jest.spyOn(feed, "retryFeed");
       feed.onAction({
         type: at.DISCOVERY_STREAM_RETRY_FEED,
         data: { feed: { url: "https://feed.com" } },
       });
-      assert.calledOnce(feed.retryFeed);
-      assert.calledWith(feed.retryFeed, { url: "https://feed.com" });
+      expect(feed.retryFeed).toHaveBeenCalledTimes(1);
+      expect(feed.retryFeed).toHaveBeenCalledWith({ url: "https://feed.com" });
     });
   });
 
   describe("#onAction: DISCOVERY_STREAM_CONFIG_CHANGE", () => {
     it("should call this.loadLayout if config.enabled changes to true ", async () => {
-      sandbox.stub(feed.cache, "set").returns(Promise.resolve());
+      jest.spyOn(feed.cache, "set").mockReturnValue(Promise.resolve());
       // First initialize
       await feed.onAction({ type: at.INIT });
-      assert.isFalse(feed.loaded);
+      expect(feed.loaded).toBe(false);
 
       // force clear cached pref value
       feed._prefCache = {};
       setPref(CONFIG_PREF_NAME, { enabled: true });
 
-      sandbox.stub(feed, "resetCache").returns(Promise.resolve());
-      sandbox.stub(feed, "loadLayout").returns(Promise.resolve());
+      jest.spyOn(feed, "resetCache").mockReturnValue(Promise.resolve());
+      jest.spyOn(feed, "loadLayout").mockReturnValue(Promise.resolve());
       await feed.onAction({ type: at.DISCOVERY_STREAM_CONFIG_CHANGE });
 
-      assert.calledOnce(feed.loadLayout);
-      assert.calledOnce(feed.resetCache);
-      assert.isTrue(feed.loaded);
+      expect(feed.loadLayout).toHaveBeenCalledTimes(1);
+      expect(feed.resetCache).toHaveBeenCalledTimes(1);
+      expect(feed.loaded).toBe(true);
     });
     it("should clear the cache if a config change happens and config.enabled is true", async () => {
-      sandbox.stub(feed.cache, "set").returns(Promise.resolve());
+      expectConsoleError();
+      jest.spyOn(feed.cache, "set").mockReturnValue(Promise.resolve());
       // force clear cached pref value
       feed._prefCache = {};
       setPref(CONFIG_PREF_NAME, { enabled: true });
 
-      sandbox.stub(feed, "resetCache").returns(Promise.resolve());
+      jest.spyOn(feed, "resetCache").mockReturnValue(Promise.resolve());
       await feed.onAction({ type: at.DISCOVERY_STREAM_CONFIG_CHANGE });
 
-      assert.calledOnce(feed.resetCache);
+      expect(feed.resetCache).toHaveBeenCalledTimes(1);
     });
     it("should dispatch DISCOVERY_STREAM_LAYOUT_RESET from DISCOVERY_STREAM_CONFIG_CHANGE", async () => {
-      sandbox.stub(feed, "resetDataPrefs");
-      sandbox.stub(feed, "resetCache").resolves();
-      sandbox.stub(feed, "enable").resolves();
+      jest.spyOn(feed, "resetDataPrefs").mockImplementation(() => {});
+      jest.spyOn(feed, "resetCache").mockResolvedValue();
+      jest.spyOn(feed, "enable").mockResolvedValue();
       setPref(CONFIG_PREF_NAME, { enabled: true });
-      sandbox.spy(feed.store, "dispatch");
+      jest.spyOn(feed.store, "dispatch");
 
       await feed.onAction({ type: at.DISCOVERY_STREAM_CONFIG_CHANGE });
 
-      assert.calledWithMatch(feed.store.dispatch, {
-        type: at.DISCOVERY_STREAM_LAYOUT_RESET,
-      });
+      expect(feed.store.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: at.DISCOVERY_STREAM_LAYOUT_RESET,
+        })
+      );
     });
     it("should not call this.loadLayout if config.enabled changes to false", async () => {
-      sandbox.stub(feed.cache, "set").returns(Promise.resolve());
+      expectConsoleError();
+      jest.spyOn(feed.cache, "set").mockReturnValue(Promise.resolve());
       // force clear cached pref value
       feed._prefCache = {};
       setPref(CONFIG_PREF_NAME, { enabled: true });
 
       await feed.onAction({ type: at.INIT });
-      assert.isTrue(feed.loaded);
+      expect(feed.loaded).toBe(true);
 
       feed._prefCache = {};
       setPref(CONFIG_PREF_NAME, { enabled: false });
-      sandbox.stub(feed, "resetCache").returns(Promise.resolve());
-      sandbox.stub(feed, "loadLayout").returns(Promise.resolve());
+      jest.spyOn(feed, "resetCache").mockReturnValue(Promise.resolve());
+      jest.spyOn(feed, "loadLayout").mockReturnValue(Promise.resolve());
       await feed.onAction({ type: at.DISCOVERY_STREAM_CONFIG_CHANGE });
 
-      assert.notCalled(feed.loadLayout);
-      assert.calledOnce(feed.resetCache);
-      assert.isFalse(feed.loaded);
+      expect(feed.loadLayout).not.toHaveBeenCalled();
+      expect(feed.resetCache).toHaveBeenCalledTimes(1);
+      expect(feed.loaded).toBe(false);
     });
   });
 
@@ -2517,7 +2542,7 @@ describe("DiscoveryStreamFeed", () => {
 
       await feed.onAction({ type: at.UNINIT });
 
-      assert.deepEqual(feed._prefCache, {});
+      expect(feed._prefCache).toEqual({});
     });
   });
 
@@ -2528,33 +2553,33 @@ describe("DiscoveryStreamFeed", () => {
         api_key_pref: "foo",
       });
 
-      assert.deepEqual(feed.store.getState().DiscoveryStream.config, {
+      expect(feed.store.getState().DiscoveryStream.config).toEqual({
         enabled: true,
         api_key_pref: "foo",
       });
     });
     it("should fire loadSpocs is showSponsored pref changes", async () => {
-      sandbox.stub(feed, "loadSpocs").returns(Promise.resolve());
+      jest.spyOn(feed, "loadSpocs").mockReturnValue(Promise.resolve());
 
       await feed.onAction({
         type: at.PREF_CHANGED,
         data: { name: "showSponsored" },
       });
 
-      assert.calledOnce(feed.loadSpocs);
+      expect(feed.loadSpocs).toHaveBeenCalledTimes(1);
     });
     it("should fire onPrefChange when pocketConfig pref changes", async () => {
-      sandbox.stub(feed, "onPrefChange").returns(Promise.resolve());
+      jest.spyOn(feed, "onPrefChange").mockReturnValue(Promise.resolve());
 
       await feed.onAction({
         type: at.PREF_CHANGED,
         data: { name: "pocketConfig", value: false },
       });
 
-      assert.calledOnce(feed.onPrefChange);
+      expect(feed.onPrefChange).toHaveBeenCalledTimes(1);
     });
     it("should re enable stories when top stories is turned on", async () => {
-      sandbox.stub(feed, "refreshAll").returns(Promise.resolve());
+      jest.spyOn(feed, "refreshAll").mockReturnValue(Promise.resolve());
       feed.loaded = true;
       setPref(CONFIG_PREF_NAME, {
         enabled: true,
@@ -2565,16 +2590,14 @@ describe("DiscoveryStreamFeed", () => {
         data: { name: "feeds.section.topstories", value: true },
       });
 
-      assert.calledOnce(feed.refreshAll);
+      expect(feed.refreshAll).toHaveBeenCalledTimes(1);
     });
     it("shoud update allowlist", async () => {
-      assert.equal(
-        feed.store.getState().Prefs.values[ENDPOINTS_PREF_NAME],
+      expect(feed.store.getState().Prefs.values[ENDPOINTS_PREF_NAME]).toBe(
         DUMMY_ENDPOINT
       );
       setPref(ENDPOINTS_PREF_NAME, "sick-kickflip.mozilla.net");
-      assert.equal(
-        feed.store.getState().Prefs.values[ENDPOINTS_PREF_NAME],
+      expect(feed.store.getState().Prefs.values[ENDPOINTS_PREF_NAME]).toBe(
         "sick-kickflip.mozilla.net"
       );
     });
@@ -2582,48 +2605,51 @@ describe("DiscoveryStreamFeed", () => {
 
   describe("#onAction: SYSTEM_TICK", () => {
     it("should not refresh if DiscoveryStream has not been loaded", async () => {
-      sandbox.stub(feed, "refreshAll").resolves();
+      jest.spyOn(feed, "refreshAll").mockResolvedValue();
       setPref(CONFIG_PREF_NAME, { enabled: true });
 
       await feed.onAction({ type: at.SYSTEM_TICK });
-      assert.notCalled(feed.refreshAll);
+      expect(feed.refreshAll).not.toHaveBeenCalled();
     });
 
     it("should not refresh if no caches are expired", async () => {
-      sandbox.stub(feed.cache, "set").resolves();
+      expectConsoleError();
+      jest.spyOn(feed.cache, "set").mockResolvedValue();
       setPref(CONFIG_PREF_NAME, { enabled: true });
 
       await feed.onAction({ type: at.INIT });
 
-      sandbox.stub(feed, "onSystemTick").resolves();
-      sandbox.stub(feed, "refreshAll").resolves();
+      jest.spyOn(feed, "onSystemTick").mockResolvedValue();
+      jest.spyOn(feed, "refreshAll").mockResolvedValue();
 
       await feed.onAction({ type: at.SYSTEM_TICK });
-      assert.notCalled(feed.refreshAll);
+      expect(feed.refreshAll).not.toHaveBeenCalled();
     });
 
     it("should refresh if DiscoveryStream has been loaded at least once and a cache has expired", async () => {
-      sandbox.stub(feed.cache, "set").resolves();
+      expectConsoleError();
+      jest.spyOn(feed.cache, "set").mockResolvedValue();
       setPref(CONFIG_PREF_NAME, { enabled: true });
 
       await feed.onAction({ type: at.INIT });
 
-      sandbox.stub(feed, "refreshAll").resolves();
+      jest.spyOn(feed, "refreshAll").mockResolvedValue();
 
       await feed.onAction({ type: at.SYSTEM_TICK });
-      assert.calledOnce(feed.refreshAll);
+      expect(feed.refreshAll).toHaveBeenCalledTimes(1);
     });
 
     it("should refresh and not update open tabs if DiscoveryStream has been loaded at least once", async () => {
-      sandbox.stub(feed.cache, "set").resolves();
+      expectConsoleError();
+      jest.spyOn(feed.cache, "set").mockResolvedValue();
       setPref(CONFIG_PREF_NAME, { enabled: true });
 
       await feed.onAction({ type: at.INIT });
 
-      sandbox.stub(feed, "refreshAll").resolves();
+      jest.spyOn(feed, "refreshAll").mockResolvedValue();
 
       await feed.onAction({ type: at.SYSTEM_TICK });
-      assert.calledWith(feed.refreshAll, {
+      expect(feed.refreshAll).toHaveBeenCalledWith({
         updateOpenTabs: false,
         isSystemTick: true,
       });
@@ -2632,15 +2658,15 @@ describe("DiscoveryStreamFeed", () => {
 
   describe("#enable", () => {
     it("should pass along proper options to refreshAll from enable", async () => {
-      sandbox.stub(feed, "refreshAll");
+      jest.spyOn(feed, "refreshAll").mockImplementation(() => {});
       await feed.enable();
-      assert.calledWith(feed.refreshAll, {});
+      expect(feed.refreshAll).toHaveBeenCalledWith({});
       await feed.enable({ updateOpenTabs: true });
-      assert.calledWith(feed.refreshAll, { updateOpenTabs: true });
+      expect(feed.refreshAll).toHaveBeenCalledWith({ updateOpenTabs: true });
       await feed.enable({ isStartup: true });
-      assert.calledWith(feed.refreshAll, { isStartup: true });
+      expect(feed.refreshAll).toHaveBeenCalledWith({ isStartup: true });
       await feed.enable({ updateOpenTabs: true, isStartup: true });
-      assert.calledWith(feed.refreshAll, {
+      expect(feed.refreshAll).toHaveBeenCalledWith({
         updateOpenTabs: true,
         isStartup: true,
       });
@@ -2649,82 +2675,87 @@ describe("DiscoveryStreamFeed", () => {
 
   describe("#onPrefChange", () => {
     it("should call loadLayout when Pocket config changes", async () => {
-      sandbox.stub(feed, "loadLayout");
+      jest.spyOn(feed, "loadLayout").mockImplementation(() => {});
       feed._prefCache.config = {
         enabled: true,
       };
       await feed.onPrefChange();
-      assert.calledOnce(feed.loadLayout);
+      expect(feed.loadLayout).toHaveBeenCalledTimes(1);
     });
     it("should update open tabs but not startup with onPrefChange", async () => {
-      sandbox.stub(feed, "refreshAll");
+      jest.spyOn(feed, "refreshAll").mockImplementation(() => {});
       feed._prefCache.config = {
         enabled: true,
       };
       await feed.onPrefChange();
-      assert.calledWith(feed.refreshAll, { updateOpenTabs: true });
+      expect(feed.refreshAll).toHaveBeenCalledWith({ updateOpenTabs: true });
     });
   });
 
   describe("#onAction: PREF_SHOW_SPONSORED", () => {
     it("should call loadSpocs when preference changes", async () => {
-      sandbox.stub(feed, "loadSpocs").resolves();
-      sandbox.stub(feed.store, "dispatch");
+      jest.spyOn(feed, "loadSpocs").mockResolvedValue();
+      jest.spyOn(feed.store, "dispatch").mockImplementation(() => {});
 
       await feed.onAction({
         type: at.PREF_CHANGED,
         data: { name: "showSponsored" },
       });
 
-      assert.calledOnce(feed.loadSpocs);
-      const [dispatchFn] = feed.loadSpocs.firstCall.args;
+      expect(feed.loadSpocs).toHaveBeenCalledTimes(1);
+      const [dispatchFn] = feed.loadSpocs.mock.lastCall;
       dispatchFn({});
-      assert.calledWith(feed.store.dispatch, ac.BroadcastToContent({}));
+      expect(feed.store.dispatch).toHaveBeenCalledWith(
+        ac.BroadcastToContent({})
+      );
     });
   });
 
   describe("#onAction: DISCOVERY_STREAM_DEV_SYNC_RS", () => {
     it("should fire remote settings pollChanges", async () => {
-      sandbox.stub(global.RemoteSettings, "pollChanges").returns();
+      jest
+        .spyOn(globalThis.RemoteSettings, "pollChanges")
+        .mockImplementation(() => {});
       await feed.onAction({
         type: at.DISCOVERY_STREAM_DEV_SYNC_RS,
       });
-      assert.calledOnce(global.RemoteSettings.pollChanges);
+      expect(globalThis.RemoteSettings.pollChanges).toHaveBeenCalledTimes(1);
     });
   });
 
   describe("#onAction: DISCOVERY_STREAM_DEV_REFRESH_CACHE", () => {
     it("should clear the cache with DISCOVERY_STREAM_DEV_REFRESH_CACHE", async () => {
-      sandbox.stub(feed.cache, "set").returns(Promise.resolve());
+      jest.spyOn(feed.cache, "set").mockReturnValue(Promise.resolve());
 
-      sandbox.stub(feed, "resetCache").returns(Promise.resolve());
+      jest.spyOn(feed, "resetCache").mockReturnValue(Promise.resolve());
       await feed.onAction({ type: at.DISCOVERY_STREAM_DEV_REFRESH_CACHE });
 
-      assert.calledOnce(feed.resetCache);
+      expect(feed.resetCache).toHaveBeenCalledTimes(1);
     });
   });
 
   describe("#onAction: DISCOVERY_STREAM_DEV_SYSTEM_TICK", () => {
     it("should refresh if DiscoveryStream has been loaded at least once and a cache has expired", async () => {
-      sandbox.stub(feed.cache, "set").resolves();
+      expectConsoleError();
+      jest.spyOn(feed.cache, "set").mockResolvedValue();
       setPref(CONFIG_PREF_NAME, { enabled: true });
 
       await feed.onAction({ type: at.INIT });
 
-      sandbox.stub(feed, "refreshAll").resolves();
+      jest.spyOn(feed, "refreshAll").mockResolvedValue();
 
       await feed.onAction({ type: at.DISCOVERY_STREAM_DEV_SYSTEM_TICK });
-      assert.calledOnce(feed.refreshAll);
+      expect(feed.refreshAll).toHaveBeenCalledTimes(1);
     });
   });
 
   describe("#onAction: DISCOVERY_STREAM_DEV_EXPIRE_CACHE", () => {
     it("should fire resetCache", async () => {
-      sandbox.stub(feed, "resetContentCache").returns();
+      jest.spyOn(feed, "resetContentCache").mockImplementation(() => {});
       await feed.onAction({
         type: at.DISCOVERY_STREAM_DEV_EXPIRE_CACHE,
       });
-      assert.calledOnce(feed.resetContentCache);
+      expect(feed.resetContentCache).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -2732,15 +2763,15 @@ describe("DiscoveryStreamFeed", () => {
     it("should return default cache time", () => {
       const defaultCacheTime = 30 * 60 * 1000;
       const cacheTime = feed.spocsCacheUpdateTime;
-      assert.equal(feed._spocsCacheUpdateTime, defaultCacheTime);
-      assert.equal(cacheTime, defaultCacheTime);
+      expect(feed._spocsCacheUpdateTime).toBe(defaultCacheTime);
+      expect(cacheTime).toBe(defaultCacheTime);
     });
     it("should return _spocsCacheUpdateTime", () => {
       const testCacheTime = 123;
       feed._spocsCacheUpdateTime = testCacheTime;
       const cacheTime = feed.spocsCacheUpdateTime;
-      assert.equal(feed._spocsCacheUpdateTime, testCacheTime);
-      assert.equal(cacheTime, testCacheTime);
+      expect(feed._spocsCacheUpdateTime).toBe(testCacheTime);
+      expect(cacheTime).toBe(testCacheTime);
     });
     it("should set _spocsCacheUpdateTime with min", () => {
       const defaultCacheTime = 30 * 60 * 1000;
@@ -2754,8 +2785,8 @@ describe("DiscoveryStreamFeed", () => {
         },
       });
       const cacheTime = feed.spocsCacheUpdateTime;
-      assert.equal(feed._spocsCacheUpdateTime, defaultCacheTime);
-      assert.equal(cacheTime, defaultCacheTime);
+      expect(feed._spocsCacheUpdateTime).toBe(defaultCacheTime);
+      expect(cacheTime).toBe(defaultCacheTime);
     });
     it("should set _spocsCacheUpdateTime with max", () => {
       const defaultCacheTime = 30 * 60 * 1000;
@@ -2769,8 +2800,8 @@ describe("DiscoveryStreamFeed", () => {
         },
       });
       const cacheTime = feed.spocsCacheUpdateTime;
-      assert.equal(feed._spocsCacheUpdateTime, defaultCacheTime);
-      assert.equal(cacheTime, defaultCacheTime);
+      expect(feed._spocsCacheUpdateTime).toBe(defaultCacheTime);
+      expect(cacheTime).toBe(defaultCacheTime);
     });
     it("should set _spocsCacheUpdateTime with spocsCacheTimeout", () => {
       const defaultCacheTime = 20 * 60 * 1000;
@@ -2784,8 +2815,8 @@ describe("DiscoveryStreamFeed", () => {
         },
       });
       const cacheTime = feed.spocsCacheUpdateTime;
-      assert.equal(feed._spocsCacheUpdateTime, defaultCacheTime);
-      assert.equal(cacheTime, defaultCacheTime);
+      expect(feed._spocsCacheUpdateTime).toBe(defaultCacheTime);
+      expect(cacheTime).toBe(defaultCacheTime);
     });
     it("should set _spocsCacheUpdateTime with spocsCacheTimeout and onDemand", () => {
       const defaultCacheTime = 4 * 60 * 1000;
@@ -2800,8 +2831,8 @@ describe("DiscoveryStreamFeed", () => {
         },
       });
       const cacheTime = feed.spocsCacheUpdateTime;
-      assert.equal(feed._spocsCacheUpdateTime, defaultCacheTime);
-      assert.equal(cacheTime, defaultCacheTime);
+      expect(feed._spocsCacheUpdateTime).toBe(defaultCacheTime);
+      expect(cacheTime).toBe(defaultCacheTime);
     });
     it("should set _spocsCacheUpdateTime with spocsCacheTimeout without max", () => {
       const defaultCacheTime = 31 * 60 * 1000;
@@ -2816,8 +2847,8 @@ describe("DiscoveryStreamFeed", () => {
         },
       });
       const cacheTime = feed.spocsCacheUpdateTime;
-      assert.equal(feed._spocsCacheUpdateTime, defaultCacheTime);
-      assert.equal(cacheTime, defaultCacheTime);
+      expect(feed._spocsCacheUpdateTime).toBe(defaultCacheTime);
+      expect(cacheTime).toBe(defaultCacheTime);
     });
     it("should set _spocsCacheUpdateTime with spocsCacheTimeout without min", () => {
       const defaultCacheTime = 1 * 60 * 1000;
@@ -2832,16 +2863,16 @@ describe("DiscoveryStreamFeed", () => {
         },
       });
       const cacheTime = feed.spocsCacheUpdateTime;
-      assert.equal(feed._spocsCacheUpdateTime, defaultCacheTime);
-      assert.equal(cacheTime, defaultCacheTime);
+      expect(feed._spocsCacheUpdateTime).toBe(defaultCacheTime);
+      expect(cacheTime).toBe(defaultCacheTime);
     });
   });
 
   describe("#isExpired", () => {
     it("should throw if the key is not valid", () => {
-      assert.throws(() => {
+      expect(() => {
         feed.isExpired({}, "foo");
-      });
+      }).toThrow();
     });
     it("should return false for spocs on startup for content under 1 week", () => {
       const spocs = { lastUpdated: Date.now() };
@@ -2851,25 +2882,25 @@ describe("DiscoveryStreamFeed", () => {
         isStartup: true,
       });
 
-      assert.isFalse(result);
+      expect(result).toBe(false);
     });
     it("should return true for spocs for isStartup=false after 30 mins", () => {
       const spocs = { lastUpdated: Date.now() };
-      clock.tick(THIRTY_MINUTES + 1);
+      jest.advanceTimersByTime(THIRTY_MINUTES + 1);
       const result = feed.isExpired({ cachedData: { spocs }, key: "spocs" });
 
-      assert.isTrue(result);
+      expect(result).toBe(true);
     });
     it("should return true for spocs on startup for content over 1 week", () => {
       const spocs = { lastUpdated: Date.now() };
-      clock.tick(ONE_WEEK + 1);
+      jest.advanceTimersByTime(ONE_WEEK + 1);
       const result = feed.isExpired({
         cachedData: { spocs },
         key: "spocs",
         isStartup: true,
       });
 
-      assert.isTrue(result);
+      expect(result).toBe(true);
     });
   });
 
@@ -2881,150 +2912,151 @@ describe("DiscoveryStreamFeed", () => {
         spocs: { lastUpdated: Date.now() },
       };
       Object.defineProperty(feed, "showSponsoredStories", { get: () => true });
-      sandbox.stub(feed.cache, "get").resolves(cache);
+      jest.spyOn(feed.cache, "get").mockResolvedValue(cache);
     });
 
     it("should return false if nothing in the cache is expired", async () => {
       const results = await feed._checkExpirationPerComponent();
-      assert.isFalse(results.spocs);
-      assert.isFalse(results.feeds);
+      expect(results.spocs).toBe(false);
+      expect(results.feeds).toBe(false);
     });
     it("should return true if .spocs is missing", async () => {
       delete cache.spocs;
 
       const results = await feed._checkExpirationPerComponent();
-      assert.isTrue(results.spocs);
-      assert.isFalse(results.feeds);
+      expect(results.spocs).toBe(true);
+      expect(results.feeds).toBe(false);
     });
     it("should return true if .feeds is missing", async () => {
       delete cache.feeds;
 
       const results = await feed._checkExpirationPerComponent();
-      assert.isFalse(results.spocs);
-      assert.isTrue(results.feeds);
+      expect(results.spocs).toBe(false);
+      expect(results.feeds).toBe(true);
     });
     it("should return true if spocs are expired", async () => {
-      clock.tick(THIRTY_MINUTES + 1);
+      jest.advanceTimersByTime(THIRTY_MINUTES + 1);
       // Update other caches we aren't testing
       cache.feeds["foo.com"].lastUpdated = Date.now();
 
       const results = await feed._checkExpirationPerComponent();
-      assert.isTrue(results.spocs);
-      assert.isFalse(results.feeds);
+      expect(results.spocs).toBe(true);
+      expect(results.feeds).toBe(false);
     });
     it("should return true if data for .feeds[url] is missing", async () => {
       cache.feeds["foo.com"] = null;
 
       const results = await feed._checkExpirationPerComponent();
-      assert.isFalse(results.spocs);
-      assert.isTrue(results.feeds);
+      expect(results.spocs).toBe(false);
+      expect(results.feeds).toBe(true);
     });
     it("should return true if data for .feeds[url] is expired", async () => {
-      clock.tick(THIRTY_MINUTES + 1);
+      jest.advanceTimersByTime(THIRTY_MINUTES + 1);
       // Update other caches we aren't testing
       cache.spocs.lastUpdated = Date.now();
 
       const results = await feed._checkExpirationPerComponent();
-      assert.isFalse(results.spocs);
-      assert.isTrue(results.feeds);
+      expect(results.spocs).toBe(false);
+      expect(results.feeds).toBe(true);
     });
   });
 
   describe("#refreshAll", () => {
     beforeEach(() => {
-      sandbox.stub(feed, "loadLayout").resolves();
-      sandbox.stub(feed, "loadComponentFeeds").resolves();
-      sandbox.stub(feed, "loadSpocs").resolves();
-      sandbox.spy(feed.store, "dispatch");
+      jest.spyOn(feed, "loadLayout").mockResolvedValue();
+      jest.spyOn(feed, "loadComponentFeeds").mockResolvedValue();
+      jest.spyOn(feed, "loadSpocs").mockResolvedValue();
+      jest.spyOn(feed.store, "dispatch");
       Object.defineProperty(feed, "showSponsoredStories", { get: () => true });
     });
 
     it("should call layout, component, spocs update and telemetry reporting functions", async () => {
       await feed.refreshAll();
 
-      assert.calledOnce(feed.loadLayout);
-      assert.calledOnce(feed.loadComponentFeeds);
-      assert.calledOnce(feed.loadSpocs);
+      expect(feed.loadLayout).toHaveBeenCalledTimes(1);
+      expect(feed.loadComponentFeeds).toHaveBeenCalledTimes(1);
+      expect(feed.loadSpocs).toHaveBeenCalledTimes(1);
     });
     it("should pass in dispatch wrapped with broadcast if options.updateOpenTabs is true", async () => {
       await feed.refreshAll({ updateOpenTabs: true });
       [feed.loadLayout, feed.loadComponentFeeds, feed.loadSpocs].forEach(fn => {
-        assert.calledOnce(fn);
-        const result = fn.firstCall.args[0]({ type: "FOO" });
-        assert.isTrue(au.isBroadcastToContent(result));
+        expect(fn).toHaveBeenCalledTimes(1);
+        const result = fn.mock.calls[0][0]({ type: "FOO" });
+        expect(au.isBroadcastToContent(result)).toBe(true);
       });
     });
     it("should pass in dispatch with regular actions if options.updateOpenTabs is false", async () => {
       await feed.refreshAll({ updateOpenTabs: false });
       [feed.loadLayout, feed.loadComponentFeeds, feed.loadSpocs].forEach(fn => {
-        assert.calledOnce(fn);
-        const result = fn.firstCall.args[0]({ type: "FOO" });
-        assert.deepEqual(result, { type: "FOO" });
+        expect(fn).toHaveBeenCalledTimes(1);
+        const result = fn.mock.calls[0][0]({ type: "FOO" });
+        expect(result).toEqual({ type: "FOO" });
       });
     });
     it("should set loaded to true if loadSpocs and loadComponentFeeds fails", async () => {
-      feed.loadComponentFeeds.rejects("loadComponentFeeds error");
-      feed.loadSpocs.rejects("loadSpocs error");
+      expectConsoleError();
+      feed.loadComponentFeeds.mockRejectedValue("loadComponentFeeds error");
+      feed.loadSpocs.mockRejectedValue("loadSpocs error");
 
       await feed.enable();
 
-      assert.isTrue(feed.loaded);
+      expect(feed.loaded).toBe(true);
     });
     it("should call loadComponentFeeds and loadSpocs in Promise.all", async () => {
-      sandbox.stub(global.Promise, "all").resolves();
+      jest.spyOn(Promise, "all").mockResolvedValue();
 
       await feed.refreshAll();
 
-      assert.calledOnce(global.Promise.all);
-      const { args } = global.Promise.all.firstCall;
-      assert.equal(args[0].length, 2);
+      expect(Promise.all).toHaveBeenCalledTimes(1);
+      const [args] = Promise.all.mock.lastCall;
+      expect(args.length).toBe(2);
     });
     describe("test startup cache behaviour", () => {
       beforeEach(() => {
-        feed._maybeUpdateCachedData.restore();
-        sandbox.stub(feed.cache, "set").resolves();
+        feed._maybeUpdateCachedData.mockRestore();
+        jest.spyOn(feed.cache, "set").mockResolvedValue();
       });
       it("should not refresh layout on startup if it is under THIRTY_MINUTES", async () => {
-        feed.loadLayout.restore();
-        sandbox.stub(feed.cache, "get").resolves({
+        feed.loadLayout.mockRestore();
+        jest.spyOn(feed.cache, "get").mockResolvedValue({
           layout: { lastUpdated: Date.now(), layout: {} },
         });
-        sandbox.stub(feed, "fetchFromEndpoint").resolves({ layout: {} });
+        jest.spyOn(feed, "fetchFromEndpoint").mockResolvedValue({ layout: {} });
 
         await feed.refreshAll({ isStartup: true });
 
-        assert.notCalled(feed.fetchFromEndpoint);
+        expect(feed.fetchFromEndpoint).not.toHaveBeenCalled();
       });
       it("should refresh spocs on startup if it was served from cache", async () => {
-        feed.loadSpocs.restore();
-        sandbox.stub(feed, "getPlacements").returns([{ name: "spocs" }]);
-        sandbox.stub(feed.cache, "get").resolves({
+        expectConsoleError();
+        feed.loadSpocs.mockRestore();
+        jest.spyOn(feed, "getPlacements").mockReturnValue([{ name: "spocs" }]);
+        jest.spyOn(feed.cache, "get").mockResolvedValue({
           spocs: { lastUpdated: Date.now() },
         });
-        clock.tick(THIRTY_MINUTES + 1);
+        jest.advanceTimersByTime(THIRTY_MINUTES + 1);
 
         await feed.refreshAll({ isStartup: true });
 
         // Once from cache, once to update the store
-        assert.calledTwice(feed.store.dispatch);
-        assert.equal(
-          feed.store.dispatch.firstCall.args[0].type,
+        expect(feed.store.dispatch).toHaveBeenCalledTimes(2);
+        expect(feed.store.dispatch.mock.calls[0][0].type).toBe(
           at.DISCOVERY_STREAM_SPOCS_UPDATE
         );
       });
       it("should not refresh spocs on startup if it is under THIRTY_MINUTES", async () => {
-        feed.loadSpocs.restore();
-        sandbox.stub(feed.cache, "get").resolves({
+        feed.loadSpocs.mockRestore();
+        jest.spyOn(feed.cache, "get").mockResolvedValue({
           spocs: { lastUpdated: Date.now() },
         });
-        sandbox.stub(feed, "fetchFromEndpoint").resolves("data");
+        jest.spyOn(feed, "fetchFromEndpoint").mockResolvedValue("data");
 
         await feed.refreshAll({ isStartup: true });
 
-        assert.notCalled(feed.fetchFromEndpoint);
+        expect(feed.fetchFromEndpoint).not.toHaveBeenCalled();
       });
       it("should refresh feeds on startup if it was served from cache", async () => {
-        feed.loadComponentFeeds.restore();
+        feed.loadComponentFeeds.mockRestore();
 
         const fakeComponents = { components: [{ feed: { url: "foo.com" } }] };
         const fakeLayout = [fakeComponents];
@@ -3039,25 +3071,26 @@ describe("DiscoveryStreamFeed", () => {
             },
           },
         };
-        sandbox.stub(feed.store, "getState").returns(fakeDiscoveryStream);
-        sandbox.stub(feed, "rotate").callsFake(val => val);
-        sandbox.stub(feed, "filterBlocked").callsFake(val => ({ data: val }));
+        jest.spyOn(feed.store, "getState").mockReturnValue(fakeDiscoveryStream);
+        jest.spyOn(feed, "rotate").mockImplementation(val => val);
+        jest
+          .spyOn(feed, "filterBlocked")
+          .mockImplementation(val => ({ data: val }));
 
         const fakeCache = {
           feeds: { "foo.com": { lastUpdated: Date.now(), data: ["data"] } },
         };
-        sandbox.stub(feed.cache, "get").resolves(fakeCache);
-        clock.tick(THIRTY_MINUTES + 1);
+        jest.spyOn(feed.cache, "get").mockResolvedValue(fakeCache);
+        jest.advanceTimersByTime(THIRTY_MINUTES + 1);
         stubOutFetchFromEndpointWithRealisticData();
 
         await feed.refreshAll({ isStartup: true });
 
-        assert.calledOnce(feed.fetchFromEndpoint);
+        expect(feed.fetchFromEndpoint).toHaveBeenCalledTimes(1);
         // Once from cache, once to update the feed, once to update that all
         // feeds are done, and once to update scores.
-        assert.callCount(feed.store.dispatch, 4);
-        assert.equal(
-          feed.store.dispatch.secondCall.args[0].type,
+        expect(feed.store.dispatch).toHaveBeenCalledTimes(4);
+        expect(feed.store.dispatch.mock.calls[1][0].type).toBe(
           at.DISCOVERY_STREAM_FEEDS_UPDATE
         );
       });
@@ -3066,22 +3099,21 @@ describe("DiscoveryStreamFeed", () => {
 
   describe("#onAction: TOPIC_SELECTION_MAYBE_LATER", () => {
     it("should call topicSelectionMaybeLaterEvent", async () => {
-      sandbox.stub(feed, "topicSelectionMaybeLaterEvent").resolves();
+      jest.spyOn(feed, "topicSelectionMaybeLaterEvent").mockResolvedValue();
       await feed.onAction({
         type: at.TOPIC_SELECTION_MAYBE_LATER,
       });
-      assert.calledOnce(feed.topicSelectionMaybeLaterEvent);
+      expect(feed.topicSelectionMaybeLaterEvent).toHaveBeenCalledTimes(1);
     });
   });
 
   describe("#topicSelectionMaybeLaterEvent", () => {
     it("should use 3-day timeout for new profiles (age <= 1 day)", async () => {
-      sandbox.stub(feed, "retreiveProfileAge").resolves(0.5);
-      sandbox.spy(feed.store, "dispatch");
+      jest.spyOn(feed, "retreiveProfileAge").mockResolvedValue(0.5);
+      jest.spyOn(feed.store, "dispatch");
       await feed.topicSelectionMaybeLaterEvent();
       const day = 24 * 60 * 60 * 1000;
-      assert.calledWith(
-        feed.store.dispatch,
+      expect(feed.store.dispatch).toHaveBeenCalledWith(
         ac.SetPref(
           "discoverystream.topicSelection.onboarding.displayTimeout",
           3 * day
@@ -3090,12 +3122,11 @@ describe("DiscoveryStreamFeed", () => {
     });
 
     it("should use 7-day timeout for older profiles (age > 1 day)", async () => {
-      sandbox.stub(feed, "retreiveProfileAge").resolves(5);
-      sandbox.spy(feed.store, "dispatch");
+      jest.spyOn(feed, "retreiveProfileAge").mockResolvedValue(5);
+      jest.spyOn(feed.store, "dispatch");
       await feed.topicSelectionMaybeLaterEvent();
       const day = 24 * 60 * 60 * 1000;
-      assert.calledWith(
-        feed.store.dispatch,
+      expect(feed.store.dispatch).toHaveBeenCalledWith(
         ac.SetPref(
           "discoverystream.topicSelection.onboarding.displayTimeout",
           7 * day
@@ -3106,33 +3137,34 @@ describe("DiscoveryStreamFeed", () => {
 
   describe("new proxy feed", () => {
     beforeEach(() => {
-      sandbox.stub(global.Region, "home").get(() => "DE");
-      sandbox.stub(global.Services.prefs, "getStringPref");
+      globalThis.Region.home = "DE";
 
-      global.Services.prefs.getStringPref
-        .withArgs(
-          "browser.newtabpage.activity-stream.discoverystream.merino-provider.endpoint"
-        )
-        .returns("merinoEndpoint");
+      services.prefs.getStringPref.mockImplementation(name =>
+        name ===
+        "browser.newtabpage.activity-stream.discoverystream.merino-provider.endpoint"
+          ? "merinoEndpoint"
+          : undefined
+      );
     });
 
     it("should update to new feed url", async () => {
       await feed.loadLayout(feed.store.dispatch);
       const { layout } = feed.store.getState().DiscoveryStream;
-      assert.equal(
-        layout[0].components[2].feed.url,
+      expect(layout[0].components[2].feed.url).toBe(
         "https://merinoEndpoint/api/v1/curated-recommendations"
       );
     });
 
     it("should fetch proper data from getComponentFeed", async () => {
       const fakeCache = {};
-      sandbox.stub(feed.cache, "get").returns(Promise.resolve(fakeCache));
-      sandbox.stub(feed, "rotate").callsFake(val => val);
-      sandbox
-        .stub(feed, "scoreItemsInferred")
-        .callsFake(val => ({ data: val, filtered: [], personalized: false }));
-      sandbox.stub(feed, "fetchFromEndpoint").resolves({
+      jest.spyOn(feed.cache, "get").mockReturnValue(Promise.resolve(fakeCache));
+      jest.spyOn(feed, "rotate").mockImplementation(val => val);
+      jest.spyOn(feed, "scoreItemsInferred").mockImplementation(val => ({
+        data: val,
+        filtered: [],
+        personalized: false,
+      }));
+      jest.spyOn(feed, "fetchFromEndpoint").mockResolvedValue({
         recommendedAt: 1755834072383,
         surfaceId: "NEW_TAB_EN_US",
         data: [
@@ -3186,17 +3218,19 @@ describe("DiscoveryStreamFeed", () => {
         },
       };
 
-      assert.deepEqual(feedData, expectedData);
+      expect(feedData).toEqual(expectedData);
     });
     it("should fetch proper data from getComponentFeed with sections enabled", async () => {
       setPref("discoverystream.sections.enabled", true);
       const fakeCache = {};
-      sandbox.stub(feed.cache, "get").returns(Promise.resolve(fakeCache));
-      sandbox.stub(feed, "rotate").callsFake(val => val);
-      sandbox
-        .stub(feed, "scoreItemsInferred")
-        .callsFake(val => ({ data: val, filtered: [], personalized: false }));
-      sandbox.stub(feed, "fetchFromEndpoint").resolves({
+      jest.spyOn(feed.cache, "get").mockReturnValue(Promise.resolve(fakeCache));
+      jest.spyOn(feed, "rotate").mockImplementation(val => val);
+      jest.spyOn(feed, "scoreItemsInferred").mockImplementation(val => ({
+        data: val,
+        filtered: [],
+        personalized: false,
+      }));
+      jest.spyOn(feed, "fetchFromEndpoint").mockResolvedValue({
         recommendedAt: 1755834072383,
         surfaceId: "NEW_TAB_EN_US",
         data: [
@@ -3309,17 +3343,19 @@ describe("DiscoveryStreamFeed", () => {
       };
 
       // Use JSON comparison because deepEqual will error with incorrect property order message
-      assert.equal(JSON.stringify(feedData), JSON.stringify(expectedData));
+      expect(JSON.stringify(feedData)).toBe(JSON.stringify(expectedData));
     });
     it("should include allowAds and followable in section objects", async () => {
       setPref("discoverystream.sections.enabled", true);
       const fakeCache = {};
-      sandbox.stub(feed.cache, "get").returns(Promise.resolve(fakeCache));
-      sandbox.stub(feed, "rotate").callsFake(val => val);
-      sandbox
-        .stub(feed, "scoreItemsInferred")
-        .callsFake(val => ({ data: val, filtered: [], personalized: false }));
-      sandbox.stub(feed, "fetchFromEndpoint").resolves({
+      jest.spyOn(feed.cache, "get").mockReturnValue(Promise.resolve(fakeCache));
+      jest.spyOn(feed, "rotate").mockImplementation(val => val);
+      jest.spyOn(feed, "scoreItemsInferred").mockImplementation(val => ({
+        data: val,
+        filtered: [],
+        personalized: false,
+      }));
+      jest.spyOn(feed, "fetchFromEndpoint").mockResolvedValue({
         recommendedAt: 0,
         surfaceId: "NEW_TAB_EN_US",
         data: [],
@@ -3340,18 +3376,20 @@ describe("DiscoveryStreamFeed", () => {
 
       const feedData = await feed.getComponentFeed("url");
       const [section] = feedData.data.sections;
-      assert.equal(section.allowAds, false);
-      assert.equal(section.followable, true);
+      expect(section.allowAds).toBe(false);
+      expect(section.followable).toBe(true);
     });
     it("should default allowAds and followable to true when absent", async () => {
       setPref("discoverystream.sections.enabled", true);
       const fakeCache = {};
-      sandbox.stub(feed.cache, "get").returns(Promise.resolve(fakeCache));
-      sandbox.stub(feed, "rotate").callsFake(val => val);
-      sandbox
-        .stub(feed, "scoreItemsInferred")
-        .callsFake(val => ({ data: val, filtered: [], personalized: false }));
-      sandbox.stub(feed, "fetchFromEndpoint").resolves({
+      jest.spyOn(feed.cache, "get").mockReturnValue(Promise.resolve(fakeCache));
+      jest.spyOn(feed, "rotate").mockImplementation(val => val);
+      jest.spyOn(feed, "scoreItemsInferred").mockImplementation(val => ({
+        data: val,
+        filtered: [],
+        personalized: false,
+      }));
+      jest.spyOn(feed, "fetchFromEndpoint").mockResolvedValue({
         recommendedAt: 0,
         surfaceId: "NEW_TAB_EN_US",
         data: [],
@@ -3370,18 +3408,20 @@ describe("DiscoveryStreamFeed", () => {
 
       const feedData = await feed.getComponentFeed("url");
       const [section] = feedData.data.sections;
-      assert.equal(section.allowAds, true);
-      assert.equal(section.followable, true);
+      expect(section.allowAds).toBe(true);
+      expect(section.followable).toBe(true);
     });
     it("should default allowAds and followable to true when null", async () => {
       setPref("discoverystream.sections.enabled", true);
       const fakeCache = {};
-      sandbox.stub(feed.cache, "get").returns(Promise.resolve(fakeCache));
-      sandbox.stub(feed, "rotate").callsFake(val => val);
-      sandbox
-        .stub(feed, "scoreItemsInferred")
-        .callsFake(val => ({ data: val, filtered: [], personalized: false }));
-      sandbox.stub(feed, "fetchFromEndpoint").resolves({
+      jest.spyOn(feed.cache, "get").mockReturnValue(Promise.resolve(fakeCache));
+      jest.spyOn(feed, "rotate").mockImplementation(val => val);
+      jest.spyOn(feed, "scoreItemsInferred").mockImplementation(val => ({
+        data: val,
+        filtered: [],
+        personalized: false,
+      }));
+      jest.spyOn(feed, "fetchFromEndpoint").mockResolvedValue({
         recommendedAt: 0,
         surfaceId: "NEW_TAB_EN_US",
         data: [],
@@ -3402,18 +3442,20 @@ describe("DiscoveryStreamFeed", () => {
 
       const feedData = await feed.getComponentFeed("url");
       const [section] = feedData.data.sections;
-      assert.equal(section.allowAds, true);
-      assert.equal(section.followable, true);
+      expect(section.allowAds).toBe(true);
+      expect(section.followable).toBe(true);
     });
     it("should include followable in interestPicker.sections", async () => {
       setPref("discoverystream.sections.enabled", true);
       const fakeCache = {};
-      sandbox.stub(feed.cache, "get").returns(Promise.resolve(fakeCache));
-      sandbox.stub(feed, "rotate").callsFake(val => val);
-      sandbox
-        .stub(feed, "scoreItemsInferred")
-        .callsFake(val => ({ data: val, filtered: [], personalized: false }));
-      sandbox.stub(feed, "fetchFromEndpoint").resolves({
+      jest.spyOn(feed.cache, "get").mockReturnValue(Promise.resolve(fakeCache));
+      jest.spyOn(feed, "rotate").mockImplementation(val => val);
+      jest.spyOn(feed, "scoreItemsInferred").mockImplementation(val => ({
+        data: val,
+        filtered: [],
+        personalized: false,
+      }));
+      jest.spyOn(feed, "fetchFromEndpoint").mockResolvedValue({
         recommendedAt: 0,
         surfaceId: "NEW_TAB_EN_US",
         data: [],
@@ -3436,9 +3478,9 @@ describe("DiscoveryStreamFeed", () => {
 
       const feedData = await feed.getComponentFeed("url");
       const [pickerSection] = feedData.data.interestPicker.sections;
-      assert.equal(pickerSection.sectionId, "section-1");
-      assert.equal(pickerSection.title, "Section 1");
-      assert.equal(pickerSection.followable, false);
+      expect(pickerSection.sectionId).toBe("section-1");
+      expect(pickerSection.title).toBe("Section 1");
+      expect(pickerSection.followable).toBe(false);
     });
 
     describe("section layouts", () => {
@@ -3466,7 +3508,7 @@ describe("DiscoveryStreamFeed", () => {
         );
 
       const setFeeds = (defs, extra = {}) =>
-        feed.fetchFromEndpoint.resolves({
+        feed.fetchFromEndpoint.mockResolvedValue({
           recommendedAt: 1755834072383,
           surfaceId: "NEW_TAB_EN_US",
           data: [],
@@ -3485,22 +3527,30 @@ describe("DiscoveryStreamFeed", () => {
         return feedData.data.sections.map(section => section.layout?.name);
       };
 
+      let restoreLayoutGlobals;
+
       beforeEach(() => {
         setPref("discoverystream.sections.enabled", true);
-        globals.set("SectionsLayoutManager", SectionsLayoutManager);
-        globals.set("maskLayoutAds", maskLayoutAds);
+        restoreLayoutGlobals = stubGlobals({
+          SectionsLayoutManager,
+          maskLayoutAds,
+        });
         dispatchLayouts(CONFIGS, {});
-        sandbox.stub(feed.cache, "get").returns(Promise.resolve({}));
-        sandbox.stub(feed, "rotate").callsFake(val => val);
-        sandbox.stub(feed, "fetchFromEndpoint");
+        jest.spyOn(feed.cache, "get").mockReturnValue(Promise.resolve({}));
+        jest.spyOn(feed, "rotate").mockImplementation(val => val);
+        jest.spyOn(feed, "fetchFromEndpoint").mockImplementation(() => {});
         setFeeds([
           { rank: 1, layout: { name: "original-layout" } },
           { rank: 2, layout: { name: "another-layout" } },
         ]);
       });
 
+      afterEach(() => {
+        restoreLayoutGlobals();
+      });
+
       it("keeps Merino layouts when nothing overrides them", async () => {
-        assert.deepEqual(await layoutNames(), [
+        expect(await layoutNames()).toEqual([
           "original-layout",
           "another-layout",
         ]);
@@ -3508,7 +3558,7 @@ describe("DiscoveryStreamFeed", () => {
 
       it("forces the default layout when clientLayout.enabled is true", async () => {
         setPref("discoverystream.sections.clientLayout.enabled", true);
-        assert.deepEqual(await layoutNames(), [
+        expect(await layoutNames()).toEqual([
           "7-double-row-2-ad",
           "6-small-medium-1-ad",
         ]);
@@ -3519,7 +3569,7 @@ describe("DiscoveryStreamFeed", () => {
           { rank: 1, layout: undefined },
           { rank: 2, layout: { name: "another-layout" } },
         ]);
-        assert.deepEqual(await layoutNames(), [
+        expect(await layoutNames()).toEqual([
           "7-double-row-2-ad",
           "6-small-medium-1-ad",
         ]);
@@ -3528,7 +3578,7 @@ describe("DiscoveryStreamFeed", () => {
       it("does not throw when there are no sections", async () => {
         setFeeds([]);
         const feedData = await feed.getComponentFeed("url");
-        assert.deepEqual(feedData.data.sections, []);
+        expect(feedData.data.sections).toEqual([]);
       });
 
       describe("RS sections ordering", () => {
@@ -3542,7 +3592,7 @@ describe("DiscoveryStreamFeed", () => {
 
         it("ignores the ordering when the key pref is unset", async () => {
           dispatchLayouts(CONFIGS, { "my-order": ["custom-a"] });
-          assert.deepEqual(await layoutNames(), [
+          expect(await layoutNames()).toEqual([
             "original-layout",
             "another-layout",
           ]);
@@ -3550,7 +3600,7 @@ describe("DiscoveryStreamFeed", () => {
 
         it("falls back to Merino when an ordering names an unknown layout", async () => {
           selectOrdering("my-order", ["does-not-exist"]);
-          assert.deepEqual(await layoutNames(), [
+          expect(await layoutNames()).toEqual([
             "original-layout",
             "another-layout",
           ]);
@@ -3559,7 +3609,7 @@ describe("DiscoveryStreamFeed", () => {
         it("falls back to Merino when the ordering key has no matching record", async () => {
           dispatchLayouts(CONFIGS, {});
           setPref("discoverystream.sections.ordering", "not-published-yet");
-          assert.deepEqual(await layoutNames(), [
+          expect(await layoutNames()).toEqual([
             "original-layout",
             "another-layout",
           ]);
@@ -3569,7 +3619,7 @@ describe("DiscoveryStreamFeed", () => {
           selectOrdering("my-order", ["custom-a", "custom-b"]);
           setPref("discoverystream.sections.clientLayout.enabled", true);
           setFeeds(withServerLayout([{ rank: 0 }, { rank: 1 }]));
-          assert.deepEqual(await layoutNames(), [
+          expect(await layoutNames()).toEqual([
             "7-double-row-2-ad",
             "6-small-medium-1-ad",
           ]);
@@ -3586,7 +3636,7 @@ describe("DiscoveryStreamFeed", () => {
               { rank: 6 },
             ])
           );
-          assert.deepEqual(await layoutNames(), [
+          expect(await layoutNames()).toEqual([
             "custom-a",
             "custom-b",
             "custom-c",
@@ -3605,7 +3655,7 @@ describe("DiscoveryStreamFeed", () => {
               { rank: 4 },
             ])
           );
-          assert.deepEqual(await layoutNames(), [
+          expect(await layoutNames()).toEqual([
             "custom-a",
             "6-small-medium-1-ad",
             "4-large-small-medium-1-ad",
@@ -3635,19 +3685,10 @@ describe("DiscoveryStreamFeed", () => {
           const hasAd = section =>
             section.layout.responsiveLayouts[0].tiles[0].hasAd;
           const [rank0, rank1, rank3, rank20] = feedData.data.sections;
-          assert.isTrue(
-            hasAd(rank0),
-            "ad kept for an allowed rank when allowAds is true"
-          );
-          assert.isFalse(hasAd(rank1), "ad cleared when allowAds is false");
-          assert.isFalse(
-            hasAd(rank3),
-            "ad cleared when the rank is not in the allowed set even though allowAds is true"
-          );
-          assert.isFalse(
-            hasAd(rank20),
-            "ad cleared when the rank is past the allowed set"
-          );
+          expect(hasAd(rank0)).toBe(true); // "ad kept for an allowed rank when allowAds is true";
+          expect(hasAd(rank1)).toBe(false); // "ad cleared when allowAds is false";
+          expect(hasAd(rank3)).toBe(false); // "ad cleared when the rank is not in the allowed set even though allowAds is true";
+          expect(hasAd(rank20)).toBe(false); // "ad cleared when the rank is past the allowed set";
         });
 
         it("lets a trainhopConfig override replace the default ad-rank set", async () => {
@@ -3677,28 +3718,21 @@ describe("DiscoveryStreamFeed", () => {
           const hasAd = section =>
             section.layout.responsiveLayouts[0].tiles[0].hasAd;
           const [rank0, rank3] = feedData.data.sections;
-          assert.isFalse(
-            hasAd(rank0),
-            "rank 0 masked — default-allowed but excluded by the override"
-          );
-          assert.isTrue(
-            hasAd(rank3),
-            "rank 3 kept — default-disallowed but included by the override"
-          );
+          expect(hasAd(rank0)).toBe(false); // "rank 0 masked — default-allowed but excluded by the override";
+          expect(hasAd(rank3)).toBe(true); // "rank 3 kept — default-disallowed but included by the override";
         });
       });
 
       it("resolves the ad-allowed ranks pref as comma-separated ranks", () => {
         setPref("discoverystream.sections.adAllowedRanks", "0, 2, 4");
-        assert.deepEqual([...feed.sectionsAdAllowedRanks], [0, 2, 4]);
+        expect([...feed.sectionsAdAllowedRanks]).toEqual([0, 2, 4]);
       });
 
       it("falls back to the default set when the pref is malformed", () => {
         setPref("discoverystream.sections.adAllowedRanks", "0, x, 2");
-        assert.deepEqual(
-          [...feed.sectionsAdAllowedRanks],
-          [...SectionsLayoutManager.AD_ALLOWED_RANKS]
-        );
+        expect([...feed.sectionsAdAllowedRanks]).toEqual([
+          ...SectionsLayoutManager.AD_ALLOWED_RANKS,
+        ]);
       });
     });
   });
@@ -3823,7 +3857,7 @@ describe("DiscoveryStreamFeed", () => {
 
       const placements = feed.getContextualAdsPlacements();
 
-      assert.deepEqual(placements, expected);
+      expect(placements).toEqual(expected);
     });
 
     it("should return SPOC placements AND banner placements when leaderboard is enabled", async () => {
@@ -3847,7 +3881,7 @@ describe("DiscoveryStreamFeed", () => {
 
       let placements = feed.getContextualAdsPlacements();
 
-      assert.deepEqual(placements, [
+      expect(placements).toEqual([
         ...expected,
         ...[
           {
@@ -3872,7 +3906,7 @@ describe("DiscoveryStreamFeed", () => {
 
       placements = feed.getContextualAdsPlacements();
 
-      assert.deepEqual(placements, [
+      expect(placements).toEqual([
         ...expected,
         ...[
           {
@@ -3908,7 +3942,7 @@ describe("DiscoveryStreamFeed", () => {
 
       let placements = feed.getContextualAdsPlacements();
 
-      assert.deepEqual(placements, [
+      expect(placements).toEqual([
         ...expected,
         ...[
           {
@@ -3932,7 +3966,7 @@ describe("DiscoveryStreamFeed", () => {
 
       placements = feed.getContextualAdsPlacements();
 
-      assert.deepEqual(placements, [
+      expect(placements).toEqual([
         ...expected,
         ...[
           {
