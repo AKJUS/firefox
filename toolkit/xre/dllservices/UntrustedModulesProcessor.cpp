@@ -718,6 +718,10 @@ RefPtr<ModuleRecord> UntrustedModulesProcessor::GetModuleRecord(
     const glue::EnhancedModuleLoadInfo& aModuleLoadInfo) {
   MOZ_ASSERT(!XRE_IsParentProcess());
 
+  // aModules is keyed by the path the parent derived with GetMappedFileNameW,
+  // while mSectionName comes from NtQueryVirtualMemory(..., MemorySectionName).
+  // Both name the same section's backing file in NT device form; if they ever
+  // diverged, every lookup here would miss and every module would look trusted.
   return aModules.Get(aModuleLoadInfo.mNtLoadInfo.mSectionName.AsString());
 }
 
@@ -971,6 +975,7 @@ UntrustedModulesProcessor::ProcessModuleLoadQueueChildProcess(
 
   nsTHashtable<nsStringCaseInsensitiveHashKey> alreadyAdded;
   ModuleIdentifiers moduleIdents;
+  uint32_t unverifiableLoads = 0;
 
   // Build the set of modules to be processed by the parent.
   for (UnprocessedModuleLoadInfoContainer* container : loadsToProcess) {
@@ -983,6 +988,9 @@ UntrustedModulesProcessor::ProcessModuleLoadQueueChildProcess(
 
     if (!entry.mNtLoadInfo.mSectionHandle) {
       // No section handle, so nothing the parent can verify.
+      if (entry.mNtLoadInfo.mSectionHandleUnavailable) {
+        ++unverifiableLoads;
+      }
       continue;
     }
 
@@ -993,6 +1001,9 @@ UntrustedModulesProcessor::ProcessModuleLoadQueueChildProcess(
 
     ipc::FileDescriptor section(entry.mNtLoadInfo.mSectionHandle.get());
     if (!section.IsValid()) {
+      // We had a handle but could not wrap it for IPC, which is the same kind
+      // of anomaly as failing to duplicate it.
+      ++unverifiableLoads;
       continue;
     }
 
@@ -1003,6 +1014,8 @@ UntrustedModulesProcessor::ProcessModuleLoadQueueChildProcess(
     return GetModulesTrustPromise::CreateAndReject(
         NS_ERROR_ILLEGAL_DURING_SHUTDOWN, __func__);
   }
+
+  mProcessedModuleLoads.mUnverifiableLoads += unverifiableLoads;
 
   if (moduleIdents.IsEmpty()) {
     // Nothing to process
@@ -1068,9 +1081,11 @@ void UntrustedModulesProcessor::CompleteProcessing(
   ModulesMap& modules = aModulesAndLoads.mModMapResult.ref().mModules;
   const uint32_t& trustTestFailures =
       aModulesAndLoads.mModMapResult.ref().mTrustTestFailures;
+  const uint32_t& rejectedSections =
+      aModulesAndLoads.mModMapResult.ref().mRejectedSections;
   UnprocessedModuleLoads& loads = aModulesAndLoads.mLoads;
 
-  if (modules.IsEmpty() && !trustTestFailures) {
+  if (modules.IsEmpty() && !trustTestFailures && !rejectedSections) {
     // No data, nothing to save.
     return;
   }
@@ -1143,7 +1158,7 @@ void UntrustedModulesProcessor::CompleteProcessing(
   }
 
   if (processedStacks.empty() && processedEvents.isEmpty() &&
-      !sanitizationFailures && !trustTestFailures) {
+      !sanitizationFailures && !trustTestFailures && !rejectedSections) {
     // Nothing to save
     return;
   }
@@ -1161,6 +1176,7 @@ void UntrustedModulesProcessor::CompleteProcessing(
 
   mProcessedModuleLoads.mSanitizationFailures += sanitizationFailures;
   mProcessedModuleLoads.mTrustTestFailures += trustTestFailures;
+  mProcessedModuleLoads.mRejectedSections += rejectedSections;
 }
 
 // The thread priority of this job should match the priority that the child
@@ -1195,6 +1211,7 @@ RefPtr<ModulesTrustPromise> UntrustedModulesProcessor::GetModulesTrustInternal(
 
   ModulesMap& modMap = result.mModules;
   uint32_t& trustTestFailures = result.mTrustTestFailures;
+  uint32_t& rejectedSections = result.mRejectedSections;
 
   ModuleEvaluator modEval;
   MOZ_ASSERT(!!modEval);
@@ -1212,6 +1229,7 @@ RefPtr<ModulesTrustPromise> UntrustedModulesProcessor::GetModulesTrustInternal(
     nsAutoString resolvedNtPath;
     if (!ValidateAndResolveModuleSection(section, resolvedNtPath) ||
         resolvedNtPath.IsEmpty()) {
+      ++rejectedSections;
       continue;
     }
 
