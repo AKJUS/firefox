@@ -554,14 +554,7 @@ export var TelemetryEnvironmentTesting = {
   },
 
   checkSystemSection(data, assertProcessData) {
-    const EXPECTED_FIELDS = [
-      "memoryMB",
-      "cpu",
-      "os",
-      "hdd",
-      "gfx",
-      "appleModelId",
-    ];
+    const EXPECTED_FIELDS = ["memoryMB", "cpu", "os", "hdd", "gfx"];
 
     lazy.Assert.ok(
       "system" in data,
@@ -609,51 +602,8 @@ export var TelemetryEnvironmentTesting = {
             "isWow64 must be available on Windows and have the correct type."
           );
           lazy.Assert.equal(
-            typeof data.system.isWowARM64,
-            "boolean",
-            "isWowARM64 must be available on Windows and have the correct type."
-          );
-          lazy.Assert.equal(
-            typeof data.system.hasWinPackageId,
-            "boolean",
-            "hasWinPackageId must be available on Windows and have the correct type."
-          );
-          // This is only sent for Mozilla produced MSIX packages
-          lazy.Assert.ok(
-            !("winPackageFamilyName" in data.system) ||
-              data.system.winPackageFamilyName === null ||
-              typeof data.system.winPackageFamilyName === "string",
-            "winPackageFamilyName must be a string if non null"
-          );
-          lazy.Assert.ok(
-            "virtualMaxMB" in data.system,
-            "virtualMaxMB must be available."
-          );
-          lazy.Assert.ok(
-            Number.isFinite(data.system.virtualMaxMB),
-            "virtualMaxMB must be a number."
-          );
-          lazy.Assert.equal(
             data.system.isWow64,
             Glean.system.isWow64.testGetValue()
-          );
-          lazy.Assert.equal(
-            data.system.isWowARM64,
-            Glean.system.isWowArm64.testGetValue()
-          );
-          lazy.Assert.equal(
-            data.system.hasWinPackageId,
-            Glean.system.hasWinPackageId.testGetValue()
-          );
-          if (data.system.winPackageFamilyName) {
-            lazy.Assert.equal(
-              data.system.winPackageFamilyName,
-              Glean.system.winPackageFamilyName.testGetValue()
-            );
-          }
-          lazy.Assert.equal(
-            data.system.virtualMaxMB,
-            Glean.system.virtualMemory.testGetValue()
           );
 
           for (let f of [
@@ -778,13 +728,8 @@ export var TelemetryEnvironmentTesting = {
     this.checkGfx(data.system.gfx);
 
     if (gIsMac) {
-      lazy.Assert.ok(this.checkString(data.system.appleModelId));
-      lazy.Assert.equal(
-        data.system.appleModelId,
-        Glean.system.appleModelId.testGetValue()
-      );
+      lazy.Assert.ok(!!Glean.system.appleModelId.testGetValue());
     } else {
-      lazy.Assert.ok(this.checkNullOrString(data.system.appleModelId));
       lazy.Assert.equal(null, Glean.system.appleModelId.testGetValue());
     }
 

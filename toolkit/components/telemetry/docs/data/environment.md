@@ -77,11 +77,7 @@ Structure:
   },
   system: {
     memoryMB: <number>,
-    virtualMaxMB: <number>, // windows-only
     isWow64: <bool>, // windows-only
-    isWowARM64: <bool>, // windows-only
-    hasWinPackageId: <bool>, // windows-only
-    winPackageFamilyName: <string>, // windows-only
     cpu: {
         count: <number>,  // desktop only, e.g. 8, or null on failure - logical cpus
         cores: <number>, // desktop only, e.g., 4, or null on failure - physical cores
@@ -205,7 +201,6 @@ Structure:
           }
         },
       },
-    appleModelId: <string>, // Mac only or null on failure
     sec: { // This feature is Windows only
       antivirus: [ <string>, ... ],    // null if unavailable on platform: Product name(s) of registered antivirus programs
       antispyware: [ <string>, ... ],  // null if unavailable on platform: Product name(s) of registered antispyware programs

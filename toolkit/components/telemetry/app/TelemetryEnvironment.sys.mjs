@@ -80,7 +80,7 @@ export var Policy = {
 var gActiveExperimentStartupBuffer = new Map();
 
 // For Powering arewegleanyet.com (See bug 1944592)
-// Legacy Count: 94
+// Legacy Count: 89
 // Glean Count: 113
 
 var gGlobalEnvironment;
@@ -699,11 +699,10 @@ EnvironmentCache.prototype = {
       this._currentEnvironment.system.hdd = this._getHDDData();
 
       // Windows only values stored in processData
-      this._currentEnvironment.system.isWow64 = this._getProcessData().isWow64;
-      this._currentEnvironment.system.isWowARM64 =
-        this._getProcessData().isWowARM64;
-      Glean.system.isWow64.set(this._currentEnvironment.system.isWow64);
-      Glean.system.isWowArm64.set(this._currentEnvironment.system.isWowARM64);
+      const processData = this._getProcessData();
+      this._currentEnvironment.system.isWow64 = processData.isWow64;
+      Glean.system.isWow64.set(processData.isWow64);
+      Glean.system.isWowArm64.set(processData.isWowARM64);
     }
 
     if (!this._initTask) {
@@ -1799,17 +1798,15 @@ EnvironmentCache.prototype = {
 
     let data = {
       memoryMB,
-      virtualMaxMB: virtualMB,
       cpu: this._getCPUData(),
       os: this._getOSData(),
       hdd: this._getHDDData(),
       gfx: this._getGFXData(),
-      appleModelId: getSysinfoProperty("appleModelId", null),
-      hasWinPackageId: getSysinfoProperty("hasWinPackageId", null),
     };
-    Glean.system.appleModelId.set(data.appleModelId);
-    if (data.hasWinPackageId !== null) {
-      Glean.system.hasWinPackageId.set(data.hasWinPackageId);
+    Glean.system.appleModelId.set(getSysinfoProperty("appleModelId", null));
+    const hasWinPackageId = getSysinfoProperty("hasWinPackageId", null);
+    if (hasWinPackageId !== null) {
+      Glean.system.hasWinPackageId.set(hasWinPackageId);
     }
 
     if (AppConstants.platform === "win") {
@@ -1819,12 +1816,12 @@ EnvironmentCache.prototype = {
         winPackageFamilyName.startsWith("Mozilla.") ||
         winPackageFamilyName.startsWith("MozillaCorporation.")
       ) {
-        data = { winPackageFamilyName, ...data };
         Glean.system.winPackageFamilyName.set(winPackageFamilyName);
       }
-      data = { ...this._getProcessData(), ...data };
-      Glean.system.isWow64.set(data.isWow64);
-      Glean.system.isWowArm64.set(data.isWowARM64);
+      const processData = this._getProcessData();
+      data.isWow64 = processData.isWow64;
+      Glean.system.isWow64.set(processData.isWow64);
+      Glean.system.isWowArm64.set(processData.isWowARM64);
       data.sec = this._getSecurityAppData();
     }
 
