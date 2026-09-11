@@ -100,11 +100,6 @@ class Promise : public SupportsWeakPtr, public JSHolderBase {
 
   void MaybeResolveWithUndefined();
 
-  template <typename T>
-  void MaybeSafeResolve(T&& aArg) {
-    MaybeSomething(std::forward<T>(aArg), &Promise::MaybeSafeResolve);
-  }
-
   void MaybeReject(JS::Handle<JS::Value> aValue) {
     MaybeSomething(aValue, &Promise::MaybeReject);
   }
@@ -466,8 +461,6 @@ class Promise : public SupportsWeakPtr, public JSHolderBase {
  private:
   void MaybeResolve(JSContext* aCx, JS::Handle<JS::Value> aValue);
   void MaybeReject(JSContext* aCx, JS::Handle<JS::Value> aValue);
-
-  void MaybeSafeResolve(JSContext* aCx, JS::Handle<JS::Value> aValue);
 
   template <typename T>
   void MaybeSomething(T&& aArgument, MaybeFunc aFunc) {

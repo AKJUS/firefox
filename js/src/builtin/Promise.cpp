@@ -1113,10 +1113,12 @@ class ThenableJob : public MicroTaskEntry {
   enum TargetFunction : int32_t {
     PromiseResolveThenableJob,
     PromiseResolveBuiltinThenableJob,
+#ifdef NIGHTLY_BUILD
     // Job used by SafePromiseResolve (JS::SafeResolve): runs
     // PerformPromiseResolution on `promise` with the resolution value stored
     // in the Thenable slot. The Then slot is unused for this target.
     DeferredResolveJob,
+#endif  // NIGHTLY_BUILD
   };
 
   Value thenable() const { return getFixedSlot(Slots::Thenable); }
@@ -2986,6 +2988,7 @@ static bool PromiseResolveBuiltinThenableJob(JSContext* cx,
   return EnqueueJob(cx, thenableJob);
 }
 
+#ifdef NIGHTLY_BUILD
 /**
  * Thenable-curtailment: https://tc39.es/proposal-thenable-curtailment/
  *
@@ -3163,6 +3166,7 @@ bool js::SafeResolvePromise(JSContext* cx, Handle<PromiseObject*> promise,
 
   return EnqueueDeferredResolveJob(cx, promise, resolution);
 }
+#endif  // NIGHTLY_BUILD
 
 [[nodiscard]] static bool AddDummyPromiseReactionForDebugger(
     JSContext* cx, Handle<PromiseObject*> promise,
@@ -8374,6 +8378,7 @@ JS_PUBLIC_API bool JS::RunJSMicroTask(JSContext* cx,
                                               &job->thenable().toObject());
         return PromiseResolveBuiltinThenableJob(cx, promise, thenableObj);
       }
+#ifdef NIGHTLY_BUILD
       case ThenableJob::DeferredResolveJob: {
         MOZ_ASSERT(promise->is<PromiseObject>());
         Rooted<PromiseObject*> promiseRooted(cx, &promise->as<PromiseObject>());
@@ -8382,6 +8387,7 @@ JS_PUBLIC_API bool JS::RunJSMicroTask(JSContext* cx,
         }
         return PerformPromiseResolution(cx, promiseRooted, thenable);
       }
+#endif  // NIGHTLY_BUILD
     }
     MOZ_CRASH("Corrupted Target Function");
     return false;

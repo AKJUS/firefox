@@ -110,7 +110,7 @@ struct Read_ReadIntoRequest final : public ReadIntoRequest {
     result.mValue = aChunk;
     result.mDone.Construct(false);
 
-    mPromise->MaybeSafeResolve(result);
+    mPromise->MaybeResolve(result);
   }
 
   void CloseSteps(JSContext* aCx, JS::Handle<JS::Value> aChunk,
@@ -134,7 +134,7 @@ struct Read_ReadIntoRequest final : public ReadIntoRequest {
     }
     result.mDone.Construct(true);
 
-    mPromise->MaybeSafeResolve(result);
+    mPromise->MaybeResolve(result);
   }
 
   void ErrorSteps(JSContext* aCx, JS::Handle<JS::Value> e,

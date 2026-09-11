@@ -698,7 +698,7 @@ already_AddRefed<TransformStream> TransformStream::Constructor(
       return nullptr;
     }
 
-    startPromise->MaybeSafeResolve(retVal);
+    startPromise->MaybeResolve(retVal);
   } else {
     // Step 13. Otherwise, resolve startPromise with undefined.
     startPromise->MaybeResolveWithUndefined();

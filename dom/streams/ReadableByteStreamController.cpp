@@ -2183,7 +2183,7 @@ void SetUpReadableByteStreamController(
   // Let startPromise be a promise resolved with startResult.
   RefPtr<Promise> startPromise =
       Promise::CreateInfallible(aStream->GetParentObject());
-  startPromise->MaybeSafeResolve(startResult);
+  startPromise->MaybeResolve(startResult);
 
   // Step 16+17
   startPromise->AddCallbacksWithCycleCollectedArgs(
