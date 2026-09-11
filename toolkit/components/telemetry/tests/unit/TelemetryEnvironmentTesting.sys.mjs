@@ -667,43 +667,6 @@ export var TelemetryEnvironmentTesting = {
     } else {
       lazy.Assert.equal(null, Glean.system.appleModelId.testGetValue());
     }
-
-    // This feature is only available on Windows
-    if (AppConstants.platform == "win") {
-      lazy.Assert.ok(
-        "sec" in data.system,
-        "sec must be available under data.system"
-      );
-
-      let SEC_FIELDS = ["antivirus", "antispyware", "firewall"];
-      for (let f of SEC_FIELDS) {
-        let products = Glean.windowsSecurity[f].testGetValue();
-        lazy.Assert.ok(
-          f in data.system.sec,
-          f + " must be available under data.system.sec"
-        );
-
-        let value = data.system.sec[f];
-        // value is null on Windows Server
-        lazy.Assert.ok(
-          value === null || Array.isArray(value),
-          f + " must be either null or an array"
-        );
-        if (Array.isArray(value)) {
-          for (let product of value) {
-            // It is posssible that this will fail if either the Legacy or
-            // Glean string limits are hit. If the Glean string_list limits are
-            // hit, `testGetValue` above will throw, though.
-            lazy.Assert.ok(products.includes(product), `${f} data must match.`);
-            lazy.Assert.equal(
-              typeof product,
-              "string",
-              "Each element of " + f + " must be a string"
-            );
-          }
-        }
-      }
-    }
   },
 
   checkGfx(gfxData) {

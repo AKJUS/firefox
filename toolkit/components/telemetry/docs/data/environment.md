@@ -171,11 +171,6 @@ Structure:
           }
         },
       },
-    sec: { // This feature is Windows only
-      antivirus: [ <string>, ... ],    // null if unavailable on platform: Product name(s) of registered antivirus programs
-      antispyware: [ <string>, ... ],  // null if unavailable on platform: Product name(s) of registered antispyware programs
-      firewall: [ <string>, ... ],     // null if unavailable on platform: Product name(s) of registered firewall programs
-    },
   },
   experiments: {
     "<experiment id>": { branch: "<branch>", type: "<type>", enrollmentId: "<id>" },

@@ -80,7 +80,7 @@ export var Policy = {
 var gActiveExperimentStartupBuffer = new Map();
 
 // For Powering arewegleanyet.com (See bug 1944592)
-// Legacy Count: 68
+// Legacy Count: 65
 // Glean Count: 113
 
 var gGlobalEnvironment;
@@ -1658,32 +1658,21 @@ EnvironmentCache.prototype = {
   },
 
   /**
-   * Get registered security product information.
-   *
-   * @return Object containing the security product data
+   * Record registered security product information.
    */
-  _getSecurityAppData() {
-    const maxStringLength = 256;
-
+  _recordSecurityAppData() {
     const keys = [
       ["registeredAntiVirus", "antivirus"],
       ["registeredAntiSpyware", "antispyware"],
       ["registeredFirewall", "firewall"],
     ];
 
-    let result = {};
-
     for (let [inKey, outKey] of keys) {
       let prop = getSysinfoProperty(inKey, null);
       if (prop) {
         Glean.windowsSecurity[outKey].set(prop.split(";"));
-        prop = limitStringToLength(prop, maxStringLength).split(";");
       }
-
-      result[outKey] = prop;
     }
-
-    return result;
   },
 
   /**
@@ -1820,7 +1809,7 @@ EnvironmentCache.prototype = {
       data.isWow64 = processData.isWow64;
       Glean.system.isWow64.set(processData.isWow64);
       Glean.system.isWowArm64.set(processData.isWowARM64);
-      data.sec = this._getSecurityAppData();
+      this._recordSecurityAppData();
     }
 
     return data;
