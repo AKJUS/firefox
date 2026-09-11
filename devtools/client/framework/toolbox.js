@@ -1158,6 +1158,10 @@ class Toolbox extends EventEmitter {
         await lazy.LocalModeMappings.setup(this);
       }
 
+      // The requestIdleCallback in this method may not have run yet, and
+      // consumers expect a usable toolbar once the toolbox is open.
+      this.component?.setCanRender();
+
       this.emit("ready");
       this.#resolveIsOpen();
     } catch (exception) {
