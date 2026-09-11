@@ -98,6 +98,14 @@ var EditContextMenu = {
   _itemSets: [],
 
   /**
+   * The input the menu was last opened on, for consumers that need to tell
+   * their own input's items and commands from another's.
+   *
+   * @type {Element}
+   */
+  input: null,
+
+  /**
    * The menu, built on first access.
    *
    * @type {Element}
@@ -162,9 +170,14 @@ var EditContextMenu = {
    *   The input or textarea to open the menu for.
    * @param {MouseEvent} event
    *   The contextmenu event that asked for the menu.
+   * @param {object} [options]
+   * @param {Element} [options.anchor]
+   *   Anchors the menu below this element instead of opening it at the event's
+   *   screen position, for an event that carries no useful position.
    */
-  open(input, event) {
+  open(input, event, { anchor } = {}) {
     let popup = this._ensurePopup();
+    this.input = input;
 
     // Commands are enabled for whatever has focus, so the items would otherwise
     // reflect a different element than the one the menu was opened on.
@@ -183,7 +196,11 @@ var EditContextMenu = {
       }
     }
 
-    popup.openPopupAtScreen(event.screenX, event.screenY, true, event);
+    if (anchor) {
+      popup.openPopup(anchor, "after_start", 0, 0, true, false, event);
+    } else {
+      popup.openPopupAtScreen(event.screenX, event.screenY, true, event);
+    }
   },
 
   _ensurePopup() {
