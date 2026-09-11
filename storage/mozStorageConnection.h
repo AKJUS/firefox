@@ -475,8 +475,6 @@ class Connection final : public mozIStorageConnection,
 
   nsresult synchronousClose();
 
-  void RecordSlowStatement(sqlite3_stmt* aStatement, TimeDuration aDuration);
-
   /**
    * Stores the flags we passed to sqlite3_open_v2.
    */
