@@ -124,8 +124,8 @@ void nsWindowWayland::GetWorkspaceID(nsAString& workspaceID) {
   }
   workspaceID = NS_ConvertUTF8toUTF16(mWorkspaceID);
 
-  LOG("nsWindowWayland::GetWorkspaceID() ID %s token %p",
-      mWorkspaceID.get(), mSessionRestoreToken);
+  LOG("nsWindowWayland::GetWorkspaceID() ID %s token %p", mWorkspaceID.get(),
+      mSessionRestoreToken);
 
   if (mSessionRestoreToken) {
     return;
@@ -162,8 +162,7 @@ void nsWindowWayland::MoveToWorkspace(const nsAString& workspaceIDStr) {
   mWorkspaceID = NS_ConvertUTF16toUTF8(workspaceIDStr);
   LOG("nsWindowWayland::MoveToWorkspace() session ID %s "
       "mWaitingToSessionRestore %d mNeedsShow %d",
-      mWorkspaceID.get(), mWaitingToSessionRestore,
-      mNeedsShow);
+      mWorkspaceID.get(), mWaitingToSessionRestore, mNeedsShow);
   if (!mWaitingToSessionRestore) {
     return;
   }
