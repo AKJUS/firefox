@@ -30,9 +30,38 @@ export CXX=clang++
 # Extra setup per platform
 case ${target_platform} in
     Darwin)
-        # Use taskcluster clang instead of host compiler on OSX
+        case $target_arch in
+            arm64)
+                target_triple=aarch64-apple-darwin
+                macosx_deployment_target=11.0
+                ;;
+            x86_64)
+                target_triple=x86_64-apple-darwin
+                macosx_deployment_target=10.15
+                ;;
+            *)
+                echo "ERROR: unsupported Darwin architecture $target_arch" >&2
+                exit 1
+                ;;
+        esac
         osx_sysroot=`cd ${MOZ_FETCHES_DIR}/MacOSX*.sdk; pwd`
-        extra_args=(--cmake_extra_defines CMAKE_OSX_SYSROOT=${osx_sysroot} --osx_arch $target_arch)
+        # cmake probes the mac-only sw_vers; the version it sees doesn't matter.
+        mkdir -p "$PWD/fakebin"
+        printf '#!/bin/sh\necho 10.15\n' > "$PWD/fakebin/sw_vers"
+        chmod +x "$PWD/fakebin/sw_vers"
+        export PATH="$PATH:$PWD/fakebin"
+        extra_args=(--cmake_extra_defines
+            CMAKE_SYSTEM_NAME=Darwin
+            CMAKE_SYSTEM_PROCESSOR=$target_arch
+            CMAKE_OSX_ARCHITECTURES=$target_arch
+            CMAKE_OSX_SYSROOT=${osx_sysroot}
+            CMAKE_OSX_DEPLOYMENT_TARGET=$macosx_deployment_target
+            CMAKE_C_COMPILER_TARGET=$target_triple
+            CMAKE_CXX_COMPILER_TARGET=$target_triple
+            CMAKE_ASM_COMPILER_TARGET=$target_triple
+            CMAKE_AR=${MOZ_FETCHES_DIR}/clang/bin/llvm-ar
+            CMAKE_RANLIB=${MOZ_FETCHES_DIR}/clang/bin/llvm-ranlib)
+        TARGET_FLAGS="-fuse-ld=lld -Wno-unused-command-line-argument"
         prefix=lib
         extension=dylib
         HARDENING_FLAGS="-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2 -fstack-protector-strong"
@@ -148,8 +177,8 @@ python3 tools/ci_build/build.py \
     --cmake_extra_defines PYTHON_EXECUTABLE=$(which python3)\
     --cmake_extra_defines ONNX_USE_LITE_PROTO=ON\
     --disable_exceptions \
-    --cmake_extra_defines CMAKE_C_FLAGS_INIT="$HARDENING_FLAGS"\
-    --cmake_extra_defines CMAKE_CXX_FLAGS_INIT="$HARDENING_FLAGS $EXTRA_CXX_FLAGS"\
+    --cmake_extra_defines CMAKE_C_FLAGS_INIT="$HARDENING_FLAGS $TARGET_FLAGS"\
+    --cmake_extra_defines CMAKE_CXX_FLAGS_INIT="$HARDENING_FLAGS $TARGET_FLAGS $EXTRA_CXX_FLAGS"\
     "${extra_args[@]}"
 
 ###

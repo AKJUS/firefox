@@ -83,7 +83,6 @@ onnxruntime-i686-windows-msvc:
 
 onnxruntime-x86_64-apple-darwin:
     description: "ONNX Runtime (macOS x64)"
-    worker-type: b-osx-1015
     treeherder:
         symbol: TM(onnx)
     run:
@@ -93,16 +92,12 @@ onnxruntime-x86_64-apple-darwin:
         toolchain-artifact: public/build/onnxruntime-x86_64-apple-darwin.tar.zst
     fetches:
         toolchain:
-            - macosx64-clang-toolchain
+            - linux64-clang-toolchain
             - macosx64-sdk-toolchain
-        fetch:
-            - macosx64-cmake
-            - macosx64-ninja
 
 
 onnxruntime-aarch64-apple-darwin:
     description: "ONNX Runtime (macOS aarch64)"
-    worker-type: b-osx-1015
     treeherder:
         symbol: TMA64(onnx)
     run:
@@ -112,11 +107,8 @@ onnxruntime-aarch64-apple-darwin:
         toolchain-artifact: public/build/onnxruntime-aarch64-apple-darwin.tar.zst
     fetches:
         toolchain:
-            - macosx64-clang-toolchain
+            - linux64-clang-toolchain
             - macosx64-sdk-toolchain
-        fetch:
-            - macosx64-cmake
-            - macosx64-ninja
 
 
 onnxruntime-arm-linux-androideabi:
