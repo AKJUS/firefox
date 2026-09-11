@@ -442,12 +442,6 @@ module.exports = function (config) {
               functions: 9,
               branches: 0,
             },
-            "lib/DownloadsManager.sys.mjs": {
-              statements: 100,
-              lines: 100,
-              functions: 100,
-              branches: 78,
-            },
             /**
              * PlacesFeed.sys.mjs is tested via an xpcshell test
              */

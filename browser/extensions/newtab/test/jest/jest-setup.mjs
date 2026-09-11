@@ -10,6 +10,21 @@ globalThis.requestIdleCallback = cb => {
 };
 globalThis.cancelIdleCallback = () => {};
 
+// lib/*.sys.mjs modules call ChromeUtils.defineESModuleGetters at import time,
+// which is before any beforeEach can install globals, so the shim has to live
+// here. Each lazily imported name resolves to the same-named global, which
+// tests replace with stubGlobals() from test-utils.
+globalThis.ChromeUtils = {
+  defineESModuleGetters(target, modules) {
+    for (const name of Object.keys(modules)) {
+      Object.defineProperty(target, name, {
+        configurable: true,
+        get: () => globalThis[name],
+      });
+    }
+  },
+};
+
 globalThis.IntersectionObserver = class {
   observe() {}
   unobserve() {}
