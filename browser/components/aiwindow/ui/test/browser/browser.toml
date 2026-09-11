@@ -11,6 +11,7 @@ support-files = [
   "head_smartformfill_autocomplete.js",
   "head_history_thumbnails.js",
   "head_smartformfill_form_review.js",
+  "head_smartformfill_telemetry.js",
   "test_agent_monitor_item_page.html",
   "test_agent_monitor_item.mjs",
   "test_ai_action_result_page.html",
@@ -379,7 +380,11 @@ skip-if = [
 
 ["browser_smartwindow_smartformfill_metadata_lifecycle.js"]
 
-["browser_smartwindow_smartformfill_telemetry.js"]
+["browser_smartwindow_smartformfill_telemetry_generation.js"]
+
+["browser_smartwindow_smartformfill_telemetry_metadata.js"]
+
+["browser_smartwindow_smartformfill_telemetry_outcomes.js"]
 
 ["browser_smartwindow_switcher_telemetry.js"]
 
