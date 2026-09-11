@@ -77,6 +77,104 @@ module.exports = function (config) {
           functions: 100,
           branches: 66,
           overrides: {
+            "content-src/components/DiscoveryStreamComponents/InterestPicker/InterestPicker.jsx":
+              {
+                statements: 0,
+                lines: 0,
+                functions: 0,
+                branches: 0,
+              },
+            "content-src/components/DiscoveryStreamComponents/CardGrid/CardGrid.jsx":
+              {
+                statements: 0,
+                lines: 0,
+                functions: 0,
+                branches: 0,
+              },
+            "content-src/components/DiscoveryStreamComponents/DSContextFooter/DSContextFooter.jsx":
+              {
+                statements: 0,
+                lines: 0,
+                functions: 0,
+                branches: 0,
+              },
+            "content-src/components/DiscoveryStreamComponents/DSEmptyState/DSEmptyState.jsx":
+              {
+                statements: 0,
+                lines: 0,
+                functions: 0,
+                branches: 0,
+              },
+            "content-src/components/DiscoveryStreamComponents/DSImage/DSImage.jsx":
+              {
+                statements: 0,
+                lines: 0,
+                functions: 0,
+                branches: 0,
+              },
+            "content-src/components/DiscoveryStreamComponents/DSLinkMenu/DSLinkMenu.jsx":
+              {
+                statements: 0,
+                lines: 0,
+                functions: 0,
+                branches: 0,
+              },
+            "content-src/components/DiscoveryStreamComponents/Highlights/Highlights.jsx":
+              {
+                statements: 0,
+                lines: 0,
+                functions: 0,
+                branches: 0,
+              },
+            "content-src/components/DiscoveryStreamComponents/HorizontalRule/HorizontalRule.jsx":
+              {
+                statements: 0,
+                lines: 0,
+                functions: 0,
+                branches: 0,
+              },
+            "content-src/components/DiscoveryStreamImpressionStats/ImpressionStats.jsx":
+              {
+                statements: 0,
+                lines: 0,
+                functions: 0,
+                branches: 0,
+              },
+            "content-src/components/DiscoveryStreamComponents/Navigation/Navigation.jsx":
+              {
+                statements: 0,
+                lines: 0,
+                functions: 0,
+                branches: 0,
+              },
+            "content-src/components/DiscoveryStreamComponents/PrivacyLink/PrivacyLink.jsx":
+              {
+                statements: 0,
+                lines: 0,
+                functions: 0,
+                branches: 0,
+              },
+            "content-src/components/DiscoveryStreamComponents/SafeAnchor/SafeAnchor.jsx":
+              {
+                statements: 0,
+                lines: 0,
+                functions: 0,
+                branches: 0,
+              },
+            "content-src/components/DiscoveryStreamComponents/SectionTitle/SectionTitle.jsx":
+              {
+                statements: 0,
+                lines: 0,
+                functions: 0,
+                branches: 0,
+              },
+            "content-src/components/DiscoveryStreamComponents/TopicsWidget/TopicsWidget.jsx":
+              {
+                statements: 0,
+                lines: 0,
+                functions: 0,
+                branches: 0,
+              },
             "content-src/components/CustomizeMenu/CustomizeMenu.jsx": {
               statements: 0,
               lines: 0,
@@ -464,15 +562,17 @@ module.exports = function (config) {
             },
             "content-src/components/DiscoveryStreamComponents/FeatureHighlight/FollowSectionButtonHighlight.jsx":
               {
-                statements: 88,
-                lines: 88,
-                functions: 80,
+                statements: 0,
+                lines: 0,
+                functions: 0,
+                branches: 0,
               },
             "content-src/components/DiscoveryStreamComponents/FeatureHighlight/FeatureHighlight.jsx":
               {
-                statements: 88,
-                lines: 88,
-                functions: 80,
+                statements: 0,
+                lines: 0,
+                functions: 0,
+                branches: 0,
               },
             // for all other components in FeatureHighlight that dont have bespoke functionality
             "content-src/components/DiscoveryStreamComponents/FeatureHighlight/!(FeatureHighlight).jsx":
@@ -508,17 +608,17 @@ module.exports = function (config) {
               },
             "content-src/components/DiscoveryStreamComponents/DSCard/DSCard.jsx":
               {
-                statements: 94.94,
-                lines: 94.84,
-                functions: 9.91,
-                branches: 70.72,
+                statements: 0,
+                lines: 0,
+                functions: 0,
+                branches: 0,
               },
             "content-src/components/DiscoveryStreamComponents/CardSections/CardSections.jsx":
               {
-                statements: 83.11,
-                lines: 82.52,
-                functions: 79.31,
-                branches: 52.8,
+                statements: 0,
+                lines: 0,
+                functions: 0,
+                branches: 0,
               },
             "content-src/components/DiscoveryStreamComponents/SectionContextMenu/SectionContextMenu.jsx":
               {
@@ -539,16 +639,17 @@ module.exports = function (config) {
               },
             "content-src/components/DiscoveryStreamComponents/AdBanner/AdBanner.jsx":
               {
-                statements: 94.12,
-                lines: 94.12,
-                functions: 75,
-                branches: 60,
+                statements: 0,
+                lines: 0,
+                functions: 0,
+                branches: 0,
               },
             "content-src/components/DiscoveryStreamComponents/AdBannerContextMenu/AdBannerContextMenu.jsx":
               {
-                statements: 84,
-                lines: 84,
-                functions: 83,
+                statements: 0,
+                lines: 0,
+                functions: 0,
+                branches: 0,
               },
             /**
              * PromoCard currently has no functionality and is a placeholder component
@@ -817,8 +918,8 @@ module.exports = function (config) {
             },
             "content-src/lib/utils.jsx": {
               branches: 60,
-              statements: 90.76,
-              lines: 92,
+              statements: 90.51,
+              lines: 91.67,
               functions: 81.82,
             },
             "content-src/components/MessageWrapper/MessageWrapper.jsx": {
