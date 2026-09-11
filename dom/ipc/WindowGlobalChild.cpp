@@ -6,6 +6,7 @@
 
 #include "GeckoProfiler.h"
 #include "Navigator.h"
+#include "Units.h"
 #include "mozilla/AntiTrackingUtils.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/ErrorResult.h"
@@ -20,6 +21,7 @@
 #include "mozilla/dom/CloseWatcherManager.h"
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/dom/ContentParent.h"
+#include "mozilla/dom/Document.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/IdentityCredential.h"
 #include "mozilla/dom/InProcessChild.h"
@@ -972,6 +974,30 @@ IPCResult WindowGlobalChild::RecvGetModelContextTools(
   }
 
   aResolver(std::make_tuple(NS_OK, std::move(tools)));
+  return IPC_OK();
+}
+
+IPCResult WindowGlobalChild::RecvGetContentMetrics(
+    GetContentMetricsResolver&& aResolver) {
+  CSSSize size;
+  float devicePixelRatio = 1.0f;
+
+  if (IsCurrentGlobal()) {
+    if (RefPtr<nsGlobalWindowInner> win = GetWindowGlobal()) {
+      if (RefPtr<Document> doc = win->GetExtantDoc()) {
+        if (RefPtr<Element> root = doc->GetDocumentElement()) {
+          size = CSSPixel::FromAppUnits(root->GetScrollSize());
+        }
+      }
+
+      IgnoredErrorResult rv;
+      double dpr = win->GetDevicePixelRatio(CallerType::System, rv);
+      if (!rv.Failed() && dpr > 0.0) {
+        devicePixelRatio = float(dpr);
+      }
+    }
+  }
+  aResolver(std::make_tuple(size, devicePixelRatio));
   return IPC_OK();
 }
 
