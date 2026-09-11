@@ -305,6 +305,27 @@ add_task(
   }
 );
 
+// Timing metrics: only the presence of samples is asserted, never a specific
+// duration.
+add_task(
+  {
+    skip_if: () =>
+      Services.prefs.getBoolPref("telemetry.fog.artifact_build", false),
+  },
+  async function test_session_init_time() {
+    await flushAndReset();
+
+    await BrowserTestUtils.withNewTab(PAGE, async browser => {
+      is(await startSession(browser), "start", "Recognition session started");
+
+      await Services.fog.testFlushAllChildren();
+      const data = Glean.mediaSpeechRecognition.sessionInitTime.testGetValue();
+      Assert.ok(data, "session_init_time has samples");
+      is(data.count, 1, "One session init was timed");
+    });
+  }
+);
+
 // available() reports its answer through the availability counter on every
 // path, including the early-outs that never reach the backend.
 add_task(

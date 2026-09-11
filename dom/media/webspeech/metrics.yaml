@@ -169,6 +169,46 @@ media.speech_recognition:
       - media-alerts@mozilla.com
     expires: never
 
+  session_init_time:
+    type: timing_distribution
+    time_unit: millisecond
+    description: >
+      The duration between start() and the time the model is ready for
+      recognition.
+
+      Only recorded when init succeeds, so read it against the `init_failure`
+      totals rather than alone: a regression that turns slow inits into
+      outright failures makes this metric look better.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=2062329
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=2062329
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - padenot@mozilla.com
+      - media-alerts@mozilla.com
+    expires: never
+
+  result_latency:
+    type: timing_distribution
+    time_unit: millisecond
+    description: >
+      The mean end-to-end latency of results in a recognition session, from the
+      capture time of the audio each result covers to the moment the `result`
+      event is dispatched in the content process. One sample per session that
+      produced results.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=2062329
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=2062329
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - padenot@mozilla.com
+      - media-alerts@mozilla.com
+    expires: never
+
   availability:
     type: labeled_counter
     description: >

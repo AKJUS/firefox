@@ -335,6 +335,8 @@ class SpeechRecognition final : public DOMEventTargetHelper,
   // Ties session_started to session_ended. Only ever used as that key: not
   // persisted, not sent anywhere else, and regenerated per session.
   nsCString mSessionId;
+  TimeDuration mResultLatencyTotal;
+  uint32_t mResultLatencySampleCount = 0;
   // The code of the "error" event fired for this session, if any. Also set for
   // errors raised before [[started]], which never reach RecordSessionEnded();
   // StartImpl() clears it so it cannot leak into the next session.

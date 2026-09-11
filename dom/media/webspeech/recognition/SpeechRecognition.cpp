@@ -307,6 +307,10 @@ void SpeechRecognition::RecordSessionEnded() {
         (TimeStamp::Now() - mSessionStartTime).ToMilliseconds()));
   }
   extra.sessionId.emplace(mSessionId);
+  if (mResultLatencySampleCount) {
+    glean::media_speech_recognition::result_latency.AccumulateRawDuration(
+        mResultLatencyTotal.MultDouble(1.0 / mResultLatencySampleCount));
+  }
   glean::media_speech_recognition::session_ended.Record(Some(std::move(extra)));
 }
 
@@ -904,6 +908,8 @@ void SpeechRecognition::StartImpl(MediaStreamTrack* aAudioTrack,
   const uint32_t generation = ++mSessionGeneration;
 
   mSessionStartTime = TimeStamp::Now();
+  mResultLatencyTotal = TimeDuration();
+  mResultLatencySampleCount = 0;
   mSessionError = Nothing();
   mSessionId = nsIDToCString(nsID::GenerateUUID()).get();
 
@@ -1279,6 +1285,11 @@ void SpeechRecognition::HandleRecognitionResultFromBackend(
   // NOTE: We don't implement non-continuous mode (mContinuous=false) for now.
   // The spec semantics are unclear with modern local LLM-based recognition.
   // See https://github.com/WebAudio/web-speech-api/issues/176
+
+  if (!aEventTime.IsNull()) {
+    mResultLatencyTotal += TimeStamp::Now() - aEventTime;
+    mResultLatencySampleCount++;
+  }
 
   RefPtr<SpeechRecognitionResult> result = new SpeechRecognitionResult(this);
 
