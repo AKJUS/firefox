@@ -92,8 +92,6 @@ Structure:
         name: <string>, // "Windows_NT" or null on failure
         version: <string>, // e.g. "6.1", null on failure
         windowsBuildNumber: <number>, // windows only or null on failure
-        windowsUBR: <number>, // windows 10 only or null on failure
-        locale: <string>, // "en" or null on failure
         distro: <string>, // linux only, or null on failure
         distroVersion: <string>, // linux only, or null on failure
     },
@@ -353,11 +351,6 @@ This object contains operating system information.
 - `name`: the name of the OS.
 - `version`: a string representing the OS version.
 - `windowsBuildNumber`: the Windows build number.
-- `windowsUBR`: the Windows UBR number, only available for Windows >= 10. This value is incremented by Windows cumulative updates patches.
-- `installYear`: the Windows only integer representing the year the OS was installed.
-- `locale`: the string representing the OS locale.
-- `hasPrefetch`: the Windows-only boolean representing whether or not the OS-based prefetch application start-up optimization is set to use the default settings.
-- `hasSuperfetch`: the Windows-only boolean representing whether or not the OS-based superfetch application start-up optimization service is running and using the default settings.
 
 ## experiments
 
@@ -374,7 +367,7 @@ Note that this list includes other types of deliveries, including Normandy rollo
 
 ## Version History
 
-- Firefox 157:
+- Firefox 158:
   - Removed many fields and set ones unable to be removed to small, stable values. ([bug 2068624](https://bugzilla.mozilla.org/show_bug.cgi?id=2068624)
 
 - Firefox 155:

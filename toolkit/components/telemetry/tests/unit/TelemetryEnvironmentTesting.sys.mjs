@@ -634,15 +634,11 @@ export var TelemetryEnvironmentTesting = {
     let osData = data.system.os;
     lazy.Assert.ok(this.checkNullOrString(osData.name));
     lazy.Assert.ok(this.checkNullOrString(osData.version));
-    lazy.Assert.ok(this.checkNullOrString(osData.locale));
     if (osData.name !== null) {
       lazy.Assert.equal(osData.name, Glean.systemOs.name.testGetValue());
     }
     if (osData.version !== null) {
       lazy.Assert.equal(osData.version, Glean.systemOs.version.testGetValue());
-    }
-    if (osData.locale !== null) {
-      lazy.Assert.equal(osData.locale, Glean.systemOs.locale.testGetValue());
     }
 
     // Service pack is only available on Windows.
@@ -656,17 +652,6 @@ export var TelemetryEnvironmentTesting = {
         lazy.Assert.equal(
           osData.windowsBuildNumber,
           Glean.systemOs.windowsBuildNumber.testGetValue()
-        );
-      }
-      if ("windowsUBR" in osData) {
-        // This might not be available on all Windows platforms.
-        lazy.Assert.ok(
-          osData.windowsUBR === null || Number.isFinite(osData.windowsUBR),
-          "windowsUBR must be null or a number."
-        );
-        lazy.Assert.equal(
-          osData.windowsUBR,
-          Glean.systemOs.windowsUbr.testGetValue()
         );
       }
     } else if (gIsLinux) {

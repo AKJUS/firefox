@@ -80,7 +80,7 @@ export var Policy = {
 var gActiveExperimentStartupBuffer = new Map();
 
 // For Powering arewegleanyet.com (See bug 1944592)
-// Legacy Count: 82
+// Legacy Count: 77
 // Glean Count: 113
 
 var gGlobalEnvironment;
@@ -686,7 +686,6 @@ EnvironmentCache.prototype = {
         delete diskData.type;
         Glean.hdd[name].set(diskData);
       }
-      let osData = await Services.sysinfo.osInfo;
 
       if (!this._initTask) {
         // We've finished creating the initial env, so notify for the update
@@ -699,9 +698,6 @@ EnvironmentCache.prototype = {
       }
 
       this._osData = this._getOSData();
-
-      // Augment the return values from the promises with cached values
-      this._osData = Object.assign(osData, this._osData);
 
       this._currentEnvironment.system.os = this._getOSData();
       this._currentEnvironment.system.hdd = this._getHDDData();
@@ -1595,11 +1591,10 @@ EnvironmentCache.prototype = {
     this._osData = {
       name: forceToStringOrNull(getSysinfoProperty("name", null)),
       version: forceToStringOrNull(getSysinfoProperty("version", null)),
-      locale: forceToStringOrNull(getSystemLocale()),
     };
     Glean.systemOs.name.set(this._osData.name);
     Glean.systemOs.version.set(this._osData.version);
-    Glean.systemOs.locale.set(this._osData.locale);
+    Glean.systemOs.locale.set(forceToStringOrNull(getSystemLocale()));
 
     if (AppConstants.platform == "android") {
       this._osData.kernelVersion = forceToStringOrNull(
@@ -1643,7 +1638,6 @@ EnvironmentCache.prototype = {
         "UBR",
         Ci.nsIWindowsRegKey.WOW64_64
       );
-      this._osData.windowsUBR = Number.isInteger(ubr) ? ubr : null;
       Glean.systemOs.windowsUbr.set(ubr);
     }
 
