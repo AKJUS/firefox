@@ -268,11 +268,6 @@ export var TelemetryEnvironmentTesting = {
 
   checkSettingsSection(data) {
     const EXPECTED_FIELDS_TYPES = {
-      blocklistEnabled: "boolean",
-      e10sEnabled: "boolean",
-      e10sMultiProcesses: "number",
-      fissionEnabled: "boolean",
-      intl: "object",
       locale: "string",
       update: "object",
       userPrefs: "object",
@@ -302,20 +297,7 @@ export var TelemetryEnvironmentTesting = {
       "object"
     );
 
-    // This property is not always present, but when it is, it must be a number.
-    if ("launcherProcessState" in data.settings) {
-      lazy.Assert.equal(typeof data.settings.launcherProcessState, "number");
-      lazy.Assert.equal(
-        typeof Glean.launcherProcess.state.testGetValue(),
-        "number"
-      );
-    }
-
     // Check "addonCompatibilityCheckEnabled" separately.
-    lazy.Assert.equal(
-      data.settings.addonCompatibilityCheckEnabled,
-      lazy.AddonManager.checkCompatibility
-    );
     lazy.Assert.equal(
       Glean.addonsManager.compatibilityCheckEnabled.testGetValue(),
       lazy.AddonManager.checkCompatibility
@@ -342,8 +324,6 @@ export var TelemetryEnvironmentTesting = {
     let update = data.settings.update;
     lazy.Assert.ok(this.checkNullOrString(update.channel));
     lazy.Assert.equal(typeof update.enabled, "boolean");
-    lazy.Assert.equal(typeof update.autoDownload, "boolean");
-    lazy.Assert.equal(typeof update.background, "boolean");
     lazy.Assert.equal(
       update.channel,
       Glean.updateSettings.channel.testGetValue()
@@ -353,56 +333,13 @@ export var TelemetryEnvironmentTesting = {
       Glean.updateSettings.enabled.testGetValue()
     );
     lazy.Assert.equal(
-      update.autoDownload,
-      Glean.updateSettings.autoDownload.testGetValue()
+      "boolean",
+      typeof Glean.updateSettings.autoDownload.testGetValue()
     );
     lazy.Assert.equal(
-      update.background,
-      Glean.updateSettings.background.testGetValue()
+      "boolean",
+      typeof Glean.updateSettings.background.testGetValue()
     );
-
-    // Check sandbox settings exist and make sense
-    if (data.settings.sandbox.effectiveContentProcessLevel !== null) {
-      lazy.Assert.equal(
-        typeof data.settings.sandbox.effectiveContentProcessLevel,
-        "number",
-        "sandbox.effectiveContentProcessLevel must have the correct type"
-      );
-      lazy.Assert.equal(
-        data.settings.sandbox.effectiveContentProcessLevel,
-        Glean.sandbox.effectiveContentProcessLevel.testGetValue()
-      );
-    }
-
-    if (data.settings.sandbox.contentWin32kLockdownState !== null) {
-      lazy.Assert.equal(
-        typeof data.settings.sandbox.contentWin32kLockdownState,
-        "number",
-        "sandbox.contentWin32kLockdownState must have the correct type"
-      );
-
-      let win32kLockdownState =
-        data.settings.sandbox.contentWin32kLockdownState;
-      lazy.Assert.ok(win32kLockdownState >= 1 && win32kLockdownState <= 17);
-
-      lazy.Assert.equal(
-        win32kLockdownState,
-        Glean.sandbox.contentWin32kLockdownState.testGetValue()
-      );
-    }
-
-    // Check "defaultSearchEngine" separately, as it can either be undefined or string.
-    if ("defaultSearchEngine" in data.settings) {
-      this.checkString(data.settings.defaultSearchEngine);
-      lazy.Assert.equal(typeof data.settings.defaultSearchEngineData, "object");
-    }
-
-    if ("defaultPrivateSearchEngineData" in data.settings) {
-      lazy.Assert.equal(
-        typeof data.settings.defaultPrivateSearchEngineData,
-        "object"
-      );
-    }
 
     if ((gIsWindows || gIsMac) && AppConstants.MOZ_BUILD_APP == "browser") {
       lazy.Assert.equal(typeof data.settings.attribution, "object");
@@ -448,32 +385,41 @@ export var TelemetryEnvironmentTesting = {
       );
     }
 
-    this.checkIntlSettings(data.settings);
+    this.checkIntlSettings();
   },
 
-  checkIntlSettings({ intl }) {
-    let fields = [
-      "requestedLocales",
-      "availableLocales",
-      "appLocales",
-      "acceptLanguages",
-    ];
-
-    for (let field of fields) {
-      lazy.Assert.ok(Array.isArray(intl[field]), `${field} is an array`);
-      lazy.Assert.deepEqual(intl[field], Glean.intl[field].testGetValue());
+  checkIntlSettings() {
+    lazy.Assert.deepEqual(
+      Services.locale.requestedLocales,
+      Glean.intl.requestedLocales.testGetValue()
+    );
+    lazy.Assert.deepEqual(
+      Services.locale.availableLocales,
+      Glean.intl.availableLocales.testGetValue()
+    );
+    lazy.Assert.deepEqual(
+      Services.locale.appLocalesAsBCP47,
+      Glean.intl.appLocales.testGetValue()
+    );
+    try {
+      let osprefs = Cc["@mozilla.org/intl/ospreferences;1"].getService(
+        Ci.mozIOSPreferences
+      );
+      lazy.Assert.deepEqual(
+        osprefs.systemLocales,
+        Glean.intl.systemLocales.testGetValue()
+      );
+      lazy.Assert.deepEqual(
+        osprefs.regionalPrefsLocales,
+        Glean.intl.regionalPrefsLocales.testGetValue()
+      );
+    } catch (e) {
+      // Ignore.
     }
-
-    // These fields may be null if they aren't ready yet. This is mostly to deal
-    // with test failures on Android, but they aren't guaranteed to exist.
-    let optionalFields = ["systemLocales", "regionalPrefsLocales"];
-
-    for (let field of optionalFields) {
-      let isArray = Array.isArray(intl[field]);
-      let isNull = intl[field] === null;
-      lazy.Assert.ok(isArray || isNull, `${field} is an array or null`);
-      lazy.Assert.deepEqual(intl[field], Glean.intl[field].testGetValue());
-    }
+    lazy.Assert.deepEqual(
+      Services.locale.acceptLanguages.split(/\s*,\s*/g),
+      Glean.intl.acceptLanguages.testGetValue()
+    );
   },
 
   checkProfileSection(data) {

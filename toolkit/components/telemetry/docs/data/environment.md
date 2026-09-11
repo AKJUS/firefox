@@ -29,8 +29,6 @@ Structure:
     xpcomAbi: <string>, // e.g. "x86-msvc"
   },
   settings: {
-    addonCompatibilityCheckEnabled: <bool>, // Whether application compatibility is respected for add-ons
-    blocklistEnabled: <bool>, // true on failure
     isDefaultBrowser: <bool>, // whether Firefox is the default browser. Checked once near startup. On Windows, this is operationalized as whether Firefox is the default HTTP protocol handler and the default HTML file handler.
     defaultSearchEngine: <string>, // e.g. "yahoo"
     defaultSearchEngineData: {, // data about the current default engine
@@ -38,28 +36,10 @@ Structure:
       loadPath: <string>, // where the engine line is located; missing if no default
       submissionURL: <string> // set for default engines or well known search domains
     },
-    defaultPrivateSearchEngine: <string>, // e.g. "duckduckgo"
-    defaultPrivateSearchEngine: {,
-      // data about the current default engine for private browsing mode. Same as defaultSearchEngineData.
-    },
-    launcherProcessState: <integer>, // optional, values correspond to values of mozilla::LauncherRegistryInfo::EnabledState enum
-    e10sEnabled: <bool>, // whether e10s is on, i.e. browser tabs open by default in a different process
-    e10sMultiProcesses: <integer>, // Maximum number of processes that will be launched for regular web content
-    fissionEnabled: <bool>, // whether fission is enabled this session, and subframes can load in a different process
     locale: <string>, // e.g. "it", null on failure
-    intl: {
-      requestedLocales: [ <string>, ... ], // The locales that are being requested.
-      availableLocales: [ <string>, ... ], // The locales that are available for use.
-      appLocales: [ <string>, ... ], // The negotiated locales that are being used.
-      systemLocales: [ <string>, ... ], // The locales for the OS.
-      regionalPrefsLocales: [ <string>, ... ], // The regional preferences for the OS.
-      acceptLanguages: [ <string>, ... ], // The languages for the Accept-Languages header.
-    },
     update: {
       channel: <string>, // e.g. "release", null on failure
       enabled: <bool>, // true on failure
-      autoDownload: <bool>, // true on failure
-      background: <bool>, // Indicates whether updates may be installed when Firefox is not running.
     },
     userPrefs: {
       // Only prefs which are changed are listed in this block
@@ -80,10 +60,6 @@ Structure:
       msstoresignedin: <boolean>, // optional, only present if the installation was done through the Microsoft Store, and was able to retrieve the "campaign ID" it was first installed with. this value is "true" if the user was signed into the Microsoft Store when they first installed, and false otherwise
       dlsource: <string>, // identifier that indicate where installations of Firefox originate
     },
-    sandbox: {
-      effectiveContentProcessLevel: <integer>,
-      contentWin32kLockdownState: <integer>,
-    }
   },
   // Optional, missing if fetching the information failed or had not yet completed.
   services: {
@@ -295,16 +271,6 @@ The object contains:
 
 `loadPath` and `submissionURL` are not present if `name` is `NONE`.
 
-### defaultPrivateSearchEngineData
-
-This contains the data identifying the engine current set as the default for
-private browsing mode. This may be the same engine as set for normal browsing
-mode.
-
-This object contains the same information as `defaultSearchEngineData`. It
-is only reported if the `browser.search.separatePrivateDefault.enabled`
-preference is set to `true`.
-
 ### userPrefs
 
 This object contains user preferences.
@@ -360,34 +326,6 @@ This object contains the attribution data for the product installation.
 Attribution data is used to link installations of Firefox with the source that the user arrived at the Firefox download page from. It would indicate, for instance, when a user executed a web search for Firefox and arrived at the download page from there, directly navigated to the site, clicked on a link from a particular social media campaign, etc.
 
 The attribution data is included in some versions of the default Firefox installer for Windows (the "stub" installer) and stored as part of the installation. All platforms other than Windows and also Windows installations that did not use the stub installer do not have this data and will not include the `attribution` object.
-
-### sandbox
-
-This object contains data about the state of Firefox's sandbox.
-
-Specific keys are:
-
-- `effectiveContentProcessLevel`: The meanings of the values are OS dependent. Details of the meanings can be found in the [Firefox prefs file](https://hg.mozilla.org/mozilla-central/file/tip/browser/app/profile/firefox.js). The value here is the effective value, not the raw value, some platforms enforce a minimum sandbox level. If there is an error calculating this, it will be `null`.
-
-- `contentWin32kLockdownState`: The status of Win32k Lockdown for Content process.
-
-  - LockdownEnabled = 1 - After Firefox 98, this value will no longer appear in Telemetry.
-  - MissingWebRender = 2
-  - OperatingSystemNotSupported = 3
-  - PrefNotSet = 4 - After Firefox 98, this value will no longer appear in Telemetry.
-  - MissingRemoteWebGL = 5 - From Firefox 152 onwards, this value will no longer appear in Telemetry.
-  - MissingNonNativeTheming = 6
-  - DisabledByEnvVar = 7 - MOZ_ENABLE_WIN32K is set
-  - DisabledBySafeMode = 8 - From Firefox 140 onwards, this value will no longer appear in Telemetry.
-  - DisabledByE10S = 9 - E10S is disabled for whatever reason
-  - DisabledByUserPref = 10 - The user manually set security.sandbox.content.win32k-disable to false
-  - EnabledByUserPref = 11 - The user manually set security.sandbox.content.win32k-disable to true
-  - DisabledByControlGroup = 12 - The user is in the Control Group, so it is disabled
-  - EnabledByTreatmentGroup = 13 - The user is in the Treatment Group, so it is enabled
-  - DisabledByDefault = 14 - The default value of the pref is false
-  - EnabledByDefault = 15 - The default value of the pref is true
-  - DecodersArentRemote = 16 - Some decoder is not remoted to RDD Process (checks PDMFactory::AllDecodersAreRemote)
-  - IncompatibleMitigationPolicy = 17 - Some incompatible Windows Exploit Mitigation policies are enabled
 
 ## profile
 

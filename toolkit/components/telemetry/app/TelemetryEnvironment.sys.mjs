@@ -80,7 +80,7 @@ export var Policy = {
 var gActiveExperimentStartupBuffer = new Map();
 
 // For Powering arewegleanyet.com (See bug 1944592)
-// Legacy Count: 112
+// Legacy Count: 96
 // Glean Count: 113
 
 var gGlobalEnvironment;
@@ -451,22 +451,15 @@ function getRegionalPrefsLocales() {
   }
 }
 
-function getIntlSettings() {
-  let intl = {
-    requestedLocales: Services.locale.requestedLocales,
-    availableLocales: Services.locale.availableLocales,
-    appLocales: Services.locale.appLocalesAsBCP47,
-    systemLocales: getSystemLocales(),
-    regionalPrefsLocales: getRegionalPrefsLocales(),
-    acceptLanguages: Services.locale.acceptLanguages.split(/\s*,\s*/g),
-  };
-  Glean.intl.requestedLocales.set(intl.requestedLocales);
-  Glean.intl.availableLocales.set(intl.availableLocales);
-  Glean.intl.appLocales.set(intl.appLocales);
-  Glean.intl.systemLocales.set(intl.systemLocales);
-  Glean.intl.regionalPrefsLocales.set(intl.regionalPrefsLocales);
-  Glean.intl.acceptLanguages.set(intl.acceptLanguages);
-  return intl;
+function recordIntlMetrics() {
+  Glean.intl.requestedLocales.set(Services.locale.requestedLocales);
+  Glean.intl.availableLocales.set(Services.locale.availableLocales);
+  Glean.intl.appLocales.set(Services.locale.appLocalesAsBCP47);
+  Glean.intl.systemLocales.set(getSystemLocales());
+  Glean.intl.regionalPrefsLocales.set(getRegionalPrefsLocales());
+  Glean.intl.acceptLanguages.set(
+    Services.locale.acceptLanguages.split(/\s*,\s*/g)
+  );
 }
 
 /**
@@ -1051,16 +1044,10 @@ EnvironmentCache.prototype = {
         break;
       }
       case AUTO_UPDATE_PREF_CHANGE_TOPIC:
-        this._currentEnvironment.settings.update.autoDownload = aData == "true";
-        Glean.updateSettings.autoDownload.set(
-          this._currentEnvironment.settings.update.autoDownload
-        );
+        Glean.updateSettings.autoDownload.set(aData == "true");
         break;
       case BACKGROUND_UPDATE_PREF_CHANGE_TOPIC:
-        this._currentEnvironment.settings.update.background = aData == "true";
-        Glean.updateSettings.background.set(
-          this._currentEnvironment.settings.update.background
-        );
+        Glean.updateSettings.background.set(aData == "true");
         break;
       case SERVICES_INFO_CHANGE_TOPIC:
         this._updateServicesInfo();
@@ -1097,15 +1084,6 @@ EnvironmentCache.prototype = {
     this._currentEnvironment.settings.defaultSearchEngineData = {
       ...defaultEngineInfo.defaultSearchEngineData,
     };
-    if ("defaultPrivateSearchEngine" in defaultEngineInfo) {
-      this._currentEnvironment.settings.defaultPrivateSearchEngine =
-        defaultEngineInfo.defaultPrivateSearchEngine;
-    }
-    if ("defaultPrivateSearchEngineData" in defaultEngineInfo) {
-      this._currentEnvironment.settings.defaultPrivateSearchEngineData = {
-        ...defaultEngineInfo.defaultPrivateSearchEngineData,
-      };
-    }
   },
 
   /**
@@ -1248,40 +1226,26 @@ EnvironmentCache.prototype = {
       updateChannel = Utils.getUpdateChannel();
     } catch (e) {}
 
+    // We need to wait for browser-delayed-startup-finished to ensure that the locales
+    // have settled, once that's happened we can get the intl data directly.
+    if (Policy._intlLoaded) {
+      recordIntlMetrics();
+    }
+
     this._currentEnvironment.settings = {
-      blocklistEnabled: Services.prefs.getBoolPref(
-        PREF_BLOCKLIST_ENABLED,
-        true
-      ),
-      e10sEnabled: Services.appinfo.browserTabsRemoteAutostart,
-      e10sMultiProcesses: Services.appinfo.maxWebProcessCount,
-      fissionEnabled: Services.appinfo.fissionAutostart,
       locale: getBrowserLocale(),
-      // We need to wait for browser-delayed-startup-finished to ensure that the locales
-      // have settled, once that's happened we can get the intl data directly.
-      intl: Policy._intlLoaded ? getIntlSettings() : {},
       update: {
         channel: updateChannel,
         enabled:
           AppConstants.MOZ_UPDATER && !lazy.UpdateServiceStub.updateDisabled,
       },
       userPrefs: this._getPrefData(),
-      sandbox: this._getSandboxData(),
     };
+    this._recordSandboxMetrics();
     Glean.updateSettings.channel.set(updateChannel);
     Glean.updateSettings.enabled.set(
       this._currentEnvironment.settings.update.enabled
     );
-
-    // Services.appinfo.launcherProcessState is not available in all build
-    // configurations, in which case an exception may be thrown.
-    try {
-      this._currentEnvironment.settings.launcherProcessState =
-        Services.appinfo.launcherProcessState;
-    } catch (e) {}
-
-    this._currentEnvironment.settings.addonCompatibilityCheckEnabled =
-      AddonManager.checkCompatibility;
 
     if (AppConstants.MOZ_BUILD_APP == "browser") {
       this._updateAttribution();
@@ -1291,22 +1255,22 @@ EnvironmentCache.prototype = {
     this._loadAsyncUpdateSettingsFromCache();
 
     Glean.addonsManager.compatibilityCheckEnabled.set(
-      this._currentEnvironment.settings.addonCompatibilityCheckEnabled
+      AddonManager.checkCompatibility
     );
     Glean.blocklist.enabled.set(
-      this._currentEnvironment.settings.blocklistEnabled
+      Services.prefs.getBoolPref(PREF_BLOCKLIST_ENABLED, true)
     );
     Glean.browser.defaultAtLaunch.set(
       this._currentEnvironment.settings.isDefaultBrowser
     );
-    Glean.launcherProcess.state.set(
-      this._currentEnvironment.settings.launcherProcessState
-    );
-    Glean.e10s.enabled.set(this._currentEnvironment.settings.e10sEnabled);
-    Glean.e10s.multiProcesses.set(
-      this._currentEnvironment.settings.e10sMultiProcesses
-    );
-    Glean.fission.enabled.set(this._currentEnvironment.settings.fissionEnabled);
+    // Services.appinfo.launcherProcessState is not available in all build
+    // configurations, in which case an exception may be thrown.
+    try {
+      Glean.launcherProcess.state.set(Services.appinfo.launcherProcessState);
+    } catch (e) {}
+    Glean.e10s.enabled.set(Services.appinfo.browserTabsRemoteAutostart);
+    Glean.e10s.multiProcesses.set(Services.appinfo.maxWebProcessCount);
+    Glean.fission.enabled.set(Services.appinfo.fissionAutostart);
     let prefs = Object.entries(this._currentEnvironment.settings.userPrefs).map(
       ([k, v]) => {
         return { name: k, value: v.toString() };
@@ -1317,7 +1281,7 @@ EnvironmentCache.prototype = {
     }
   },
 
-  _getSandboxData() {
+  _recordSandboxMetrics() {
     let effectiveContentProcessLevel = null;
     let contentWin32kLockdownState = null;
     try {
@@ -1339,10 +1303,6 @@ EnvironmentCache.prototype = {
     if (contentWin32kLockdownState !== null) {
       Glean.sandbox.contentWin32kLockdownState.set(contentWin32kLockdownState);
     }
-    return {
-      effectiveContentProcessLevel,
-      contentWin32kLockdownState,
-    };
   },
 
   /**
@@ -1473,13 +1433,9 @@ EnvironmentCache.prototype = {
    */
   _loadAsyncUpdateSettingsFromCache() {
     if (this._updateAutoDownloadCache !== undefined) {
-      this._currentEnvironment.settings.update.autoDownload =
-        this._updateAutoDownloadCache;
       Glean.updateSettings.autoDownload.set(this._updateAutoDownloadCache);
     }
     if (this._updateBackgroundCache !== undefined) {
-      this._currentEnvironment.settings.update.background =
-        this._updateBackgroundCache;
       Glean.updateSettings.background.set(this._updateBackgroundCache);
     }
   },
@@ -1492,7 +1448,7 @@ EnvironmentCache.prototype = {
   async _loadIntlData() {
     // Wait for the startup topic.
     await Policy._browserDelayedStartup();
-    this._currentEnvironment.settings.intl = getIntlSettings();
+    recordIntlMetrics();
     Policy._intlLoaded = true;
   },
   // This exists as a separate function for testing.

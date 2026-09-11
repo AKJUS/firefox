@@ -52,20 +52,6 @@ add_setup(async function setup() {
 });
 
 add_task(async function test_checkEnvironment() {
-  let data = TelemetryEnvironment.currentEnvironment;
-
-  // Check that settings.intl is lazily loaded.
-  Assert.equal(
-    typeof data.settings.intl,
-    "object",
-    "intl is initially an object"
-  );
-  Assert.equal(
-    Object.keys(data.settings.intl).length,
-    0,
-    "intl is initially empty"
-  );
-
   // Now continue with startup.
   let initPromise = TelemetryEnvironment.onInitialized();
   finishAddonManagerStartup();
