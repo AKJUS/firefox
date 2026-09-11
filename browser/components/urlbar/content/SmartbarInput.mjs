@@ -169,7 +169,7 @@ ${
                       aria-controls="urlbar-results"
                       role="combobox"
                       aria-autocomplete="both"
-                      inputmode="search"
+                      inputmode="mozAwesomebar"
                       preserveundohistory=""
                       data-l10n-id="smartbar-placeholder"/>
         </html:div>
