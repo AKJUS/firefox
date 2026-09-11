@@ -470,17 +470,7 @@ bool DMABufSurface::ReleaseDMABuf() {
 }
 
 DMABufSurface::DMABufSurface(SurfaceType aSurfaceType)
-    : mGbmBufferObject(),
-      mGbmBufferFlags(0),
-#ifdef MOZ_LOGGING
-      mMappedRegion(),
-      mMappedRegionStride(),
-#endif
-      mGlobalRefCountFd(0),
-      mUID(gNewSurfaceUID++),
-      mPID(0),
-      mCanRecycle(true),
-      mSurfaceLock("DMABufSurface") {
+    : mUID(gNewSurfaceUID++), mPID(0), mSurfaceLock("DMABufSurface") {
   MOZ_COUNT_CTOR(DMABufSurface);
 }
 

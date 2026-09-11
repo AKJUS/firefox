@@ -214,13 +214,13 @@ class DMABufSurface : public BufferSurface {
   int32_t mStrides[DMABUF_BUFFER_PLANES] = {};
   int32_t mOffsets[DMABUF_BUFFER_PLANES] = {};
 
-  struct gbm_bo* mGbmBufferObject[DMABUF_BUFFER_PLANES];
-  uint32_t mGbmBufferFlags;
+  struct gbm_bo* mGbmBufferObject[DMABUF_BUFFER_PLANES]{};
+  uint32_t mGbmBufferFlags = 0;
 
 #ifdef MOZ_LOGGING
-  void* mMappedRegion[DMABUF_BUFFER_PLANES];
-  void* mMappedRegionData[DMABUF_BUFFER_PLANES];
-  uint32_t mMappedRegionStride[DMABUF_BUFFER_PLANES];
+  void* mMappedRegion[DMABUF_BUFFER_PLANES]{};
+  void* mMappedRegionData[DMABUF_BUFFER_PLANES]{};
+  uint32_t mMappedRegionStride[DMABUF_BUFFER_PLANES]{};
 #endif
 
   RefPtr<mozilla::gfx::FileHandleWrapper> mSyncFd;
@@ -232,7 +232,7 @@ class DMABufSurface : public BufferSurface {
 
   // Global refcount tracks DMABuf usage by rendering process,
   // it's used for surface recycle.
-  int mGlobalRefCountFd;
+  int mGlobalRefCountFd = 0;
 
   // mUID/mPID is set when DMABuf is created and/or exported to different
   // process. Allows to identify surfaces created by different process.
@@ -243,7 +243,7 @@ class DMABufSurface : public BufferSurface {
   // If set to false we can't recycle this surfaces as we can't ensure
   // mUID/mPID consistency. Also mPID may be zero in this case.
   // Applies to copied DMABuf surfaces for instance.
-  bool mCanRecycle;
+  bool mCanRecycle = true;
 
   mozilla::Mutex mSurfaceLock MOZ_UNANNOTATED;
 };
