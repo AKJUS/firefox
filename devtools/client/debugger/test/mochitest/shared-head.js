@@ -971,14 +971,15 @@ async function stepOver(dbg, pauseOptions) {
  *
  * @memberof mochitest/actions
  * @param {object} dbg
+ * @param {object} pauseOptions
  * @return {Promise}
  * @static
  */
-async function stepIn(dbg) {
+async function stepIn(dbg, pauseOptions) {
   const pauseLine = getVisibleSelectedFrameLine(dbg);
   info(`Stepping in from ${pauseLine}`);
   await dbg.actions.stepIn();
-  return waitForPaused(dbg);
+  return waitForPaused(dbg, null, pauseOptions);
 }
 
 /**
