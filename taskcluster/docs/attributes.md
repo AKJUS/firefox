@@ -579,4 +579,10 @@ The human-readable product name for the MSI installer (e.g. `Firefox Nightly`,
 `Firefox Beta`, `Firefox`). Used by downstream signing tasks to construct
 the Authenticode comment embedded in the installer signature.
 
+## duplicate-of
+
+The label of the task this one was copied from by the `duplicate` transforms.
+A downstream kind that names this task's kind in `duplicate.chain-from` makes
+its own copies depend on this task rather than on the one it was copied from.
+
 [primary one]: https://taskcluster-taskgraph.readthedocs.io/en/latest/reference/transforms/from_deps.html#primary-kind
