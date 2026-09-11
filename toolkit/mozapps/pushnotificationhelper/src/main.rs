@@ -55,9 +55,19 @@ fn check_profile(path: &Path) -> Result<(), String> {
 /// Starts the notification work for `profile`, parks until another process asks
 /// it to stop, then tears the work down.
 fn run(profile: &Path) -> ExitCode {
-    // TODO: nothing stops a second helper starting for a profile that already
-    // has one, so every Firefox restart while enabled stacks another. The
-    // per-profile guard that fixes this lands separately.
+    // Ensure that only one helper exists per profile. Held until the process exits.
+    let _guard = match lifecycle::ProfileGuard::acquire(profile) {
+        Ok(Some(guard)) => guard,
+        Ok(None) => {
+            // A helper is already serving this profile. Leave it alone.
+            return ExitCode::SUCCESS;
+        }
+        Err(message) => {
+            eprintln!("{PROGRAM}: {message}");
+            return ExitCode::FAILURE;
+        }
+    };
+
     let stop = match lifecycle::StopEvent::open(profile) {
         Ok(stop) => stop,
         Err(message) => {
@@ -171,5 +181,16 @@ mod tests {
     #[test]
     fn stop_takes_no_value() {
         assert!(Args::try_parse_from([PROGRAM, "--stop=yes", "--profile", r"c:\p"]).is_err());
+    }
+
+    /// Firefox starts a helper on every launch, so finding one already running
+    /// is the ordinary case rather than a failure.
+    #[test]
+    fn run_declines_quietly_when_a_helper_already_has_the_profile() {
+        let profile = Path::new(r"c:\profiles\run-declines");
+
+        let _held = lifecycle::ProfileGuard::acquire(profile).unwrap().unwrap();
+
+        assert_eq!(run(profile), ExitCode::SUCCESS);
     }
 }
