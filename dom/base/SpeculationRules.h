@@ -7,13 +7,16 @@
 
 #include "mozilla/UniquePtr.h"
 #include "mozilla/dom/speculationrules_ffi_generated.h"
+#include "nsCOMPtr.h"
 #include "nsClassHashtable.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsHashKeys.h"
 #include "nsTArrayForwardDeclare.h"
 #include "nsTHashSet.h"
 
+class nsIContent;
 class nsIScriptElement;
+class nsITimer;
 class nsIURI;
 
 namespace mozilla::dom {
@@ -41,8 +44,14 @@ class SpeculationRules final {
 
   void FindMatchingLinks(nsTArray<const Element*>& aLinks);
 
+  void HoverContentChanged(nsIContent* aContent);
+
  private:
-  virtual ~SpeculationRules() = default;
+  virtual ~SpeculationRules();
+
+  // The innermost inclusive flat tree ancestor of aContent that is a link this
+  // document is tracking, or nullptr if there is none.
+  Element* FindInterestedLink(nsIContent* aContent) const;
 
   // https://html.spec.whatwg.org/#inner-consider-speculative-loads-steps
   // Step 7, for those candidate groups that the user's behaviour has shown to
@@ -51,6 +60,9 @@ class SpeculationRules final {
   // eager qualifying group per URL is enacted, as it is the one whose tags were
   // collected from every candidate the user's behaviour justifies.
   void EnactCandidates(nsIURI* aURL, Eagerness aTriggerLevel);
+
+  void CancelHoverTimer();
+  static void HoverTimerFired(nsITimer* aTimer, void* aClosure);
 
   RefPtr<Document> mDocument;
 
@@ -73,6 +85,11 @@ class SpeculationRules final {
   // InnerConsiderLoads. Immediate groups have already been enacted; the rest
   // are kept so a later signal of user interest can enact them.
   nsTArray<PrefetchCandidate> mCandidateGroups;
+
+  // The link the hover timer is waiting on. Owning, as nothing else keeps the
+  // element alive for the duration of the timer.
+  RefPtr<Element> mHoverLink;
+  nsCOMPtr<nsITimer> mHoverTimer;
 };
 
 }  // namespace mozilla::dom

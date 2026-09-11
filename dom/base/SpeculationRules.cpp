@@ -5,7 +5,9 @@
 #include "mozilla/dom/SpeculationRules.h"
 
 #include "mozilla/CycleCollectedJSContext.h"
+#include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/dom/Document.h"
+#include "mozilla/dom/Element.h"
 #include "mozilla/dom/PrefetchCandidates.h"
 #include "mozilla/dom/PrefetchLog.h"
 #include "mozilla/dom/ReferrerPolicyBinding.h"
@@ -14,8 +16,10 @@
 #include "mozilla/dom/speculationrules_ffi_generated.h"
 #include "nsContentUtils.h"
 #include "nsCycleCollectionParticipant.h"
+#include "nsIContentInlines.h"
 #include "nsIFrame.h"
 #include "nsIScriptElement.h"
+#include "nsITimer.h"
 #include "nsIURI.h"
 #include "nsNetUtil.h"
 #include "nsTArray.h"
@@ -72,6 +76,7 @@ NS_IMPL_CYCLE_COLLECTION_CLASS(SpeculationRules)
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(SpeculationRules)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mDocument)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mHoverLink)
   for (const auto& entry : tmp->mRuleSetsFromScript) {
     NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "mRuleSetsFromScript key");
     cb.NoteXPCOMChild(entry.GetKey());
@@ -79,12 +84,16 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(SpeculationRules)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(SpeculationRules)
+  tmp->CancelHoverTimer();
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mDocument)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mRuleSetsFromScript)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mHoverLink)
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
 SpeculationRules::SpeculationRules(Document* aDocument)
     : mDocument(aDocument) {}
+
+SpeculationRules::~SpeculationRules() { CancelHoverTimer(); }
 
 // https://html.spec.whatwg.org/#register-speculation-rules
 void SpeculationRules::RegisterFromScript(
@@ -258,6 +267,72 @@ void SpeculationRules::FindMatchingLinks(nsTArray<const Element*>& aLinks) {
   }
 
   // 3. Return links.
+}
+
+Element* SpeculationRules::FindInterestedLink(nsIContent* aContent) const {
+  for (nsIContent* content = aContent; content;
+       content = content->GetFlattenedTreeParent()) {
+    if (content->IsElement() && mLinks.Contains(content->AsElement())) {
+      return content->AsElement();
+    }
+  }
+  return nullptr;
+}
+
+void SpeculationRules::HoverContentChanged(nsIContent* aContent) {
+  if (mCandidateGroups.IsEmpty()) {
+    return;
+  }
+
+  RefPtr<Element> link = FindInterestedLink(aContent);
+  if (link == mHoverLink) {
+    // The cursor moved within the same link, so it has been hovered
+    // continuously: let the timer keep running, or stay expired if the link has
+    // already been enacted.
+    return;
+  }
+
+  CancelHoverTimer();
+  mHoverLink = link;
+  if (!mHoverLink) {
+    return;
+  }
+
+  // The timer holds no reference to us, so it must not outlive us; both the
+  // destructor and the cycle collector cancel it.
+  NS_NewTimerWithFuncCallback(
+      getter_AddRefs(mHoverTimer), HoverTimerFired, this,
+      StaticPrefs::dom_speculation_rules_moderate_hover_delay_ms(),
+      nsITimer::TYPE_ONE_SHOT, "SpeculationRules::HoverTimerFired"_ns);
+}
+
+void SpeculationRules::CancelHoverTimer() {
+  if (mHoverTimer) {
+    mHoverTimer->Cancel();
+    mHoverTimer = nullptr;
+  }
+  mHoverLink = nullptr;
+}
+
+/* static */
+void SpeculationRules::HoverTimerFired(nsITimer* aTimer, void* aClosure) {
+  RefPtr speculationRules = static_cast<SpeculationRules*>(aClosure);
+  speculationRules->mHoverTimer = nullptr;
+
+  // mHoverLink is deliberately left set, so that moving the cursor around
+  // within the link it names doesn't arm the timer all over again. It is
+  // cleared once the cursor moves on to a different link, or off of links
+  // entirely.
+  RefPtr<Element> link = speculationRules->mHoverLink;
+  if (!link || !link->IsInComposedDoc()) {
+    return;
+  }
+  nsCOMPtr<nsIURI> uri = link->GetHrefURI();
+  if (uri) {
+    // TODO(avandolder): Currently, this is also how Eager eagerness rules will
+    // be fired. We will eventually move them to a shorter timer.
+    speculationRules->EnactCandidates(uri, Eagerness::Moderate);
+  }
 }
 
 }  // namespace mozilla::dom

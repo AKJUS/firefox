@@ -4934,6 +4934,13 @@
   value: true
   mirror: always
 
+# How long (ms) the cursor has to rest on a link before a "moderate" eagerness
+# prefetch candidate matching it is enacted.
+- name: dom.speculation_rules.moderate_hover_delay_ms
+  type: RelaxedAtomicUint32
+  value: 200
+  mirror: always
+
 - name: dom.securecontext.allowlist_onions
   type: bool
   value: false
