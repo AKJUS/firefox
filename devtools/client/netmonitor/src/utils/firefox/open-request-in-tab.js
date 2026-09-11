@@ -7,9 +7,6 @@
 const {
   gDevTools,
 } = require("resource://devtools/client/framework/devtools.js");
-const {
-  openContentLink,
-} = require("resource://devtools/client/shared/link.js");
 
 /**
  * Opens given request in a new tab.
@@ -38,12 +35,12 @@ function openRequestInTab(url, requestHeaders, requestPostData) {
     postData.setData(stringStream);
   }
   const { userContextId } = win.gBrowser.contentPrincipal;
-  openContentLink(url, {
+  win.gBrowser.selectedTab = win.gBrowser.addWebTab(url, {
     // TODO this should be using the original request principal
     triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({
       userContextId,
     }),
-    relatedToCurrent: true,
+    userContextId,
     postData,
   });
 }
