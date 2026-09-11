@@ -15,6 +15,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
 });
 
 ChromeUtils.defineLazyGetter(lazy, "gImpl", () => {
+  // This is currently gated to just windows - but we'd
+  // like to expand to other platforms later.
   if (AppConstants.platform == "win") {
     return lazy.WindowsPushNotificationHelper;
   }
@@ -22,6 +24,7 @@ ChromeUtils.defineLazyGetter(lazy, "gImpl", () => {
   // Stubs for unsupported platforms
   return {
     start() {},
+    stop() {},
   };
 });
 
@@ -49,11 +52,9 @@ export const PushNotificationHelper = {
   update() {
     if (lazy.enabled) {
       this.start();
+    } else {
+      this.stop();
     }
-
-    // TODO: Stopping a helper that is already running needs a control channel
-    // that outlives a Firefox session. That is dealt with further down the
-    // stack.
   },
 
   /**
@@ -61,5 +62,13 @@ export const PushNotificationHelper = {
    */
   start() {
     lazy.gImpl.start();
+  },
+
+  /**
+   * Asks every helper in this profile's group to exit, including any left
+   * behind by an earlier Firefox session. Safe to call when none are running.
+   */
+  stop() {
+    lazy.gImpl.stop();
   },
 };

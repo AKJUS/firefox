@@ -6,6 +6,8 @@
 //! notifications. This is currently plumbing only and can be invoked from a console,
 //! but implements no commands yet.
 
+mod lifecycle;
+
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -24,6 +26,10 @@ struct Args {
     /// Firefox profile directory this helper serves.
     #[arg(long, value_name = "PATH")]
     profile: PathBuf,
+
+    /// Ask this profile's helper to exit, rather than starting one.
+    #[arg(long)]
+    stop: bool,
 }
 
 /// Verifies if <path> is a real profile directory. Note: it is fairly easy to
@@ -46,18 +52,64 @@ fn check_profile(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Starts the notification work for `profile`, parks until another process asks
+/// it to stop, then tears the work down.
+fn run(profile: &Path) -> ExitCode {
+    // TODO: nothing stops a second helper starting for a profile that already
+    // has one, so every Firefox restart while enabled stacks another. The
+    // per-profile guard that fixes this lands separately.
+    let stop = match lifecycle::StopEvent::open(profile) {
+        Ok(stop) => stop,
+        Err(message) => {
+            eprintln!("{PROGRAM}: {message}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    println!("Starting to fetch notifications 🦀 🦊");
+    println!("profile: {}", profile.display());
+
+    let worker = std::thread::spawn(|| {
+        // TODO: all of the websocket work goes here. Connect to the push
+        // service and keep reading notifications until the connection is
+        // closed out from under this thread.
+        loop {
+            std::thread::park();
+        }
+    });
+
+    if let Err(message) = stop.wait() {
+        eprintln!("{PROGRAM}: {message}");
+        return ExitCode::FAILURE;
+    }
+
+    // TODO: close the push connection so the worker's pending read returns,
+    // then join it here. Currently, we just detach the thread to account for
+    // the loop.
+    drop(worker);
+
+    ExitCode::SUCCESS
+}
+
 fn main() -> ExitCode {
     let args = Args::parse();
+
+    if args.stop {
+        return match lifecycle::signal(&args.profile) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                eprintln!("{PROGRAM}: {message}");
+                ExitCode::FAILURE
+            }
+        };
+    }
 
     if let Err(message) = check_profile(&args.profile) {
         eprintln!("{PROGRAM}: {message}");
         return ExitCode::FAILURE;
     }
 
-    println!("Starting to fetch notifications 🦀 🦊");
-    println!("profile: {}", args.profile.display());
-
-    ExitCode::SUCCESS
+    run(&args.profile)
 }
 
 #[cfg(test)]
@@ -91,5 +143,33 @@ mod tests {
         let error = check_profile(&args.profile).unwrap_err();
 
         assert!(error.starts_with("no such directory:"), "{error}");
+    }
+
+    /// Starting is the default, so an absent --stop must never read as a stop.
+    #[test]
+    fn stop_is_off_unless_asked_for() {
+        let args = Args::try_parse_from([PROGRAM, "--profile", r"c:\profiles\a"]).unwrap();
+
+        assert!(!args.stop);
+    }
+
+    #[test]
+    fn stop_is_parsed() {
+        let args =
+            Args::try_parse_from([PROGRAM, "--stop", "--profile", r"c:\profiles\a"]).unwrap();
+
+        assert!(args.stop);
+        assert_eq!(args.profile, PathBuf::from(r"c:\profiles\a"));
+    }
+
+    /// Stopping is per profile, so it needs one just as much as starting does.
+    #[test]
+    fn stop_still_requires_a_profile() {
+        assert!(Args::try_parse_from([PROGRAM, "--stop"]).is_err());
+    }
+
+    #[test]
+    fn stop_takes_no_value() {
+        assert!(Args::try_parse_from([PROGRAM, "--stop=yes", "--profile", r"c:\p"]).is_err());
     }
 }

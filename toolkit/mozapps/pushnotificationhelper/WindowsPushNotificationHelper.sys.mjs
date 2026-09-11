@@ -45,9 +45,27 @@ function launch(args) {
  */
 export const WindowsPushNotificationHelper = {
   /**
+   * Names the profile a helper serves. A helper is per profile, so this is the
+   * whole of its identity.
+   *
+   * @returns {string[]} arguments naming the profile.
+   */
+  get profileArgs() {
+    return ["--profile", Services.dirsvc.get("ProfD", Ci.nsIFile).path];
+  },
+
+  /**
    * Starts the push notification helper for the current running profile.
    */
   start() {
-    launch(["--profile", Services.dirsvc.get("ProfD", Ci.nsIFile).path]);
+    launch(this.profileArgs);
+  },
+
+  /**
+   * Asks this profile's helper to exit, including one left behind by an
+   * earlier Firefox session.
+   */
+  stop() {
+    launch(["--stop", ...this.profileArgs]);
   },
 };
