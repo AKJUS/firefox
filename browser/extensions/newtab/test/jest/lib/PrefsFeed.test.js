@@ -1,169 +1,184 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import {
   actionCreators as ac,
   actionTypes as at,
   actionUtils as au,
 } from "common/Actions.mjs";
-import { GlobalOverrider } from "test/unit/utils";
+import { mockServices, stubGlobals } from "test/jest/test-utils";
 import { PrefsFeed } from "lib/PrefsFeed.sys.mjs";
 
-let overrider = new GlobalOverrider();
+const NIMBUS_FEATURES = [
+  "adsBackend",
+  "newtab",
+  "newtabInferredPersonalization",
+  "newtabOhttpImages",
+  "newtabSmartShortcuts",
+  "newtabTrainhop",
+  "newtabWidgets",
+  "pocketNewtab",
+];
+
+function mockNimbusFeatures() {
+  return Object.fromEntries(
+    NIMBUS_FEATURES.map(name => [
+      name,
+      {
+        getAllVariables: jest.fn(),
+        getAllEnrollments: jest.fn(),
+        getVariable: jest.fn(),
+        onUpdate: jest.fn(),
+        offUpdate: jest.fn(),
+      },
+    ])
+  );
+}
+
+// sinon's calledWith matches a prefix of the recorded arguments, so the karma
+// original could assert on the pref name alone. jest compares every argument,
+// so name-only assertions look at the recorded names instead.
+function calledNames(mockFn) {
+  return mockFn.mock.calls.map(([name]) => name);
+}
 
 describe("PrefsFeed", () => {
   let feed;
   let FAKE_PREFS;
-  let sandbox;
-  let ServicesStub;
-  let SelectableProfileServiceStub;
+  let services;
+  let nimbusFeatures;
+  let region;
+  let selectableProfileService;
+  let restoreGlobals;
   beforeEach(() => {
-    sandbox = sinon.createSandbox();
     FAKE_PREFS = new Map([
       ["foo", 1],
       ["bar", 2],
       ["baz", { value: 1, skipBroadcast: true }],
       ["qux", { value: 1, skipBroadcast: true, alsoToPreloaded: true }],
     ]);
+    // Services.vc.compare defaults to 0, i.e. a supported (>= 155) host, so
+    // that the theme-picker backward-compat gate lets the existing
+    // browserNovaEnabled assertions hold.
+    services = mockServices(["prefs", "obs", "vc"]);
+    nimbusFeatures = mockNimbusFeatures();
+    region = { home: "US", REGION_TOPIC: "browser-region-updated" };
+    selectableProfileService = {
+      hasCreatedSelectableProfiles: jest.fn(() => false),
+    };
+    restoreGlobals = stubGlobals({
+      NimbusFeatures: nimbusFeatures,
+      PrivateBrowsingUtils: { enabled: true },
+      Region: region,
+      SelectableProfileService: selectableProfileService,
+      Services: services,
+      // jsdom has no Temporal; init() reads Temporal.Now.instant().
+      Temporal: {
+        Instant: { compare: jest.fn() },
+        Now: { instant: jest.fn() },
+      },
+    });
     feed = new PrefsFeed(FAKE_PREFS);
-    ServicesStub = {
-      prefs: {
-        clearUserPref: sinon.spy(),
-        getStringPref: sinon.spy(),
-        getIntPref: sinon.spy(),
-        getBoolPref: sinon.spy(),
-        addObserver: sinon.spy(),
-        removeObserver: sinon.spy(),
-        prefHasUserValue: sinon.stub().returns(true),
-        // Trainhop writes pref defaults on every update, so every test that
-        // reaches _getTrainhopConfig needs this. Individual tests replace it
-        // with their own spy when they assert on the writes.
-        getDefaultBranch: sinon.stub().returns({
-          setBoolPref: sinon.spy(),
-          setIntPref: sinon.spy(),
-          setStringPref: sinon.spy(),
-        }),
-      },
-      obs: {
-        removeObserver: sinon.spy(),
-        addObserver: sinon.spy(),
-      },
-      // Version comparator for the theme-picker backward-compat gate; default to
-      // a supported (>= 155) host so existing browserNovaEnabled assertions hold.
-      vc: {
-        compare: sinon.stub().returns(0),
-      },
-    };
-    SelectableProfileServiceStub = {
-      hasCreatedSelectableProfiles() {
-        return false;
-      },
-    };
-    sinon.spy(feed, "_setPref");
+    jest.spyOn(feed, "_setPref");
     feed.store = {
-      dispatch: sinon.spy(),
+      dispatch: jest.fn(),
       getState() {
         return this.state;
       },
     };
     // Setup for tests that don't call `init`
     feed._prefs = {
-      get: sinon.spy(item => FAKE_PREFS.get(item)),
-      set: sinon.spy((name, value) => FAKE_PREFS.set(name, value)),
-      observe: sinon.spy(),
-      observeBranch: sinon.spy(),
-      ignore: sinon.spy(),
-      ignoreBranch: sinon.spy(),
-      reset: sinon.stub(),
-      locked: sinon.stub().returns(false),
+      get: jest.fn(item => FAKE_PREFS.get(item)),
+      set: jest.fn((name, value) => FAKE_PREFS.set(name, value)),
+      observe: jest.fn(),
+      observeBranch: jest.fn(),
+      ignore: jest.fn(),
+      ignoreBranch: jest.fn(),
+      locked: jest.fn(() => false),
+      reset: jest.fn(),
       _branchStr: "branch.str.",
     };
-    overrider.set({
-      PrivateBrowsingUtils: { enabled: true },
-      Services: ServicesStub,
-      SelectableProfileService: SelectableProfileServiceStub,
-    });
   });
   afterEach(() => {
-    overrider.restore();
-    sandbox.restore();
+    restoreGlobals();
+    jest.restoreAllMocks();
   });
 
   it("should set a pref when a SET_PREF action is received", () => {
     feed.onAction(ac.SetPref("foo", 2));
-    assert.calledWith(feed._prefs.set, "foo", 2);
+    expect(feed._prefs.set).toHaveBeenCalledWith("foo", 2);
   });
   it("should set every pref when a SET_MULTIPLE_PREFS action is received", () => {
     feed.onAction(ac.SetMultiplePrefs({ foo: 2, bar: 3 }));
-    assert.calledWith(feed._prefs.set, "foo", 2);
-    assert.calledWith(feed._prefs.set, "bar", 3);
+    expect(feed._prefs.set).toHaveBeenCalledWith("foo", 2);
+    expect(feed._prefs.set).toHaveBeenCalledWith("bar", 3);
   });
   it("should coalesce SET_MULTIPLE_PREFS into one content MULTIPLE_PREFS_CHANGED while still notifying feeds per pref", () => {
     // The branch observer fires onPrefChanged synchronously per _prefs.set.
-    feed._prefs.set = sinon.spy((name, value) =>
-      feed.onPrefChanged(name, value)
-    );
+    feed._prefs.set = jest.fn((name, value) => feed.onPrefChanged(name, value));
     feed.onAction(ac.SetMultiplePrefs({ foo: 2, bar: 3 }));
 
-    const dispatched = feed.store.dispatch.getCalls().map(call => call.args[0]);
+    const dispatched = feed.store.dispatch.mock.calls.map(([action]) => action);
 
     // Content gets exactly one combined MULTIPLE_PREFS_CHANGED broadcast.
     const prefsChanged = dispatched.filter(
       a => a.type === at.MULTIPLE_PREFS_CHANGED
     );
-    assert.equal(prefsChanged.length, 1);
-    assert.deepEqual(prefsChanged[0].data.values, { foo: 2, bar: 3 });
-    assert.isTrue(au.isBroadcastToContent(prefsChanged[0]));
+    expect(prefsChanged.length).toBe(1);
+    expect(prefsChanged[0].data.values).toEqual({ foo: 2, bar: 3 });
+    expect(au.isBroadcastToContent(prefsChanged[0])).toBe(true);
 
     // Feeds still get per-pref PREF_CHANGED, but main-only (not re-broadcast
     // to content, which would re-stagger the resize).
     const prefChanged = dispatched.filter(a => a.type === at.PREF_CHANGED);
-    assert.equal(prefChanged.length, 2);
-    prefChanged.forEach(a => assert.isFalse(au.isBroadcastToContent(a)));
+    expect(prefChanged.length).toBe(2);
+    prefChanged.forEach(a => expect(au.isBroadcastToContent(a)).toBe(false));
   });
   it("should still route skipBroadcast prefs individually during a SET_MULTIPLE_PREFS transaction", () => {
-    feed._prefs.set = sinon.spy((name, value) =>
-      feed.onPrefChanged(name, value)
-    );
+    feed._prefs.set = jest.fn((name, value) => feed.onPrefChanged(name, value));
     feed.onAction(ac.SetMultiplePrefs({ foo: 2, baz: 5 }));
 
-    const dispatched = feed.store.dispatch.getCalls().map(call => call.args[0]);
+    const dispatched = feed.store.dispatch.mock.calls.map(([action]) => action);
     const prefsChanged = dispatched.filter(
       a => a.type === at.MULTIPLE_PREFS_CHANGED
     );
-    assert.equal(prefsChanged.length, 1);
-    assert.deepEqual(prefsChanged[0].data.values, { foo: 2 });
+    expect(prefsChanged.length).toBe(1);
+    expect(prefsChanged[0].data.values).toEqual({ foo: 2 });
 
     const bazChange = dispatched.find(
       a => a.type === at.PREF_CHANGED && a.data.name === "baz"
     );
-    assert.ok(bazChange, "baz should be dispatched individually");
-    assert.equal(bazChange.data.value, 5);
+    expect(bazChange).toBeTruthy(); // baz should be dispatched individually
+    expect(bazChange.data.value).toBe(5);
   });
   it("should call clearUserPref with action CLEAR_PREF", () => {
     feed.onAction({ type: at.CLEAR_PREF, data: { name: "pref.test" } });
-    assert.calledWith(ServicesStub.prefs.clearUserPref, "branch.str.pref.test");
+    expect(services.prefs.clearUserPref).toHaveBeenCalledWith(
+      "branch.str.pref.test"
+    );
   });
   it("should dispatch PREFS_INITIAL_VALUES on init with pref values and .isPrivateBrowsingEnabled", () => {
     feed.onAction({ type: at.INIT });
-    assert.calledOnce(feed.store.dispatch);
-    assert.equal(
-      feed.store.dispatch.firstCall.args[0].type,
+    expect(feed.store.dispatch).toHaveBeenCalledTimes(1);
+    expect(feed.store.dispatch.mock.calls[0][0].type).toBe(
       at.PREFS_INITIAL_VALUES
     );
-    const [{ data }] = feed.store.dispatch.firstCall.args;
-    assert.equal(data.foo, 1);
-    assert.equal(data.bar, 2);
-    assert.isTrue(data.isPrivateBrowsingEnabled);
+    const [[{ data }]] = feed.store.dispatch.mock.calls;
+    expect(data.foo).toBe(1);
+    expect(data.bar).toBe(2);
+    expect(data.isPrivateBrowsingEnabled).toBe(true);
   });
   it("should dispatch PREFS_INITIAL_VALUES with a .featureConfig", () => {
-    sandbox.stub(global.NimbusFeatures.newtab, "getAllVariables").returns({
+    nimbusFeatures.newtab.getAllVariables.mockReturnValue({
       prefsButtonIcon: "icon-foo",
     });
     feed.onAction({ type: at.INIT });
-    assert.equal(
-      feed.store.dispatch.firstCall.args[0].type,
+    expect(feed.store.dispatch.mock.calls[0][0].type).toBe(
       at.PREFS_INITIAL_VALUES
     );
-    const [{ data }] = feed.store.dispatch.firstCall.args;
-    assert.deepEqual(data.featureConfig, { prefsButtonIcon: "icon-foo" });
+    const [[{ data }]] = feed.store.dispatch.mock.calls;
+    expect(data.featureConfig).toEqual({ prefsButtonIcon: "icon-foo" });
   });
   it("should dispatch PREFS_INITIAL_VALUES with trainhopConfig", () => {
     const testObject = {
@@ -173,18 +188,17 @@ describe("PrefsFeed", () => {
         payload: { enabled: true },
       },
     };
-    sandbox
-      .stub(global.NimbusFeatures.newtabTrainhop, "getAllEnrollments")
-      .returns([testObject]);
+    nimbusFeatures.newtabTrainhop.getAllEnrollments.mockReturnValue([
+      testObject,
+    ]);
 
     feed.onAction({ type: at.INIT });
 
-    assert.equal(
-      feed.store.dispatch.firstCall.args[0].type,
+    expect(feed.store.dispatch.mock.calls[0][0].type).toBe(
       at.PREFS_INITIAL_VALUES
     );
-    const [{ data }] = feed.store.dispatch.firstCall.args;
-    assert.deepEqual(data.trainhopConfig, {
+    const [[{ data }]] = feed.store.dispatch.mock.calls;
+    expect(data.trainhopConfig).toEqual({
       testExperiment: { enabled: true },
     });
   });
@@ -197,173 +211,160 @@ describe("PrefsFeed", () => {
         },
       },
     };
-    sandbox
-      .stub(global.NimbusFeatures.adsBackend, "getAllEnrollments")
-      .returns([testObject]);
+    nimbusFeatures.adsBackend.getAllEnrollments.mockReturnValue([testObject]);
 
     feed.onAction({ type: at.INIT });
 
-    assert.equal(
-      feed.store.dispatch.firstCall.args[0].type,
+    expect(feed.store.dispatch.mock.calls[0][0].type).toBe(
       at.PREFS_INITIAL_VALUES
     );
-    const [{ data }] = feed.store.dispatch.firstCall.args;
-    assert.deepEqual(data.adsBackendConfig, {
+    const [[{ data }]] = feed.store.dispatch.mock.calls;
+    expect(data.adsBackendConfig).toEqual({
       feature1: true,
     });
   });
   it("should dispatch PREFS_INITIAL_VALUES with an empty object if no experiment is returned", () => {
-    sandbox.stub(global.NimbusFeatures.newtab, "getAllVariables").returns(null);
+    nimbusFeatures.newtab.getAllVariables.mockReturnValue(null);
     feed.onAction({ type: at.INIT });
-    assert.equal(
-      feed.store.dispatch.firstCall.args[0].type,
+    expect(feed.store.dispatch.mock.calls[0][0].type).toBe(
       at.PREFS_INITIAL_VALUES
     );
-    const [{ data }] = feed.store.dispatch.firstCall.args;
-    assert.deepEqual(data.featureConfig, {});
+    const [[{ data }]] = feed.store.dispatch.mock.calls;
+    expect(data.featureConfig).toEqual({});
   });
   describe("locked prefs", () => {
     it("should dispatch PREFS_INITIAL_VALUES with the locked prefs", () => {
-      feed._prefs.locked = sinon.spy(name => name === "bar");
+      feed._prefs.locked = jest.fn(name => name === "bar");
       feed.onAction({ type: at.INIT });
-      assert.equal(
-        feed.store.dispatch.firstCall.args[0].type,
-        at.PREFS_INITIAL_VALUES
-      );
-      const [{ data }] = feed.store.dispatch.firstCall.args;
-      assert.deepEqual(data.lockedPrefs, ["bar"]);
+      const [[action]] = feed.store.dispatch.mock.calls;
+      expect(action.type).toBe(at.PREFS_INITIAL_VALUES);
+      expect(action.data.lockedPrefs).toEqual(["bar"]);
     });
     it("should broadcast the locked prefs when a pref's lock state changes", () => {
       feed.onAction({ type: at.INIT });
-      feed.store.dispatch.resetHistory();
-      feed._prefs.locked = sinon.spy(name => name === "foo");
+      feed.store.dispatch.mockClear();
+      feed._prefs.locked = jest.fn(name => name === "foo");
 
       feed.onPrefChanged("foo", 2);
 
-      const action = feed.store.dispatch
-        .getCalls()
-        .map(call => call.args[0])
+      const action = feed.store.dispatch.mock.calls
+        .map(([a]) => a)
         .find(a => a.type === at.PREF_CHANGED && a.data.name === "lockedPrefs");
-      assert.deepEqual(action.data.value, ["foo"]);
-      assert.isTrue(au.isBroadcastToContent(action));
+      expect(action.data.value).toEqual(["foo"]);
+      expect(au.isBroadcastToContent(action)).toBe(true);
     });
     it("should not re-broadcast the locked prefs when nothing was locked or unlocked", () => {
       feed.onAction({ type: at.INIT });
-      feed.store.dispatch.resetHistory();
+      feed.store.dispatch.mockClear();
 
       feed.onPrefChanged("foo", 2);
 
-      assert.isUndefined(
-        feed.store.dispatch
-          .getCalls()
-          .map(call => call.args[0])
+      expect(
+        feed.store.dispatch.mock.calls
+          .map(([a]) => a)
           .find(
             a => a.type === at.PREF_CHANGED && a.data.name === "lockedPrefs"
           )
-      );
+      ).toBeUndefined();
     });
   });
   it("should add one branch observer on init", () => {
     feed.onAction({ type: at.INIT });
-    assert.calledOnce(feed._prefs.observeBranch);
-    assert.calledWith(feed._prefs.observeBranch, feed);
+    expect(feed._prefs.observeBranch).toHaveBeenCalledTimes(1);
+    expect(feed._prefs.observeBranch).toHaveBeenCalledWith(feed);
   });
   it("should handle region on init", () => {
     feed.init();
-    assert.equal(feed.geo, "US");
+    expect(feed.geo).toBe("US");
   });
   it("should add region observer on init", () => {
-    sandbox.stub(global.Region, "home").get(() => "");
+    region.home = "";
     feed.init();
-    assert.equal(feed.geo, "");
-    assert.calledWith(
-      ServicesStub.obs.addObserver,
+    expect(feed.geo).toBe("");
+    expect(services.obs.addObserver).toHaveBeenCalledWith(
       feed,
-      global.Region.REGION_TOPIC
+      region.REGION_TOPIC
     );
   });
   it("should remove the branch observer on uninit", () => {
     feed.onAction({ type: at.UNINIT });
-    assert.calledOnce(feed._prefs.ignoreBranch);
-    assert.calledWith(feed._prefs.ignoreBranch, feed);
+    expect(feed._prefs.ignoreBranch).toHaveBeenCalledTimes(1);
+    expect(feed._prefs.ignoreBranch).toHaveBeenCalledWith(feed);
   });
   it("should call removeObserver", () => {
     feed.geo = "";
     feed.uninit();
-    assert.calledWith(
-      ServicesStub.obs.removeObserver,
+    expect(services.obs.removeObserver).toHaveBeenCalledWith(
       feed,
-      global.Region.REGION_TOPIC
+      region.REGION_TOPIC
     );
   });
-  it("should add a browser.nova.enabled observer on init", () => {
-    feed.init();
-    assert.calledWith(
-      ServicesStub.prefs.addObserver,
-      "browser.nova.enabled",
-      feed
-    );
-  });
-  it("should remove the browser.nova.enabled observer on uninit", () => {
-    feed.uninit();
-    assert.calledWith(
-      ServicesStub.prefs.removeObserver,
-      "browser.nova.enabled",
-      feed
-    );
-  });
-  it("should broadcast browserNovaEnabled when browser.nova.enabled changes", () => {
-    ServicesStub.prefs.getBoolPref = sinon.stub().returns(true);
-    feed.observe(null, "nsPref:changed", "browser.nova.enabled");
-    assert.calledWith(
-      feed.store.dispatch,
-      ac.BroadcastToContent({
-        type: at.PREF_CHANGED,
-        data: { name: "browserNovaEnabled", value: true },
-      })
-    );
-  });
-  it("keeps browserNovaEnabled false on hosts older than 155 even when the pref is on", () => {
-    ServicesStub.prefs.getBoolPref = sinon.stub().returns(true);
-    ServicesStub.vc.compare = sinon.stub().returns(-1);
-    feed.observe(null, "nsPref:changed", "browser.nova.enabled");
-    assert.calledWith(
-      feed.store.dispatch,
-      ac.BroadcastToContent({
-        type: at.PREF_CHANGED,
-        data: { name: "browserNovaEnabled", value: false },
-      })
-    );
+  describe("browserNovaEnabled", () => {
+    it("should add a browser.nova.enabled observer on init", () => {
+      feed.init();
+      expect(services.prefs.addObserver).toHaveBeenCalledWith(
+        "browser.nova.enabled",
+        feed
+      );
+    });
+    it("should remove the browser.nova.enabled observer on uninit", () => {
+      feed.uninit();
+      expect(services.prefs.removeObserver).toHaveBeenCalledWith(
+        "browser.nova.enabled",
+        feed
+      );
+    });
+    it("should broadcast browserNovaEnabled when browser.nova.enabled changes", () => {
+      services.prefs.getBoolPref.mockReturnValue(true);
+      feed.observe(null, "nsPref:changed", "browser.nova.enabled");
+      expect(feed.store.dispatch).toHaveBeenCalledWith(
+        ac.BroadcastToContent({
+          type: at.PREF_CHANGED,
+          data: { name: "browserNovaEnabled", value: true },
+        })
+      );
+    });
+    it("keeps browserNovaEnabled false on hosts older than 155 even when the pref is on", () => {
+      services.prefs.getBoolPref.mockReturnValue(true);
+      services.vc.compare.mockReturnValue(-1);
+      feed.observe(null, "nsPref:changed", "browser.nova.enabled");
+      expect(feed.store.dispatch).toHaveBeenCalledWith(
+        ac.BroadcastToContent({
+          type: at.PREF_CHANGED,
+          data: { name: "browserNovaEnabled", value: false },
+        })
+      );
+    });
   });
   describe("supportsWidgetSearchSap", () => {
     it("is true in the initial values on a host that knows the access point", () => {
       feed.onAction({ type: at.INIT });
-      const [{ data }] = feed.store.dispatch.firstCall.args;
-      assert.isTrue(data.supportsWidgetSearchSap);
+      const [[{ data }]] = feed.store.dispatch.mock.calls;
+      expect(data.supportsWidgetSearchSap).toBe(true);
     });
     it("is false in the initial values on a host older than 157", () => {
-      ServicesStub.vc.compare = sinon.stub().returns(-1);
+      services.vc.compare.mockReturnValue(-1);
       feed.onAction({ type: at.INIT });
-      const [{ data }] = feed.store.dispatch.firstCall.args;
-      assert.isFalse(data.supportsWidgetSearchSap);
+      const [[{ data }]] = feed.store.dispatch.mock.calls;
+      expect(data.supportsWidgetSearchSap).toBe(false);
     });
   });
   describe("recordsHistory", () => {
     // The initial values are what the first new tab of a session reads, so the
     // widget-hiding depends on this being present before any pref changes.
     it("is included in the initial values when history is on", () => {
-      ServicesStub.prefs.getBoolPref = sinon.stub().returns(true);
+      services.prefs.getBoolPref = jest.fn(() => true);
       feed.onAction({ type: at.INIT });
-      const [{ data }] = feed.store.dispatch.firstCall.args;
-      assert.isTrue(data.recordsHistory);
+      const [[{ data }]] = feed.store.dispatch.mock.calls;
+      expect(data.recordsHistory).toBe(true);
     });
     it("is false in the initial values when history is off", () => {
-      const getBoolPref = sinon.stub().returns(true);
-      getBoolPref.withArgs("places.history.enabled", true).returns(false);
-      ServicesStub.prefs.getBoolPref = getBoolPref;
+      services.prefs.getBoolPref = jest.fn(
+        pref => pref !== "places.history.enabled"
+      );
       feed.onAction({ type: at.INIT });
-      const [{ data }] = feed.store.dispatch.firstCall.args;
-      assert.isFalse(data.recordsHistory);
+      const [[{ data }]] = feed.store.dispatch.mock.calls;
+      expect(data.recordsHistory).toBe(false);
     });
     it("observes both history prefs on init and drops them on uninit", () => {
       feed.init();
@@ -372,15 +373,14 @@ describe("PrefsFeed", () => {
         "places.history.enabled",
         "browser.privatebrowsing.autostart",
       ]) {
-        assert.calledWith(ServicesStub.prefs.addObserver, pref, feed);
-        assert.calledWith(ServicesStub.prefs.removeObserver, pref, feed);
+        expect(services.prefs.addObserver).toHaveBeenCalledWith(pref, feed);
+        expect(services.prefs.removeObserver).toHaveBeenCalledWith(pref, feed);
       }
     });
     it("broadcasts the value when places.history.enabled changes", () => {
-      ServicesStub.prefs.getBoolPref = sinon.stub().returns(false);
+      services.prefs.getBoolPref = jest.fn(() => false);
       feed.observe(null, "nsPref:changed", "places.history.enabled");
-      assert.calledWith(
-        feed.store.dispatch,
+      expect(feed.store.dispatch).toHaveBeenCalledWith(
         ac.BroadcastToContent({
           type: at.PREF_CHANGED,
           data: { name: "recordsHistory", value: false },
@@ -390,26 +390,25 @@ describe("PrefsFeed", () => {
     it("ignores a pref write that leaves the derived value alone", () => {
       // Two prefs collapse into one boolean, so moving autostart while
       // places.history.enabled is already false changes nothing.
-      const getBoolPref = sinon.stub().returns(true);
-      getBoolPref.withArgs("places.history.enabled", true).returns(false);
-      ServicesStub.prefs.getBoolPref = getBoolPref;
+      services.prefs.getBoolPref = jest.fn(
+        pref => pref !== "places.history.enabled"
+      );
       feed.init();
-      feed.store.dispatch.resetHistory();
+      feed.store.dispatch.mockClear();
 
       feed.observe(null, "nsPref:changed", "browser.privatebrowsing.autostart");
-      assert.notCalled(feed.store.dispatch);
+      expect(feed.store.dispatch).not.toHaveBeenCalled();
     });
     it("broadcasts once per flip, not once per write", () => {
-      ServicesStub.prefs.getBoolPref = sinon.stub().returns(true);
+      services.prefs.getBoolPref = jest.fn(() => true);
       feed.init();
-      feed.store.dispatch.resetHistory();
+      feed.store.dispatch.mockClear();
 
-      const getBoolPref = sinon.stub().returns(true);
-      getBoolPref.withArgs("places.history.enabled", true).returns(false);
-      ServicesStub.prefs.getBoolPref = getBoolPref;
+      services.prefs.getBoolPref = jest.fn(
+        pref => pref !== "places.history.enabled"
+      );
       feed.observe(null, "nsPref:changed", "places.history.enabled");
-      assert.calledWith(
-        feed.store.dispatch,
+      expect(feed.store.dispatch).toHaveBeenCalledWith(
         ac.BroadcastToContent({
           type: at.PREF_CHANGED,
           data: { name: "recordsHistory", value: false },
@@ -417,19 +416,16 @@ describe("PrefsFeed", () => {
       );
 
       // A second write with the same resulting value is a no-op.
-      feed.store.dispatch.resetHistory();
+      feed.store.dispatch.mockClear();
       feed.observe(null, "nsPref:changed", "places.history.enabled");
-      assert.notCalled(feed.store.dispatch);
+      expect(feed.store.dispatch).not.toHaveBeenCalled();
     });
     it("is false in permanent private browsing", () => {
       // Places records no visits there, so the pref alone is not enough.
-      overrider.set({
-        PrivateBrowsingUtils: { enabled: true, permanentPrivateBrowsing: true },
-      });
-      ServicesStub.prefs.getBoolPref = sinon.stub().returns(true);
+      globalThis.PrivateBrowsingUtils.permanentPrivateBrowsing = true;
+      services.prefs.getBoolPref = jest.fn(() => true);
       feed.observe(null, "nsPref:changed", "browser.privatebrowsing.autostart");
-      assert.calledWith(
-        feed.store.dispatch,
+      expect(feed.store.dispatch).toHaveBeenCalledWith(
         ac.BroadcastToContent({
           type: at.PREF_CHANGED,
           data: { name: "recordsHistory", value: false },
@@ -439,8 +435,7 @@ describe("PrefsFeed", () => {
   });
   it("should send a PREF_CHANGED action when onPrefChanged is called", () => {
     feed.onPrefChanged("foo", 2);
-    assert.calledWith(
-      feed.store.dispatch,
+    expect(feed.store.dispatch).toHaveBeenCalledWith(
       ac.BroadcastToContent({
         type: at.PREF_CHANGED,
         data: { name: "foo", value: 2 },
@@ -448,14 +443,11 @@ describe("PrefsFeed", () => {
     );
   });
   it("should send a PREF_CHANGED actions when onPocketExperimentUpdated is called", () => {
-    sandbox
-      .stub(global.NimbusFeatures.pocketNewtab, "getAllVariables")
-      .returns({
-        prefsButtonIcon: "icon-new",
-      });
+    nimbusFeatures.pocketNewtab.getAllVariables.mockReturnValue({
+      prefsButtonIcon: "icon-new",
+    });
     feed.onPocketExperimentUpdated();
-    assert.calledWith(
-      feed.store.dispatch,
+    expect(feed.store.dispatch).toHaveBeenCalledWith(
       ac.BroadcastToContent({
         type: at.PREF_CHANGED,
         data: {
@@ -468,50 +460,40 @@ describe("PrefsFeed", () => {
     );
   });
   it("should not send a PREF_CHANGED actions when onPocketExperimentUpdated is called during startup", () => {
-    sandbox
-      .stub(global.NimbusFeatures.pocketNewtab, "getAllVariables")
-      .returns({
-        prefsButtonIcon: "icon-new",
-      });
+    nimbusFeatures.pocketNewtab.getAllVariables.mockReturnValue({
+      prefsButtonIcon: "icon-new",
+    });
     feed.onPocketExperimentUpdated({}, "feature-experiment-loaded");
-    assert.notCalled(feed.store.dispatch);
+    expect(feed.store.dispatch).not.toHaveBeenCalled();
     feed.onPocketExperimentUpdated({}, "feature-rollout-loaded");
-    assert.notCalled(feed.store.dispatch);
+    expect(feed.store.dispatch).not.toHaveBeenCalled();
   });
   it("should set initialWallpaper when currentWallpaper is set and initialWallpaper is unset", () => {
-    sandbox
-      .stub(global.NimbusFeatures.pocketNewtab, "getAllVariables")
-      .returns({
-        currentWallpaper: "celestial",
-      });
+    nimbusFeatures.pocketNewtab.getAllVariables.mockReturnValue({
+      currentWallpaper: "celestial",
+    });
     feed.onPocketExperimentUpdated();
-    assert.calledWith(
-      feed._prefs.set,
+    expect(feed._prefs.set).toHaveBeenCalledWith(
       "newtabWallpapers.initialWallpaper",
       "celestial"
     );
   });
   it("should not overwrite initialWallpaper if it is already set", () => {
     FAKE_PREFS.set("newtabWallpapers.initialWallpaper", "celestial");
-    sandbox
-      .stub(global.NimbusFeatures.pocketNewtab, "getAllVariables")
-      .returns({
-        currentWallpaper: "celestial",
-      });
+    nimbusFeatures.pocketNewtab.getAllVariables.mockReturnValue({
+      currentWallpaper: "celestial",
+    });
     feed.onPocketExperimentUpdated();
-    assert.neverCalledWith(
-      feed._prefs.set,
-      "newtabWallpapers.initialWallpaper",
-      sinon.match.any
+    expect(calledNames(feed._prefs.set)).not.toContain(
+      "newtabWallpapers.initialWallpaper"
     );
   });
   it("should send a PREF_CHANGED actions when onExperimentUpdated is called", () => {
-    sandbox.stub(global.NimbusFeatures.newtab, "getAllVariables").returns({
+    nimbusFeatures.newtab.getAllVariables.mockReturnValue({
       prefsButtonIcon: "icon-new",
     });
     feed.onExperimentUpdated();
-    assert.calledWith(
-      feed.store.dispatch,
+    expect(feed.store.dispatch).toHaveBeenCalledWith(
       ac.BroadcastToContent({
         type: at.PREF_CHANGED,
         data: {
@@ -531,7 +513,10 @@ describe("PrefsFeed", () => {
     it("should opt the space out when its pref is turned off", () => {
       feed.onPrefChanged("feeds.section.topstories", false);
 
-      assert.calledWith(feed._prefs.set, "spaces.storiesOptOut", true);
+      expect(feed._prefs.set).toHaveBeenCalledWith(
+        "spaces.storiesOptOut",
+        true
+      );
     });
 
     it("should opt back in when the pref is turned on again", () => {
@@ -539,15 +524,24 @@ describe("PrefsFeed", () => {
 
       feed.onPrefChanged("feeds.section.topstories", true);
 
-      assert.calledWith(feed._prefs.set, "spaces.storiesOptOut", false);
+      expect(feed._prefs.set).toHaveBeenCalledWith(
+        "spaces.storiesOptOut",
+        false
+      );
     });
 
     it("should mirror every space the same way", () => {
       feed.onPrefChanged("widgets.enabled", false);
       feed.onPrefChanged("feeds.section.highlights", false);
 
-      assert.calledWith(feed._prefs.set, "spaces.widgetsOptOut", true);
-      assert.calledWith(feed._prefs.set, "spaces.activityOptOut", true);
+      expect(feed._prefs.set).toHaveBeenCalledWith(
+        "spaces.widgetsOptOut",
+        true
+      );
+      expect(feed._prefs.set).toHaveBeenCalledWith(
+        "spaces.activityOptOut",
+        true
+      );
     });
 
     it("should mirror a change made outside the newtab page", () => {
@@ -556,7 +550,10 @@ describe("PrefsFeed", () => {
       feed.observe(null, "nsPref:changed", "feeds.section.topstories");
       feed.onPrefChanged("feeds.section.topstories", false);
 
-      assert.calledWith(feed._prefs.set, "spaces.storiesOptOut", true);
+      expect(feed._prefs.set).toHaveBeenCalledWith(
+        "spaces.storiesOptOut",
+        true
+      );
     });
 
     it("should not write when the mirror already matches", () => {
@@ -564,10 +561,8 @@ describe("PrefsFeed", () => {
 
       feed.onPrefChanged("feeds.section.topstories", false);
 
-      assert.neverCalledWith(
-        feed._prefs.set,
-        "spaces.storiesOptOut",
-        sinon.match.any
+      expect(calledNames(feed._prefs.set)).not.toContain(
+        "spaces.storiesOptOut"
       );
     });
 
@@ -576,21 +571,17 @@ describe("PrefsFeed", () => {
 
       feed.onPrefChanged("feeds.section.topstories", false);
 
-      assert.neverCalledWith(
-        feed._prefs.set,
-        "spaces.storiesOptOut",
-        sinon.match.any
+      expect(calledNames(feed._prefs.set)).not.toContain(
+        "spaces.storiesOptOut"
       );
     });
 
     it("should not mirror a pref that is not a space", () => {
       feed.onPrefChanged("feeds.topsites", false);
 
-      assert.neverCalledWith(
-        feed._prefs.set,
-        sinon.match(/^spaces\./),
-        sinon.match.any
-      );
+      expect(
+        calledNames(feed._prefs.set).some(name => name.startsWith("spaces."))
+      ).toBe(false);
     });
   });
 
@@ -607,12 +598,11 @@ describe("PrefsFeed", () => {
           },
         },
       };
-      sandbox
-        .stub(global.NimbusFeatures.newtabTrainhop, "getAllEnrollments")
-        .returns([testObject]);
+      nimbusFeatures.newtabTrainhop.getAllEnrollments.mockReturnValue([
+        testObject,
+      ]);
       feed.onTrainhopExperimentUpdated();
-      assert.calledWith(
-        feed.store.dispatch,
+      expect(feed.store.dispatch).toHaveBeenCalledWith(
         ac.BroadcastToContent({
           type: at.PREF_CHANGED,
           data: {
@@ -669,12 +659,14 @@ describe("PrefsFeed", () => {
           },
         },
       };
-      sandbox
-        .stub(global.NimbusFeatures.newtabTrainhop, "getAllEnrollments")
-        .returns([testObject1, testObject2, testObject3, testObject4]);
+      nimbusFeatures.newtabTrainhop.getAllEnrollments.mockReturnValue([
+        testObject1,
+        testObject2,
+        testObject3,
+        testObject4,
+      ]);
       feed.onTrainhopExperimentUpdated();
-      assert.calledWith(
-        feed.store.dispatch,
+      expect(feed.store.dispatch).toHaveBeenCalledWith(
         ac.BroadcastToContent({
           type: at.PREF_CHANGED,
           data: {
@@ -705,12 +697,11 @@ describe("PrefsFeed", () => {
           ],
         },
       };
-      sandbox
-        .stub(global.NimbusFeatures.newtabTrainhop, "getAllEnrollments")
-        .returns([testObject]);
+      nimbusFeatures.newtabTrainhop.getAllEnrollments.mockReturnValue([
+        testObject,
+      ]);
       feed.onTrainhopExperimentUpdated();
-      assert.calledWith(
-        feed.store.dispatch,
+      expect(feed.store.dispatch).toHaveBeenCalledWith(
         ac.BroadcastToContent({
           type: at.PREF_CHANGED,
           data: {
@@ -748,12 +739,11 @@ describe("PrefsFeed", () => {
           ],
         },
       };
-      sandbox
-        .stub(global.NimbusFeatures.newtabTrainhop, "getAllEnrollments")
-        .returns([testObject]);
+      nimbusFeatures.newtabTrainhop.getAllEnrollments.mockReturnValue([
+        testObject,
+      ]);
       feed.onTrainhopExperimentUpdated();
-      assert.calledWith(
-        feed.store.dispatch,
+      expect(feed.store.dispatch).toHaveBeenCalledWith(
         ac.BroadcastToContent({
           type: at.PREF_CHANGED,
           data: {
@@ -771,10 +761,11 @@ describe("PrefsFeed", () => {
       );
     });
     it("should write trainhop widgets.weatherSize to the default branch", () => {
-      const setStringPref = sinon.spy();
-      ServicesStub.prefs.getDefaultBranch = sinon
-        .stub()
-        .returns({ setStringPref, setBoolPref: sinon.spy() });
+      const setStringPref = jest.fn();
+      services.prefs.getDefaultBranch.mockReturnValue({
+        setStringPref,
+        setBoolPref: jest.fn(),
+      });
       const enrollment = {
         meta: { isRollout: false },
         value: {
@@ -782,20 +773,24 @@ describe("PrefsFeed", () => {
           payload: { weatherSize: "large" },
         },
       };
-      sandbox
-        .stub(global.NimbusFeatures.newtabTrainhop, "getAllEnrollments")
-        .returns([enrollment]);
+      nimbusFeatures.newtabTrainhop.getAllEnrollments.mockReturnValue([
+        enrollment,
+      ]);
 
       feed.onTrainhopExperimentUpdated();
 
-      assert.calledWith(setStringPref, "widgets.weather.size", "large");
+      expect(setStringPref).toHaveBeenCalledWith(
+        "widgets.weather.size",
+        "large"
+      );
     });
 
     it("should write widgetsSettings default-enabled values to the default branch", () => {
-      const setBoolPref = sinon.spy();
-      ServicesStub.prefs.getDefaultBranch = sinon
-        .stub()
-        .returns({ setBoolPref, setStringPref: sinon.spy() });
+      const setBoolPref = jest.fn();
+      services.prefs.getDefaultBranch.mockReturnValue({
+        setBoolPref,
+        setStringPref: jest.fn(),
+      });
       const enrollment = {
         meta: { isRollout: false },
         value: {
@@ -803,87 +798,90 @@ describe("PrefsFeed", () => {
           payload: { listsEnabled: false, focusTimerEnabled: true },
         },
       };
-      sandbox
-        .stub(global.NimbusFeatures.newtabTrainhop, "getAllEnrollments")
-        .returns([enrollment]);
+      nimbusFeatures.newtabTrainhop.getAllEnrollments.mockReturnValue([
+        enrollment,
+      ]);
 
       feed.onTrainhopExperimentUpdated();
 
-      assert.calledWith(setBoolPref, "widgets.lists.enabled", false);
-      assert.calledWith(setBoolPref, "widgets.focusTimer.enabled", true);
+      expect(setBoolPref).toHaveBeenCalledWith("widgets.lists.enabled", false);
+      expect(setBoolPref).toHaveBeenCalledWith(
+        "widgets.focusTimer.enabled",
+        true
+      );
     });
 
     it("should write the Recent Activity default for the spaces experiment", () => {
       // Scoped to the experiment, so an unrelated train-hop config leaves it be.
       FAKE_PREFS.set("pageLayouts.variant", "spaces-buttons-bottom");
-      const setBoolPref = sinon.spy();
-      ServicesStub.prefs.getDefaultBranch = sinon
-        .stub()
-        .returns({ setBoolPref, setStringPref: sinon.spy() });
-      const enrollment = {
-        meta: { isRollout: false },
-        value: {
-          type: "highlights",
-          payload: { enabled: true },
+      const setBoolPref = jest.fn();
+      services.prefs.getDefaultBranch.mockReturnValue({
+        setBoolPref,
+        setStringPref: jest.fn(),
+      });
+      nimbusFeatures.newtabTrainhop.getAllEnrollments.mockReturnValue([
+        {
+          meta: { isRollout: false },
+          value: { type: "highlights", payload: { enabled: true } },
         },
-      };
-      sandbox
-        .stub(global.NimbusFeatures.newtabTrainhop, "getAllEnrollments")
-        .returns([enrollment]);
+      ]);
 
       feed.onTrainhopExperimentUpdated();
 
       // The default branch, so a user who has switched Recent Activity off
       // keeps it off: the user branch always wins.
-      assert.calledWith(setBoolPref, "feeds.section.highlights", true);
+      expect(setBoolPref).toHaveBeenCalledWith(
+        "feeds.section.highlights",
+        true
+      );
     });
 
     it("should put the Recent Activity default back on unenrollment", () => {
       FAKE_PREFS.set("pageLayouts.variant", "spaces-buttons-bottom");
-      const setBoolPref = sinon.spy();
-      ServicesStub.prefs.getDefaultBranch = sinon
-        .stub()
-        .returns({ setBoolPref, setStringPref: sinon.spy() });
-      const enrolled = {
-        meta: { isRollout: false },
-        value: { type: "highlights", payload: { enabled: true } },
-      };
-      const getAllEnrollments = sandbox.stub(
-        global.NimbusFeatures.newtabTrainhop,
-        "getAllEnrollments"
-      );
+      const setBoolPref = jest.fn();
+      services.prefs.getDefaultBranch.mockReturnValue({
+        setBoolPref,
+        setStringPref: jest.fn(),
+      });
+      const { getAllEnrollments } = nimbusFeatures.newtabTrainhop;
 
-      getAllEnrollments.returns([enrolled]);
+      getAllEnrollments.mockReturnValue([
+        {
+          meta: { isRollout: false },
+          value: { type: "highlights", payload: { enabled: true } },
+        },
+      ]);
       feed.onTrainhopExperimentUpdated();
 
       // Unenrolling takes the variant with it, so the revert has to run when
       // spaces is no longer assigned -- which is the whole point of it.
-      getAllEnrollments.returns([]);
+      getAllEnrollments.mockReturnValue([]);
       FAKE_PREFS.set("pageLayouts.variant", "nova-full-width");
       feed.onTrainhopExperimentUpdated();
 
       // Reverted in the same update rather than at the next restart, but only
       // because this profile was enrolled.
-      assert.calledWith(setBoolPref, "feeds.section.highlights", false);
+      expect(setBoolPref).toHaveBeenCalledWith(
+        "feeds.section.highlights",
+        false
+      );
     });
 
     it("should not opt the space out when unenrolling reverts its default", () => {
       // The revert writes feeds.section.highlights, which fires the branch
       // observer. Its handler has to see the fresh config, or it reads our own
       // write as the user turning Recent Activity off.
-      const setBoolPref = sinon.spy((name, value) =>
+      const setBoolPref = jest.fn((name, value) =>
         feed.onPrefChanged(name, value)
       );
-      ServicesStub.prefs.getDefaultBranch = sinon
-        .stub()
-        .returns({ setBoolPref, setStringPref: sinon.spy() });
-      const getAllEnrollments = sandbox.stub(
-        global.NimbusFeatures.newtabTrainhop,
-        "getAllEnrollments"
-      );
+      services.prefs.getDefaultBranch.mockReturnValue({
+        setBoolPref,
+        setStringPref: jest.fn(),
+      });
+      const { getAllEnrollments } = nimbusFeatures.newtabTrainhop;
 
       FAKE_PREFS.set("pageLayouts.variant", "spaces-buttons-bottom");
-      getAllEnrollments.returns([
+      getAllEnrollments.mockReturnValue([
         {
           meta: { isRollout: false },
           value: {
@@ -900,60 +898,59 @@ describe("PrefsFeed", () => {
       ]);
       feed.onTrainhopExperimentUpdated();
 
-      getAllEnrollments.returns([]);
+      getAllEnrollments.mockReturnValue([]);
       FAKE_PREFS.set("pageLayouts.variant", "nova-full-width");
       feed.onTrainhopExperimentUpdated();
 
-      assert.neverCalledWith(feed._prefs.set, "spaces.activityOptOut", true);
+      expect(feed._prefs.set).not.toHaveBeenCalledWith(
+        "spaces.activityOptOut",
+        true
+      );
     });
 
     it("should not revert a default this profile was never given", () => {
-      const setBoolPref = sinon.spy();
-      ServicesStub.prefs.getDefaultBranch = sinon
-        .stub()
-        .returns({ setBoolPref, setStringPref: sinon.spy() });
-      sandbox
-        .stub(global.NimbusFeatures.newtabTrainhop, "getAllEnrollments")
-        .returns([]);
+      const setBoolPref = jest.fn();
+      services.prefs.getDefaultBranch.mockReturnValue({
+        setBoolPref,
+        setStringPref: jest.fn(),
+      });
+      nimbusFeatures.newtabTrainhop.getAllEnrollments.mockReturnValue([]);
 
       FAKE_PREFS.set("pageLayouts.variant", "nova-full-width");
       feed.onTrainhopExperimentUpdated();
 
-      assert.neverCalledWith(
-        setBoolPref,
-        "feeds.section.highlights",
-        sinon.match.any
+      expect(calledNames(setBoolPref)).not.toContain(
+        "feeds.section.highlights"
       );
     });
 
     it("should not touch the Recent Activity default for an unrelated config", () => {
       FAKE_PREFS.set("pageLayouts.variant", "spaces-buttons-bottom");
-      const setBoolPref = sinon.spy();
-      ServicesStub.prefs.getDefaultBranch = sinon
-        .stub()
-        .returns({ setBoolPref, setStringPref: sinon.spy() });
-      const enrollment = {
-        meta: { isRollout: false },
-        value: { type: "highlights", payload: {} },
-      };
-      sandbox
-        .stub(global.NimbusFeatures.newtabTrainhop, "getAllEnrollments")
-        .returns([enrollment]);
+      const setBoolPref = jest.fn();
+      services.prefs.getDefaultBranch.mockReturnValue({
+        setBoolPref,
+        setStringPref: jest.fn(),
+      });
+      nimbusFeatures.newtabTrainhop.getAllEnrollments.mockReturnValue([
+        {
+          meta: { isRollout: false },
+          value: { type: "highlights", payload: {} },
+        },
+      ]);
 
       feed.onTrainhopExperimentUpdated();
 
-      assert.neverCalledWith(
-        setBoolPref,
-        "feeds.section.highlights",
-        sinon.match.any
+      expect(calledNames(setBoolPref)).not.toContain(
+        "feeds.section.highlights"
       );
     });
 
     it("should not write a widget default when its widgetsSettings key is absent", () => {
-      const setBoolPref = sinon.spy();
-      ServicesStub.prefs.getDefaultBranch = sinon
-        .stub()
-        .returns({ setBoolPref, setStringPref: sinon.spy() });
+      const setBoolPref = jest.fn();
+      services.prefs.getDefaultBranch.mockReturnValue({
+        setBoolPref,
+        setStringPref: jest.fn(),
+      });
       const enrollment = {
         meta: { isRollout: false },
         value: {
@@ -961,24 +958,21 @@ describe("PrefsFeed", () => {
           payload: { listsEnabled: false },
         },
       };
-      sandbox
-        .stub(global.NimbusFeatures.newtabTrainhop, "getAllEnrollments")
-        .returns([enrollment]);
+      nimbusFeatures.newtabTrainhop.getAllEnrollments.mockReturnValue([
+        enrollment,
+      ]);
 
       feed.onTrainhopExperimentUpdated();
 
-      assert.neverCalledWith(
-        setBoolPref,
-        "widgets.clocks.enabled",
-        sinon.match.any
-      );
+      expect(calledNames(setBoolPref)).not.toContain("widgets.clocks.enabled");
     });
 
     it("should write widgetPictureOfTheDay.enabled to the user pref default branch, not the system pref", () => {
-      const setBoolPref = sinon.spy();
-      ServicesStub.prefs.getDefaultBranch = sinon
-        .stub()
-        .returns({ setBoolPref, setStringPref: sinon.spy() });
+      const setBoolPref = jest.fn();
+      services.prefs.getDefaultBranch.mockReturnValue({
+        setBoolPref,
+        setStringPref: jest.fn(),
+      });
       const enrollment = {
         meta: { isRollout: false },
         value: {
@@ -990,33 +984,33 @@ describe("PrefsFeed", () => {
           },
         },
       };
-      sandbox
-        .stub(global.NimbusFeatures.newtabTrainhop, "getAllEnrollments")
-        .returns([enrollment]);
+      nimbusFeatures.newtabTrainhop.getAllEnrollments.mockReturnValue([
+        enrollment,
+      ]);
 
       feed.onTrainhopExperimentUpdated();
 
       // `enabled` overrides the user-facing enabled pref's default; `visible`
       // (not present here) would reveal the widget separately; size and
       // setAsWallpaperEnabled are read directly from trainhopConfig.
-      assert.calledWith(setBoolPref, "widgets.pictureOfTheDay.enabled", true);
-      assert.neverCalledWith(
-        setBoolPref,
-        "widgets.system.pictureOfTheDay.enabled",
-        sinon.match.any
+      expect(setBoolPref).toHaveBeenCalledWith(
+        "widgets.pictureOfTheDay.enabled",
+        true
       );
-      assert.neverCalledWith(
-        setBoolPref,
-        "widgets.pictureOfTheDay.setAsWallpaper.enabled",
-        sinon.match.any
+      expect(calledNames(setBoolPref)).not.toContain(
+        "widgets.system.pictureOfTheDay.enabled"
+      );
+      expect(calledNames(setBoolPref)).not.toContain(
+        "widgets.pictureOfTheDay.setAsWallpaper.enabled"
       );
     });
 
     it("should not write the POTD enabled default when widgetPictureOfTheDay.enabled is absent", () => {
-      const setBoolPref = sinon.spy();
-      ServicesStub.prefs.getDefaultBranch = sinon
-        .stub()
-        .returns({ setBoolPref, setStringPref: sinon.spy() });
+      const setBoolPref = jest.fn();
+      services.prefs.getDefaultBranch.mockReturnValue({
+        setBoolPref,
+        setStringPref: jest.fn(),
+      });
       const enrollment = {
         meta: { isRollout: false },
         value: {
@@ -1024,24 +1018,23 @@ describe("PrefsFeed", () => {
           payload: { size: "large" },
         },
       };
-      sandbox
-        .stub(global.NimbusFeatures.newtabTrainhop, "getAllEnrollments")
-        .returns([enrollment]);
+      nimbusFeatures.newtabTrainhop.getAllEnrollments.mockReturnValue([
+        enrollment,
+      ]);
 
       feed.onTrainhopExperimentUpdated();
 
-      assert.neverCalledWith(
-        setBoolPref,
-        "widgets.pictureOfTheDay.enabled",
-        sinon.match.any
+      expect(calledNames(setBoolPref)).not.toContain(
+        "widgets.pictureOfTheDay.enabled"
       );
     });
 
     it("should write widgetCrossword.enabled to the user pref default branch, not the system pref", () => {
-      const setBoolPref = sinon.spy();
-      ServicesStub.prefs.getDefaultBranch = sinon
-        .stub()
-        .returns({ setBoolPref, setStringPref: sinon.spy() });
+      const setBoolPref = jest.fn();
+      services.prefs.getDefaultBranch.mockReturnValue({
+        setBoolPref,
+        setStringPref: jest.fn(),
+      });
       const enrollment = {
         meta: { isRollout: false },
         value: {
@@ -1053,87 +1046,83 @@ describe("PrefsFeed", () => {
           },
         },
       };
-      sandbox
-        .stub(global.NimbusFeatures.newtabTrainhop, "getAllEnrollments")
-        .returns([enrollment]);
+      nimbusFeatures.newtabTrainhop.getAllEnrollments.mockReturnValue([
+        enrollment,
+      ]);
 
       feed.onTrainhopExperimentUpdated();
 
       // `enabled` overrides the user-facing enabled pref's default; `visible`
       // (not present here) would reveal the widget separately; size and
       // endpoint are read directly from trainhopConfig.
-      assert.calledWith(setBoolPref, "widgets.crossword.enabled", true);
-      assert.neverCalledWith(
-        setBoolPref,
-        "widgets.system.crossword.enabled",
-        sinon.match.any
+      expect(setBoolPref).toHaveBeenCalledWith(
+        "widgets.crossword.enabled",
+        true
+      );
+      expect(calledNames(setBoolPref)).not.toContain(
+        "widgets.system.crossword.enabled"
       );
     });
 
     it("should write widgetPrivacy.enabled to the user pref default branch, not the system pref", () => {
-      const setBoolPref = sinon.spy();
-      ServicesStub.prefs.getDefaultBranch = sinon
-        .stub()
-        .returns({ setBoolPref, setStringPref: sinon.spy() });
-      const enrollment = {
-        meta: { isRollout: false },
-        value: {
-          type: "widgetPrivacy",
-          payload: {
-            enabled: true,
-            showVpnMessages: true,
-            maxDisplayCount: 50,
-            size: "large",
+      const setBoolPref = jest.fn();
+      services.prefs.getDefaultBranch.mockReturnValue({
+        setBoolPref,
+        setStringPref: jest.fn(),
+      });
+      nimbusFeatures.newtabTrainhop.getAllEnrollments.mockReturnValue([
+        {
+          meta: { isRollout: false },
+          value: {
+            type: "widgetPrivacy",
+            payload: {
+              enabled: true,
+              showVpnMessages: true,
+              maxDisplayCount: 50,
+              size: "large",
+            },
           },
         },
-      };
-      sandbox
-        .stub(global.NimbusFeatures.newtabTrainhop, "getAllEnrollments")
-        .returns([enrollment]);
+      ]);
 
       feed.onTrainhopExperimentUpdated();
 
       // `enabled` overrides the user-facing enabled pref's default; `visible`
       // (not present here) would reveal the widget separately; size and the
       // message-scheduling keys are read directly from trainhopConfig.
-      assert.calledWith(setBoolPref, "widgets.privacy.enabled", true);
-      assert.neverCalledWith(
-        setBoolPref,
-        "widgets.system.privacy.enabled",
-        sinon.match.any
+      expect(setBoolPref).toHaveBeenCalledWith("widgets.privacy.enabled", true);
+      expect(calledNames(setBoolPref)).not.toContain(
+        "widgets.system.privacy.enabled"
       );
     });
 
     it("should not write the privacy enabled default when widgetPrivacy.enabled is absent", () => {
-      const setBoolPref = sinon.spy();
-      ServicesStub.prefs.getDefaultBranch = sinon
-        .stub()
-        .returns({ setBoolPref, setStringPref: sinon.spy() });
-      const enrollment = {
-        meta: { isRollout: false },
-        value: {
-          type: "widgetPrivacy",
-          payload: { showVpnMessages: true },
+      const setBoolPref = jest.fn();
+      services.prefs.getDefaultBranch.mockReturnValue({
+        setBoolPref,
+        setStringPref: jest.fn(),
+      });
+      nimbusFeatures.newtabTrainhop.getAllEnrollments.mockReturnValue([
+        {
+          meta: { isRollout: false },
+          value: {
+            type: "widgetPrivacy",
+            payload: { showVpnMessages: true },
+          },
         },
-      };
-      sandbox
-        .stub(global.NimbusFeatures.newtabTrainhop, "getAllEnrollments")
-        .returns([enrollment]);
+      ]);
 
       feed.onTrainhopExperimentUpdated();
 
-      assert.neverCalledWith(
-        setBoolPref,
-        "widgets.privacy.enabled",
-        sinon.match.any
-      );
+      expect(calledNames(setBoolPref)).not.toContain("widgets.privacy.enabled");
     });
 
     it("should not write the crossword enabled default when widgetCrossword.enabled is absent", () => {
-      const setBoolPref = sinon.spy();
-      ServicesStub.prefs.getDefaultBranch = sinon
-        .stub()
-        .returns({ setBoolPref, setStringPref: sinon.spy() });
+      const setBoolPref = jest.fn();
+      services.prefs.getDefaultBranch.mockReturnValue({
+        setBoolPref,
+        setStringPref: jest.fn(),
+      });
       const enrollment = {
         meta: { isRollout: false },
         value: {
@@ -1141,24 +1130,23 @@ describe("PrefsFeed", () => {
           payload: { size: "large" },
         },
       };
-      sandbox
-        .stub(global.NimbusFeatures.newtabTrainhop, "getAllEnrollments")
-        .returns([enrollment]);
+      nimbusFeatures.newtabTrainhop.getAllEnrollments.mockReturnValue([
+        enrollment,
+      ]);
 
       feed.onTrainhopExperimentUpdated();
 
-      assert.neverCalledWith(
-        setBoolPref,
-        "widgets.crossword.enabled",
-        sinon.match.any
+      expect(calledNames(setBoolPref)).not.toContain(
+        "widgets.crossword.enabled"
       );
     });
 
     it("should not write widgets.weather.size when weatherSize is missing", () => {
-      const setStringPref = sinon.spy();
-      ServicesStub.prefs.getDefaultBranch = sinon
-        .stub()
-        .returns({ setStringPref, setBoolPref: sinon.spy() });
+      const setStringPref = jest.fn();
+      services.prefs.getDefaultBranch.mockReturnValue({
+        setStringPref,
+        setBoolPref: jest.fn(),
+      });
       const enrollment = {
         meta: { isRollout: false },
         value: {
@@ -1166,24 +1154,21 @@ describe("PrefsFeed", () => {
           payload: { enabled: true },
         },
       };
-      sandbox
-        .stub(global.NimbusFeatures.newtabTrainhop, "getAllEnrollments")
-        .returns([enrollment]);
+      nimbusFeatures.newtabTrainhop.getAllEnrollments.mockReturnValue([
+        enrollment,
+      ]);
 
       feed.onTrainhopExperimentUpdated();
 
-      assert.neverCalledWith(
-        setStringPref,
-        "widgets.weather.size",
-        sinon.match.any
-      );
+      expect(calledNames(setStringPref)).not.toContain("widgets.weather.size");
     });
 
     it("should not write widgets.weather.size when weatherSize is empty string", () => {
-      const setStringPref = sinon.spy();
-      ServicesStub.prefs.getDefaultBranch = sinon
-        .stub()
-        .returns({ setStringPref, setBoolPref: sinon.spy() });
+      const setStringPref = jest.fn();
+      services.prefs.getDefaultBranch.mockReturnValue({
+        setStringPref,
+        setBoolPref: jest.fn(),
+      });
       const enrollment = {
         meta: { isRollout: false },
         value: {
@@ -1191,17 +1176,13 @@ describe("PrefsFeed", () => {
           payload: { weatherSize: "" },
         },
       };
-      sandbox
-        .stub(global.NimbusFeatures.newtabTrainhop, "getAllEnrollments")
-        .returns([enrollment]);
+      nimbusFeatures.newtabTrainhop.getAllEnrollments.mockReturnValue([
+        enrollment,
+      ]);
 
       feed.onTrainhopExperimentUpdated();
 
-      assert.neverCalledWith(
-        setStringPref,
-        "widgets.weather.size",
-        sinon.match.any
-      );
+      expect(calledNames(setStringPref)).not.toContain("widgets.weather.size");
     });
 
     it("should dedupe multi-payload format with experiment taking precedence over rollout", () => {
@@ -1239,12 +1220,12 @@ describe("PrefsFeed", () => {
           ],
         },
       };
-      sandbox
-        .stub(global.NimbusFeatures.newtabTrainhop, "getAllEnrollments")
-        .returns([rollout, experiment]);
+      nimbusFeatures.newtabTrainhop.getAllEnrollments.mockReturnValue([
+        rollout,
+        experiment,
+      ]);
       feed.onTrainhopExperimentUpdated();
-      assert.calledWith(
-        feed.store.dispatch,
+      expect(feed.store.dispatch).toHaveBeenCalledWith(
         ac.BroadcastToContent({
           type: at.PREF_CHANGED,
           data: {
@@ -1270,12 +1251,9 @@ describe("PrefsFeed", () => {
           },
         },
       };
-      sandbox
-        .stub(global.NimbusFeatures.adsBackend, "getAllEnrollments")
-        .returns([testObject]);
+      nimbusFeatures.adsBackend.getAllEnrollments.mockReturnValue([testObject]);
       feed.onAdsBackendUpdated();
-      assert.calledWith(
-        feed.store.dispatch,
+      expect(feed.store.dispatch).toHaveBeenCalledWith(
         ac.BroadcastToContent({
           type: at.PREF_CHANGED,
           data: {
@@ -1313,12 +1291,13 @@ describe("PrefsFeed", () => {
           },
         },
       };
-      sandbox
-        .stub(global.NimbusFeatures.adsBackend, "getAllEnrollments")
-        .returns([testObject1, testObject2, testObject3]);
+      nimbusFeatures.adsBackend.getAllEnrollments.mockReturnValue([
+        testObject1,
+        testObject2,
+        testObject3,
+      ]);
       feed.onAdsBackendUpdated();
-      assert.calledWith(
-        feed.store.dispatch,
+      expect(feed.store.dispatch).toHaveBeenCalledWith(
         ac.BroadcastToContent({
           type: at.PREF_CHANGED,
           data: {
@@ -1366,12 +1345,14 @@ describe("PrefsFeed", () => {
           },
         },
       };
-      sandbox
-        .stub(global.NimbusFeatures.adsBackend, "getAllEnrollments")
-        .returns([testObject1, testObject2, testObject3, testObject4]);
+      nimbusFeatures.adsBackend.getAllEnrollments.mockReturnValue([
+        testObject1,
+        testObject2,
+        testObject3,
+        testObject4,
+      ]);
       feed.onAdsBackendUpdated();
-      assert.calledWith(
-        feed.store.dispatch,
+      expect(feed.store.dispatch).toHaveBeenCalledWith(
         ac.BroadcastToContent({
           type: at.PREF_CHANGED,
           data: {
@@ -1387,12 +1368,9 @@ describe("PrefsFeed", () => {
       );
     });
     it("should handle no active experiments and rollouts", () => {
-      sandbox
-        .stub(global.NimbusFeatures.adsBackend, "getAllEnrollments")
-        .returns([]);
+      nimbusFeatures.adsBackend.getAllEnrollments.mockReturnValue([]);
       feed.onAdsBackendUpdated();
-      assert.calledWith(
-        feed.store.dispatch,
+      expect(feed.store.dispatch).toHaveBeenCalledWith(
         ac.BroadcastToContent({
           type: at.PREF_CHANGED,
           data: {
@@ -1404,18 +1382,15 @@ describe("PrefsFeed", () => {
     });
   });
   it("should dispatch PREF_CHANGED when onWidgetsUpdated is called", () => {
-    sandbox
-      .stub(global.NimbusFeatures.newtabWidgets, "getAllVariables")
-      .returns({
-        enabled: true,
-        listsEnabled: true,
-        timerEnabled: false,
-      });
+    nimbusFeatures.newtabWidgets.getAllVariables.mockReturnValue({
+      enabled: true,
+      listsEnabled: true,
+      timerEnabled: false,
+    });
 
     feed.onWidgetsUpdated();
 
-    assert.calledWith(
-      feed.store.dispatch,
+    expect(feed.store.dispatch).toHaveBeenCalledWith(
       ac.BroadcastToContent({
         type: at.PREF_CHANGED,
         data: {
@@ -1431,37 +1406,27 @@ describe("PrefsFeed", () => {
   });
   it("should remove all events on removeListeners", () => {
     feed.geo = "";
-    sandbox.spy(global.NimbusFeatures.pocketNewtab, "offUpdate");
-    sandbox.spy(global.NimbusFeatures.newtab, "offUpdate");
-    sandbox.spy(global.NimbusFeatures.newtabTrainhop, "offUpdate");
-    sandbox.spy(global.NimbusFeatures.adsBackend, "offUpdate");
     feed.removeListeners();
-    assert.calledWith(
-      global.NimbusFeatures.pocketNewtab.offUpdate,
+    expect(nimbusFeatures.pocketNewtab.offUpdate).toHaveBeenCalledWith(
       feed.onPocketExperimentUpdated
     );
-    assert.calledWith(
-      global.NimbusFeatures.newtab.offUpdate,
+    expect(nimbusFeatures.newtab.offUpdate).toHaveBeenCalledWith(
       feed.onExperimentUpdated
     );
-    assert.calledWith(
-      global.NimbusFeatures.newtabTrainhop.offUpdate,
+    expect(nimbusFeatures.newtabTrainhop.offUpdate).toHaveBeenCalledWith(
       feed.onTrainhopExperimentUpdated
     );
-    assert.calledWith(
-      global.NimbusFeatures.adsBackend.offUpdate,
+    expect(nimbusFeatures.adsBackend.offUpdate).toHaveBeenCalledWith(
       feed.onAdsBackendUpdated
     );
-    assert.calledWith(
-      ServicesStub.obs.removeObserver,
+    expect(services.obs.removeObserver).toHaveBeenCalledWith(
       feed,
-      global.Region.REGION_TOPIC
+      region.REGION_TOPIC
     );
   });
   it("should send OnlyToMain pref update if config for pref has skipBroadcast: true", async () => {
     feed.onPrefChanged("baz", { value: 2, skipBroadcast: true });
-    assert.calledWith(
-      feed.store.dispatch,
+    expect(feed.store.dispatch).toHaveBeenCalledWith(
       ac.OnlyToMain({
         type: at.PREF_CHANGED,
         data: { name: "baz", value: { value: 2, skipBroadcast: true } },
@@ -1474,8 +1439,7 @@ describe("PrefsFeed", () => {
       skipBroadcast: true,
       alsoToPreloaded: true,
     });
-    assert.calledWith(
-      feed.store.dispatch,
+    expect(feed.store.dispatch).toHaveBeenCalledWith(
       ac.AlsoToPreloaded({
         type: at.PREF_CHANGED,
         data: {
@@ -1487,23 +1451,25 @@ describe("PrefsFeed", () => {
   });
   describe("#observe", () => {
     it("should call dispatch from observe", () => {
-      feed.observe(undefined, global.Region.REGION_TOPIC);
-      assert.calledOnce(feed.store.dispatch);
+      feed.observe(undefined, region.REGION_TOPIC);
+      expect(feed.store.dispatch).toHaveBeenCalledTimes(1);
     });
   });
   describe("#_setStringPref", () => {
     it("should call _setPref and getStringPref from _setStringPref", () => {
+      // The shared stub returns the caller's default; this case asserts the
+      // pass-through of an unset pref, so make it read as unset.
+      services.prefs.getStringPref.mockReturnValueOnce(undefined);
       feed._setStringPref({}, "fake.pref", "default");
-      assert.calledOnce(feed._setPref);
-      assert.calledWith(
-        feed._setPref,
+      expect(feed._setPref).toHaveBeenCalledTimes(1);
+      expect(feed._setPref).toHaveBeenCalledWith(
         { "fake.pref": undefined },
         "fake.pref",
-        "default"
+        "default",
+        services.prefs.getStringPref
       );
-      assert.calledOnce(ServicesStub.prefs.getStringPref);
-      assert.calledWith(
-        ServicesStub.prefs.getStringPref,
+      expect(services.prefs.getStringPref).toHaveBeenCalledTimes(1);
+      expect(services.prefs.getStringPref).toHaveBeenCalledWith(
         "browser.newtabpage.activity-stream.fake.pref",
         "default"
       );
@@ -1511,17 +1477,19 @@ describe("PrefsFeed", () => {
   });
   describe("#_setBoolPref", () => {
     it("should call _setPref and getBoolPref from _setBoolPref", () => {
+      // The shared stub returns the caller's default; this case asserts the
+      // pass-through of an unset pref, so make it read as unset.
+      services.prefs.getBoolPref.mockReturnValueOnce(undefined);
       feed._setBoolPref({}, "fake.pref", false);
-      assert.calledOnce(feed._setPref);
-      assert.calledWith(
-        feed._setPref,
+      expect(feed._setPref).toHaveBeenCalledTimes(1);
+      expect(feed._setPref).toHaveBeenCalledWith(
         { "fake.pref": undefined },
         "fake.pref",
-        false
+        false,
+        services.prefs.getBoolPref
       );
-      assert.calledOnce(ServicesStub.prefs.getBoolPref);
-      assert.calledWith(
-        ServicesStub.prefs.getBoolPref,
+      expect(services.prefs.getBoolPref).toHaveBeenCalledTimes(1);
+      expect(services.prefs.getBoolPref).toHaveBeenCalledWith(
         "browser.newtabpage.activity-stream.fake.pref",
         false
       );
@@ -1529,17 +1497,19 @@ describe("PrefsFeed", () => {
   });
   describe("#_setIntPref", () => {
     it("should call _setPref and getIntPref from _setIntPref", () => {
+      // The shared stub returns the caller's default; this case asserts the
+      // pass-through of an unset pref, so make it read as unset.
+      services.prefs.getIntPref.mockReturnValueOnce(undefined);
       feed._setIntPref({}, "fake.pref", 1);
-      assert.calledOnce(feed._setPref);
-      assert.calledWith(
-        feed._setPref,
+      expect(feed._setPref).toHaveBeenCalledTimes(1);
+      expect(feed._setPref).toHaveBeenCalledWith(
         { "fake.pref": undefined },
         "fake.pref",
-        1
+        1,
+        services.prefs.getIntPref
       );
-      assert.calledOnce(ServicesStub.prefs.getIntPref);
-      assert.calledWith(
-        ServicesStub.prefs.getIntPref,
+      expect(services.prefs.getIntPref).toHaveBeenCalledTimes(1);
+      expect(services.prefs.getIntPref).toHaveBeenCalledWith(
         "browser.newtabpage.activity-stream.fake.pref",
         1
       );
@@ -1547,13 +1517,12 @@ describe("PrefsFeed", () => {
   });
   describe("#_setPref", () => {
     it("should set pref value with _setPref", () => {
-      const getPrefFunctionSpy = sinon.spy();
+      const getPrefFunctionSpy = jest.fn();
       const values = {};
       feed._setPref(values, "fake.pref", "default", getPrefFunctionSpy);
-      assert.deepEqual(values, { "fake.pref": undefined });
-      assert.calledOnce(getPrefFunctionSpy);
-      assert.calledWith(
-        getPrefFunctionSpy,
+      expect(values).toEqual({ "fake.pref": undefined });
+      expect(getPrefFunctionSpy).toHaveBeenCalledTimes(1);
+      expect(getPrefFunctionSpy).toHaveBeenCalledWith(
         "browser.newtabpage.activity-stream.fake.pref",
         "default"
       );
@@ -1564,6 +1533,9 @@ describe("PrefsFeed", () => {
     let mockCreatedInstant;
     let mockNowInstant;
     let defaultBranch;
+    let temporal;
+    let aboutNewTab;
+    let restoreActivationGlobals;
 
     const TEST_VARIANT = "a";
 
@@ -1577,30 +1549,35 @@ describe("PrefsFeed", () => {
       // Mock "now" as 24 hours after creation
       mockNowInstant = {
         toString: () => "2024-01-02T00:00:00Z",
-        subtract: sinon.stub().returns({
+        subtract: jest.fn(() => ({
           toString: () => "2023-12-30T00:00:00Z",
-        }),
+        })),
       };
 
-      global.Temporal = {
+      temporal = {
         Instant: {
-          compare: sinon.stub(),
+          compare: jest.fn(),
         },
         Now: {
-          instant: sinon.stub().returns(mockNowInstant),
+          instant: jest.fn(() => mockNowInstant),
         },
       };
 
-      global.AboutNewTab = {
+      aboutNewTab = {
         activityStream: {
           createdInstant: mockCreatedInstant,
         },
       };
 
+      restoreActivationGlobals = stubGlobals({
+        AboutNewTab: aboutNewTab,
+        Temporal: temporal,
+      });
+
       defaultBranch = {
-        setBoolPref: sinon.spy(),
+        setBoolPref: jest.fn(),
       };
-      ServicesStub.prefs.getDefaultBranch = sinon.stub().returns(defaultBranch);
+      services.prefs.getDefaultBranch.mockReturnValue(defaultBranch);
 
       // Setup store state with a fake activation window config
       feed.store.state = {
@@ -1621,67 +1598,66 @@ describe("PrefsFeed", () => {
         },
       };
 
-      sinon.spy(feed, "enterActivationWindowState");
-      sinon.spy(feed, "exitActivationWindowState");
+      jest.spyOn(feed, "enterActivationWindowState");
+      jest.spyOn(feed, "exitActivationWindowState");
     });
 
     afterEach(() => {
-      delete global.Temporal;
-      delete global.AboutNewTab;
+      restoreActivationGlobals();
     });
 
     describe("#checkForActivationWindow", () => {
       it("should enter activation window state when profile is within window", () => {
         // First call: createdInstant < now (comparison returns -1)
         // Second call: createdInstant > (now - 48 hours) (comparison returns 1)
-        global.Temporal.Instant.compare.onFirstCall().returns(-1);
-        global.Temporal.Instant.compare.onSecondCall().returns(1);
+        temporal.Instant.compare.mockReturnValueOnce(-1).mockReturnValueOnce(1);
 
         feed.checkForActivationWindow(mockNowInstant);
 
-        assert.calledOnce(feed.enterActivationWindowState);
-        assert.calledWith(
-          feed.enterActivationWindowState,
+        expect(feed.enterActivationWindowState).toHaveBeenCalledTimes(1);
+        expect(feed.enterActivationWindowState).toHaveBeenCalledWith(
           TEST_VARIANT,
           true,
-          true
+          true,
+          "",
+          false
         );
       });
 
       it("should exit activation window state when profile is outside window", () => {
         feed.inActivationWindowState = TEST_VARIANT;
-        feed._prefs.isSet = sinon.stub().returns(false);
+        feed._prefs.isSet = jest.fn(() => false);
 
         // First call: createdInstant < now (comparison returns -1)
         // Second call: createdInstant < (now - 48 hours) (comparison returns -1, meaning too old)
-        global.Temporal.Instant.compare.onFirstCall().returns(-1);
-        global.Temporal.Instant.compare.onSecondCall().returns(-1);
+        temporal.Instant.compare
+          .mockReturnValueOnce(-1)
+          .mockReturnValueOnce(-1);
 
         feed.checkForActivationWindow(mockNowInstant);
 
-        assert.notCalled(feed.enterActivationWindowState);
-        assert.calledOnce(feed.exitActivationWindowState);
+        expect(feed.enterActivationWindowState).not.toHaveBeenCalled();
+        expect(feed.exitActivationWindowState).toHaveBeenCalledTimes(1);
       });
 
       it("should not enter activation window when profile is in the future", () => {
         // First call: createdInstant > now (comparison returns 1)
-        global.Temporal.Instant.compare.onFirstCall().returns(1);
+        temporal.Instant.compare.mockReturnValueOnce(1);
 
         feed.checkForActivationWindow(mockNowInstant);
 
-        assert.notCalled(feed.enterActivationWindowState);
-        assert.notCalled(feed.exitActivationWindowState);
+        expect(feed.enterActivationWindowState).not.toHaveBeenCalled();
+        expect(feed.exitActivationWindowState).not.toHaveBeenCalled();
       });
 
       it("should not enter activation window when profile is exactly at boundary", () => {
         // First call: createdInstant < now (comparison returns -1)
         // Second call: createdInstant === (now - 48 hours) (comparison returns 0)
-        global.Temporal.Instant.compare.onFirstCall().returns(-1);
-        global.Temporal.Instant.compare.onSecondCall().returns(0);
+        temporal.Instant.compare.mockReturnValueOnce(-1).mockReturnValueOnce(0);
 
         feed.checkForActivationWindow(mockNowInstant);
 
-        assert.notCalled(feed.enterActivationWindowState);
+        expect(feed.enterActivationWindowState).not.toHaveBeenCalled();
       });
 
       it("should not evaluate when config is disabled", () => {
@@ -1689,54 +1665,53 @@ describe("PrefsFeed", () => {
 
         feed.checkForActivationWindow(mockNowInstant);
 
-        assert.notCalled(feed.enterActivationWindowState);
-        assert.notCalled(feed.exitActivationWindowState);
+        expect(feed.enterActivationWindowState).not.toHaveBeenCalled();
+        expect(feed.exitActivationWindowState).not.toHaveBeenCalled();
       });
 
       it("should not enter the activation window if 1 or more selectable profiles have been created", () => {
         // First call: createdInstant < now (comparison returns -1)
         // Second call: createdInstant > (now - 48 hours) (comparison returns 1)
-        global.Temporal.Instant.compare.onFirstCall().returns(-1);
-        global.Temporal.Instant.compare.onSecondCall().returns(1);
+        temporal.Instant.compare.mockReturnValueOnce(-1).mockReturnValueOnce(1);
 
-        sandbox
-          .stub(SelectableProfileServiceStub, "hasCreatedSelectableProfiles")
-          .returns(true);
+        selectableProfileService.hasCreatedSelectableProfiles.mockReturnValue(
+          true
+        );
         feed.checkForActivationWindow(mockNowInstant);
 
-        assert.notCalled(feed.enterActivationWindowState);
-        assert.notCalled(feed.exitActivationWindowState);
+        expect(feed.enterActivationWindowState).not.toHaveBeenCalled();
+        expect(feed.exitActivationWindowState).not.toHaveBeenCalled();
       });
 
       it("should exit activation window state when config is disabled but currently in state", () => {
         feed.inActivationWindowState = TEST_VARIANT;
         feed.store.state.Prefs.values.trainhopConfig.activationWindowBehavior.enabled = false;
-        feed._prefs.isSet = sinon.stub().returns(false);
+        feed._prefs.isSet = jest.fn(() => false);
 
         feed.checkForActivationWindow(mockNowInstant);
 
-        assert.notCalled(feed.enterActivationWindowState);
-        assert.calledOnce(feed.exitActivationWindowState);
+        expect(feed.enterActivationWindowState).not.toHaveBeenCalled();
+        expect(feed.exitActivationWindowState).toHaveBeenCalledTimes(1);
       });
 
       it("should not evaluate when createdInstant is missing", () => {
-        global.AboutNewTab.activityStream.createdInstant = null;
+        aboutNewTab.activityStream.createdInstant = null;
 
         feed.checkForActivationWindow(mockNowInstant);
 
-        assert.notCalled(feed.enterActivationWindowState);
-        assert.notCalled(feed.exitActivationWindowState);
+        expect(feed.enterActivationWindowState).not.toHaveBeenCalled();
+        expect(feed.exitActivationWindowState).not.toHaveBeenCalled();
       });
 
       it("should exit activation window state when createdInstant is missing but currently in state", () => {
         feed.inActivationWindowState = TEST_VARIANT;
-        global.AboutNewTab.activityStream.createdInstant = null;
-        feed._prefs.isSet = sinon.stub().returns(false);
+        aboutNewTab.activityStream.createdInstant = null;
+        feed._prefs.isSet = jest.fn(() => false);
 
         feed.checkForActivationWindow(mockNowInstant);
 
-        assert.notCalled(feed.enterActivationWindowState);
-        assert.calledOnce(feed.exitActivationWindowState);
+        expect(feed.enterActivationWindowState).not.toHaveBeenCalled();
+        expect(feed.exitActivationWindowState).toHaveBeenCalledTimes(1);
       });
 
       it("should not evaluate when variant is missing", () => {
@@ -1745,20 +1720,20 @@ describe("PrefsFeed", () => {
 
         feed.checkForActivationWindow(mockNowInstant);
 
-        assert.notCalled(feed.enterActivationWindowState);
-        assert.notCalled(feed.exitActivationWindowState);
+        expect(feed.enterActivationWindowState).not.toHaveBeenCalled();
+        expect(feed.exitActivationWindowState).not.toHaveBeenCalled();
       });
 
       it("should exit activation window state when variant is missing but currently in state", () => {
         feed.inActivationWindowState = TEST_VARIANT;
         feed.store.state.Prefs.values.trainhopConfig.activationWindowBehavior.variant =
           "";
-        feed._prefs.isSet = sinon.stub().returns(false);
+        feed._prefs.isSet = jest.fn(() => false);
 
         feed.checkForActivationWindow(mockNowInstant);
 
-        assert.notCalled(feed.enterActivationWindowState);
-        assert.calledOnce(feed.exitActivationWindowState);
+        expect(feed.enterActivationWindowState).not.toHaveBeenCalled();
+        expect(feed.exitActivationWindowState).toHaveBeenCalledTimes(1);
       });
 
       it("should return early when store state is missing", () => {
@@ -1766,8 +1741,8 @@ describe("PrefsFeed", () => {
 
         feed.checkForActivationWindow(mockNowInstant);
 
-        assert.notCalled(feed.enterActivationWindowState);
-        assert.notCalled(feed.exitActivationWindowState);
+        expect(feed.enterActivationWindowState).not.toHaveBeenCalled();
+        expect(feed.exitActivationWindowState).not.toHaveBeenCalled();
       });
 
       it("should return early when Prefs state is missing", () => {
@@ -1775,8 +1750,8 @@ describe("PrefsFeed", () => {
 
         feed.checkForActivationWindow(mockNowInstant);
 
-        assert.notCalled(feed.enterActivationWindowState);
-        assert.notCalled(feed.exitActivationWindowState);
+        expect(feed.enterActivationWindowState).not.toHaveBeenCalled();
+        expect(feed.exitActivationWindowState).not.toHaveBeenCalled();
       });
 
       it("should call enterActivationWindowState even if already in state", () => {
@@ -1784,36 +1759,32 @@ describe("PrefsFeed", () => {
 
         // First call: createdInstant < now (comparison returns -1)
         // Second call: createdInstant > (now - 48 hours) (comparison returns 1)
-        global.Temporal.Instant.compare.onFirstCall().returns(-1);
-        global.Temporal.Instant.compare.onSecondCall().returns(1);
+        temporal.Instant.compare.mockReturnValueOnce(-1).mockReturnValueOnce(1);
 
         feed.checkForActivationWindow(mockNowInstant);
 
-        assert.calledOnce(feed.enterActivationWindowState);
-        assert.notCalled(feed.exitActivationWindowState);
+        expect(feed.enterActivationWindowState).toHaveBeenCalledTimes(1);
+        expect(feed.exitActivationWindowState).not.toHaveBeenCalled();
       });
 
       it("should use default now instant when not provided", () => {
         // Set up for within window
-        global.Temporal.Instant.compare.onFirstCall().returns(-1);
-        global.Temporal.Instant.compare.onSecondCall().returns(1);
+        temporal.Instant.compare.mockReturnValueOnce(-1).mockReturnValueOnce(1);
 
         feed.checkForActivationWindow();
 
-        assert.calledOnce(global.Temporal.Now.instant);
-        assert.calledOnce(feed.enterActivationWindowState);
+        expect(temporal.Now.instant).toHaveBeenCalledTimes(1);
+        expect(feed.enterActivationWindowState).toHaveBeenCalledTimes(1);
       });
 
       it("should pass isStartup=true to enterActivationWindowState when called with isStartup=true", () => {
         // Set up for within window
-        global.Temporal.Instant.compare.onFirstCall().returns(-1);
-        global.Temporal.Instant.compare.onSecondCall().returns(1);
+        temporal.Instant.compare.mockReturnValueOnce(-1).mockReturnValueOnce(1);
 
         feed.checkForActivationWindow(mockNowInstant, /* isStartup */ true);
 
-        assert.calledOnce(feed.enterActivationWindowState);
-        assert.calledWith(
-          feed.enterActivationWindowState,
+        expect(feed.enterActivationWindowState).toHaveBeenCalledTimes(1);
+        expect(feed.enterActivationWindowState).toHaveBeenCalledWith(
           TEST_VARIANT,
           true,
           true,
@@ -1824,14 +1795,12 @@ describe("PrefsFeed", () => {
 
       it("should pass isStartup=false to enterActivationWindowState when called without isStartup", () => {
         // Set up for within window
-        global.Temporal.Instant.compare.onFirstCall().returns(-1);
-        global.Temporal.Instant.compare.onSecondCall().returns(1);
+        temporal.Instant.compare.mockReturnValueOnce(-1).mockReturnValueOnce(1);
 
         feed.checkForActivationWindow(mockNowInstant);
 
-        assert.calledOnce(feed.enterActivationWindowState);
-        assert.calledWith(
-          feed.enterActivationWindowState,
+        expect(feed.enterActivationWindowState).toHaveBeenCalledTimes(1);
+        expect(feed.enterActivationWindowState).toHaveBeenCalledWith(
           TEST_VARIANT,
           true,
           true,
@@ -1848,10 +1817,10 @@ describe("PrefsFeed", () => {
     let defaultBranch;
     beforeEach(() => {
       defaultBranch = {
-        setBoolPref: sinon.spy(),
+        setBoolPref: jest.fn(),
       };
-      ServicesStub.prefs.getDefaultBranch = sinon.stub().returns(defaultBranch);
-      sinon.spy(feed, "onPrefChanged");
+      services.prefs.getDefaultBranch.mockReturnValue(defaultBranch);
+      jest.spyOn(feed, "onPrefChanged");
     });
 
     describe("#enterActivationWindowState", () => {
@@ -1860,11 +1829,15 @@ describe("PrefsFeed", () => {
 
         feed.enterActivationWindowState(TEST_VARIANT, true, true, "");
 
-        assert.calledTwice(feed.onPrefChanged);
-        assert.calledWith(feed.onPrefChanged, "feeds.topsites", false);
-        assert.calledWith(
-          feed.onPrefChanged,
+        expect(feed.onPrefChanged).toHaveBeenCalledTimes(2);
+        expect(feed.onPrefChanged).toHaveBeenCalledWith(
+          "feeds.topsites",
+          false,
+          false
+        );
+        expect(feed.onPrefChanged).toHaveBeenCalledWith(
           "feeds.section.topstories",
+          false,
           false
         );
       });
@@ -1874,8 +1847,8 @@ describe("PrefsFeed", () => {
 
         feed.enterActivationWindowState(TEST_VARIANT, true, true, "");
 
-        assert.notCalled(feed.onPrefChanged);
-        assert.notCalled(defaultBranch.setBoolPref);
+        expect(feed.onPrefChanged).not.toHaveBeenCalled();
+        expect(defaultBranch.setBoolPref).not.toHaveBeenCalled();
       });
 
       it("should broadcast when entering with different variant", () => {
@@ -1883,7 +1856,7 @@ describe("PrefsFeed", () => {
 
         feed.enterActivationWindowState("variant-b", true, true, "");
 
-        assert.calledTwice(feed.onPrefChanged);
+        expect(feed.onPrefChanged).toHaveBeenCalledTimes(2);
       });
 
       it("should only broadcast for top sites if only disabling top sites", () => {
@@ -1891,8 +1864,12 @@ describe("PrefsFeed", () => {
 
         feed.enterActivationWindowState(TEST_VARIANT, true, false, "");
 
-        assert.calledOnce(feed.onPrefChanged);
-        assert.calledWith(feed.onPrefChanged, "feeds.topsites", false);
+        expect(feed.onPrefChanged).toHaveBeenCalledTimes(1);
+        expect(feed.onPrefChanged).toHaveBeenCalledWith(
+          "feeds.topsites",
+          false,
+          false
+        );
       });
 
       it("should only broadcast for top stories if only disabling top stories", () => {
@@ -1900,10 +1877,10 @@ describe("PrefsFeed", () => {
 
         feed.enterActivationWindowState(TEST_VARIANT, false, true, "");
 
-        assert.calledOnce(feed.onPrefChanged);
-        assert.calledWith(
-          feed.onPrefChanged,
+        expect(feed.onPrefChanged).toHaveBeenCalledTimes(1);
+        expect(feed.onPrefChanged).toHaveBeenCalledWith(
           "feeds.section.topstories",
+          false,
           false
         );
       });
@@ -1913,7 +1890,7 @@ describe("PrefsFeed", () => {
 
         feed.enterActivationWindowState(TEST_VARIANT, false, false, "");
 
-        assert.notCalled(feed.onPrefChanged);
+        expect(feed.onPrefChanged).not.toHaveBeenCalled();
       });
 
       it("should reapply prefs on startup even when already in the same variant", () => {
@@ -1927,10 +1904,12 @@ describe("PrefsFeed", () => {
           /* isStartup */ true
         );
 
-        assert.calledTwice(defaultBranch.setBoolPref);
-        assert.calledWith(defaultBranch.setBoolPref, "feeds.topsites", false);
-        assert.calledWith(
-          defaultBranch.setBoolPref,
+        expect(defaultBranch.setBoolPref).toHaveBeenCalledTimes(2);
+        expect(defaultBranch.setBoolPref).toHaveBeenCalledWith(
+          "feeds.topsites",
+          false
+        );
+        expect(defaultBranch.setBoolPref).toHaveBeenCalledWith(
           "feeds.section.topstories",
           false
         );
@@ -1947,11 +1926,15 @@ describe("PrefsFeed", () => {
           /* isStartup */ true
         );
 
-        assert.calledTwice(feed.onPrefChanged);
-        assert.calledWith(feed.onPrefChanged, "feeds.topsites", false);
-        assert.calledWith(
-          feed.onPrefChanged,
+        expect(feed.onPrefChanged).toHaveBeenCalledTimes(2);
+        expect(feed.onPrefChanged).toHaveBeenCalledWith(
+          "feeds.topsites",
+          false,
+          false
+        );
+        expect(feed.onPrefChanged).toHaveBeenCalledWith(
           "feeds.section.topstories",
+          false,
           false
         );
       });
@@ -1967,8 +1950,12 @@ describe("PrefsFeed", () => {
           /* isStartup */ true
         );
 
-        assert.calledOnce(feed.onPrefChanged);
-        assert.calledWith(feed.onPrefChanged, "feeds.topsites", false);
+        expect(feed.onPrefChanged).toHaveBeenCalledTimes(1);
+        expect(feed.onPrefChanged).toHaveBeenCalledWith(
+          "feeds.topsites",
+          false,
+          false
+        );
       });
 
       it("should set enter message ID pref when provided", () => {
@@ -1981,8 +1968,7 @@ describe("PrefsFeed", () => {
           "ENTER_MESSAGE_ID"
         );
 
-        assert.calledWith(
-          feed._prefs.set,
+        expect(feed._prefs.set).toHaveBeenCalledWith(
           "activationWindow.enterMessageID",
           "ENTER_MESSAGE_ID"
         );
@@ -1993,8 +1979,7 @@ describe("PrefsFeed", () => {
 
         feed.enterActivationWindowState("test-variant", true, true, "");
 
-        assert.neverCalledWith(
-          feed._prefs.set,
+        expect(calledNames(feed._prefs.set)).not.toContain(
           "activationWindow.enterMessageID"
         );
       });
@@ -2002,96 +1987,107 @@ describe("PrefsFeed", () => {
 
     describe("#exitActivationWindowState", () => {
       beforeEach(() => {
-        feed._prefs.isSet = sinon.stub();
+        feed._prefs.isSet = jest.fn();
       });
 
       it("should broadcast pref changes when no user values were set", () => {
-        feed._prefs.isSet.returns(false);
+        feed._prefs.isSet.mockReturnValue(false);
 
         feed.exitActivationWindowState();
 
-        assert.calledTwice(feed.onPrefChanged);
-        assert.calledWith(feed.onPrefChanged, "feeds.topsites", true);
-        assert.calledWith(feed.onPrefChanged, "feeds.section.topstories", true);
+        expect(feed.onPrefChanged).toHaveBeenCalledTimes(2);
+        expect(feed.onPrefChanged).toHaveBeenCalledWith(
+          "feeds.topsites",
+          true,
+          false
+        );
+        expect(feed.onPrefChanged).toHaveBeenCalledWith(
+          "feeds.section.topstories",
+          true,
+          false
+        );
       });
 
       it("should only broadcast for top stories if top sites had user value", () => {
-        feed._prefs.isSet
-          .withArgs("activationWindow.temp.topSitesUserValue")
-          .returns(true);
-        feed._prefs.isSet
-          .withArgs("activationWindow.temp.topStoriesUserValue")
-          .returns(false);
+        feed._prefs.isSet.mockImplementation(
+          name => name === "activationWindow.temp.topSitesUserValue"
+        );
         FAKE_PREFS.set("activationWindow.temp.topSitesUserValue", false);
 
         feed.exitActivationWindowState();
 
-        assert.calledOnce(feed.onPrefChanged);
-        assert.calledWith(feed.onPrefChanged, "feeds.section.topstories", true);
-        assert.neverCalledWith(feed.onPrefChanged, "feeds.topsites", true);
+        expect(feed.onPrefChanged).toHaveBeenCalledTimes(1);
+        expect(feed.onPrefChanged).toHaveBeenCalledWith(
+          "feeds.section.topstories",
+          true,
+          false
+        );
+        expect(feed.onPrefChanged).not.toHaveBeenCalledWith(
+          "feeds.topsites",
+          true,
+          false
+        );
       });
 
       it("should only broadcast for top sites if top stories had user value", () => {
-        feed._prefs.isSet
-          .withArgs("activationWindow.temp.topSitesUserValue")
-          .returns(false);
-        feed._prefs.isSet
-          .withArgs("activationWindow.temp.topStoriesUserValue")
-          .returns(true);
+        feed._prefs.isSet.mockImplementation(
+          name => name === "activationWindow.temp.topStoriesUserValue"
+        );
         FAKE_PREFS.set("activationWindow.temp.topStoriesUserValue", true);
 
         feed.exitActivationWindowState();
 
-        assert.calledOnce(feed.onPrefChanged);
-        assert.calledWith(feed.onPrefChanged, "feeds.topsites", true);
-        assert.neverCalledWith(
-          feed.onPrefChanged,
+        expect(feed.onPrefChanged).toHaveBeenCalledTimes(1);
+        expect(feed.onPrefChanged).toHaveBeenCalledWith(
+          "feeds.topsites",
+          true,
+          false
+        );
+        expect(feed.onPrefChanged).not.toHaveBeenCalledWith(
           "feeds.section.topstories",
-          true
+          true,
+          false
         );
       });
 
       it("should not broadcast if both prefs had user values", () => {
-        feed._prefs.isSet.returns(true);
+        feed._prefs.isSet.mockReturnValue(true);
         FAKE_PREFS.set("activationWindow.temp.topSitesUserValue", false);
         FAKE_PREFS.set("activationWindow.temp.topStoriesUserValue", true);
 
         feed.exitActivationWindowState();
 
-        assert.notCalled(feed.onPrefChanged);
+        expect(feed.onPrefChanged).not.toHaveBeenCalled();
       });
 
       it("should clear enter message ID pref on exit", () => {
-        feed._prefs.isSet.returns(false);
+        feed._prefs.isSet.mockReturnValue(false);
 
         feed.exitActivationWindowState();
 
-        assert.calledWith(
-          feed._prefs.set,
+        expect(feed._prefs.set).toHaveBeenCalledWith(
           "activationWindow.enterMessageID",
           ""
         );
       });
 
       it("should set exit message ID pref when provided", () => {
-        feed._prefs.isSet.returns(false);
+        feed._prefs.isSet.mockReturnValue(false);
 
         feed.exitActivationWindowState("EXIT_MESSAGE_ID");
 
-        assert.calledWith(
-          feed._prefs.set,
+        expect(feed._prefs.set).toHaveBeenCalledWith(
           "activationWindow.exitMessageID",
           "EXIT_MESSAGE_ID"
         );
       });
 
       it("should clear exit message ID pref when not provided", () => {
-        feed._prefs.isSet.returns(false);
+        feed._prefs.isSet.mockReturnValue(false);
 
         feed.exitActivationWindowState();
 
-        assert.calledWith(
-          feed._prefs.set,
+        expect(feed._prefs.set).toHaveBeenCalledWith(
           "activationWindow.exitMessageID",
           ""
         );
@@ -2108,16 +2104,14 @@ describe("PrefsFeed", () => {
       it("should dispatch PREF_CHANGED actions when entering activation window", () => {
         feed.enterActivationWindowState(TEST_VARIANT, true, true);
 
-        assert.calledWith(
-          feed.store.dispatch,
-          sinon.match({
+        expect(feed.store.dispatch).toHaveBeenCalledWith(
+          expect.objectContaining({
             type: at.PREF_CHANGED,
             data: { name: "feeds.topsites", value: false },
           })
         );
-        assert.calledWith(
-          feed.store.dispatch,
-          sinon.match({
+        expect(feed.store.dispatch).toHaveBeenCalledWith(
+          expect.objectContaining({
             type: at.PREF_CHANGED,
             data: { name: "feeds.section.topstories", value: false },
           })
@@ -2125,20 +2119,18 @@ describe("PrefsFeed", () => {
       });
 
       it("should dispatch PREF_CHANGED actions when exiting activation window", () => {
-        feed._prefs.isSet = sinon.stub().returns(false);
+        feed._prefs.isSet = jest.fn(() => false);
 
         feed.exitActivationWindowState();
 
-        assert.calledWith(
-          feed.store.dispatch,
-          sinon.match({
+        expect(feed.store.dispatch).toHaveBeenCalledWith(
+          expect.objectContaining({
             type: at.PREF_CHANGED,
             data: { name: "feeds.topsites", value: true },
           })
         );
-        assert.calledWith(
-          feed.store.dispatch,
-          sinon.match({
+        expect(feed.store.dispatch).toHaveBeenCalledWith(
+          expect.objectContaining({
             type: at.PREF_CHANGED,
             data: { name: "feeds.section.topstories", value: true },
           })
@@ -2151,8 +2143,7 @@ describe("PrefsFeed", () => {
     describe("#trackActivationWindowPrefChange", () => {
       it("should track top sites user value when changed during activation window", () => {
         feed.trackActivationWindowPrefChange("feeds.topsites", false);
-        assert.calledWith(
-          feed._prefs.set,
+        expect(feed._prefs.set).toHaveBeenCalledWith(
           "activationWindow.temp.topSitesUserValue",
           false
         );
@@ -2160,8 +2151,7 @@ describe("PrefsFeed", () => {
 
       it("should track top stories user value when changed during activation window", () => {
         feed.trackActivationWindowPrefChange("feeds.section.topstories", true);
-        assert.calledWith(
-          feed._prefs.set,
+        expect(feed._prefs.set).toHaveBeenCalledWith(
           "activationWindow.temp.topStoriesUserValue",
           true
         );
@@ -2169,12 +2159,10 @@ describe("PrefsFeed", () => {
 
       it("should not track changes for other prefs", () => {
         feed.trackActivationWindowPrefChange("some.other.pref", false);
-        assert.neverCalledWith(
-          feed._prefs.set,
+        expect(calledNames(feed._prefs.set)).not.toContain(
           "activationWindow.temp.topSitesUserValue"
         );
-        assert.neverCalledWith(
-          feed._prefs.set,
+        expect(calledNames(feed._prefs.set)).not.toContain(
           "activationWindow.temp.topStoriesUserValue"
         );
       });
@@ -2183,14 +2171,13 @@ describe("PrefsFeed", () => {
     describe("#onPrefChanged with activation window tracking", () => {
       beforeEach(() => {
         feed.inActivationWindowState = "variant-a";
-        sinon.spy(feed, "trackActivationWindowPrefChange");
+        jest.spyOn(feed, "trackActivationWindowPrefChange");
       });
 
       it("should call trackActivationWindowPrefChange when in activation window", () => {
         feed.onPrefChanged("feeds.topsites", false);
-        assert.calledOnce(feed.trackActivationWindowPrefChange);
-        assert.calledWith(
-          feed.trackActivationWindowPrefChange,
+        expect(feed.trackActivationWindowPrefChange).toHaveBeenCalledTimes(1);
+        expect(feed.trackActivationWindowPrefChange).toHaveBeenCalledWith(
           "feeds.topsites",
           false
         );
@@ -2199,22 +2186,22 @@ describe("PrefsFeed", () => {
       it("should not call trackActivationWindowPrefChange when not in activation window", () => {
         feed.inActivationWindowState = "";
         feed.onPrefChanged("feeds.topsites", false);
-        assert.notCalled(feed.trackActivationWindowPrefChange);
+        expect(feed.trackActivationWindowPrefChange).not.toHaveBeenCalled();
       });
 
       it("should not track when isUserChange=false even if in activation window", () => {
         feed.onPrefChanged("feeds.topsites", false, /* isUserChange */ false);
-        assert.notCalled(feed.trackActivationWindowPrefChange);
+        expect(feed.trackActivationWindowPrefChange).not.toHaveBeenCalled();
       });
 
       it("should track when isUserChange=true (default) and in activation window", () => {
         feed.onPrefChanged("feeds.topsites", false, /* isUserChange */ true);
-        assert.calledOnce(feed.trackActivationWindowPrefChange);
+        expect(feed.trackActivationWindowPrefChange).toHaveBeenCalledTimes(1);
       });
 
       it("should track when isUserChange not specified and in activation window", () => {
         feed.onPrefChanged("feeds.topsites", false);
-        assert.calledOnce(feed.trackActivationWindowPrefChange);
+        expect(feed.trackActivationWindowPrefChange).toHaveBeenCalledTimes(1);
       });
     });
 
@@ -2222,116 +2209,115 @@ describe("PrefsFeed", () => {
       let defaultBranch;
       beforeEach(() => {
         defaultBranch = {
-          setBoolPref: sinon.spy(),
+          setBoolPref: jest.fn(),
         };
-        ServicesStub.prefs.getDefaultBranch = sinon
-          .stub()
-          .returns(defaultBranch);
+        services.prefs.getDefaultBranch.mockReturnValue(defaultBranch);
       });
 
       it("should reset defaults to true and restore user's top sites value", () => {
-        feed._prefs.isSet = sinon.stub();
-        feed._prefs.isSet
-          .withArgs("activationWindow.temp.topSitesUserValue")
-          .returns(true);
-        feed._prefs.isSet
-          .withArgs("activationWindow.temp.topStoriesUserValue")
-          .returns(false);
+        feed._prefs.isSet = jest.fn(
+          name => name === "activationWindow.temp.topSitesUserValue"
+        );
         FAKE_PREFS.set("activationWindow.temp.topSitesUserValue", false);
 
         feed.exitActivationWindowState();
 
-        assert.calledWith(defaultBranch.setBoolPref, "feeds.topsites", true);
-        assert.calledWith(
-          defaultBranch.setBoolPref,
+        expect(defaultBranch.setBoolPref).toHaveBeenCalledWith(
+          "feeds.topsites",
+          true
+        );
+        expect(defaultBranch.setBoolPref).toHaveBeenCalledWith(
           "feeds.section.topstories",
           true
         );
-        assert.calledWith(feed._prefs.set, "feeds.topsites", false);
-        assert.calledWith(
-          feed._prefs.reset,
+        expect(feed._prefs.set).toHaveBeenCalledWith("feeds.topsites", false);
+        expect(feed._prefs.reset).toHaveBeenCalledWith(
           "activationWindow.temp.topSitesUserValue"
         );
       });
 
       it("should reset defaults to true and restore user's top stories value", () => {
-        feed._prefs.isSet = sinon.stub();
-        feed._prefs.isSet
-          .withArgs("activationWindow.temp.topSitesUserValue")
-          .returns(false);
-        feed._prefs.isSet
-          .withArgs("activationWindow.temp.topStoriesUserValue")
-          .returns(true);
+        feed._prefs.isSet = jest.fn(
+          name => name === "activationWindow.temp.topStoriesUserValue"
+        );
         FAKE_PREFS.set("activationWindow.temp.topStoriesUserValue", true);
 
         feed.exitActivationWindowState();
 
-        assert.calledWith(defaultBranch.setBoolPref, "feeds.topsites", true);
-        assert.calledWith(
-          defaultBranch.setBoolPref,
+        expect(defaultBranch.setBoolPref).toHaveBeenCalledWith(
+          "feeds.topsites",
+          true
+        );
+        expect(defaultBranch.setBoolPref).toHaveBeenCalledWith(
           "feeds.section.topstories",
           true
         );
-        assert.calledWith(feed._prefs.set, "feeds.section.topstories", true);
-        assert.calledWith(
-          feed._prefs.reset,
+        expect(feed._prefs.set).toHaveBeenCalledWith(
+          "feeds.section.topstories",
+          true
+        );
+        expect(feed._prefs.reset).toHaveBeenCalledWith(
           "activationWindow.temp.topStoriesUserValue"
         );
       });
 
       it("should only reset defaults when no user changes were made", () => {
-        feed._prefs.isSet = sinon.stub().returns(false);
+        feed._prefs.isSet = jest.fn(() => false);
 
         feed.exitActivationWindowState();
 
-        assert.calledWith(defaultBranch.setBoolPref, "feeds.topsites", true);
-        assert.calledWith(
-          defaultBranch.setBoolPref,
+        expect(defaultBranch.setBoolPref).toHaveBeenCalledWith(
+          "feeds.topsites",
+          true
+        );
+        expect(defaultBranch.setBoolPref).toHaveBeenCalledWith(
           "feeds.section.topstories",
           true
         );
-        assert.neverCalledWith(feed._prefs.set, "feeds.topsites");
-        assert.neverCalledWith(feed._prefs.set, "feeds.section.topstories");
+        expect(calledNames(feed._prefs.set)).not.toContain("feeds.topsites");
+        expect(calledNames(feed._prefs.set)).not.toContain(
+          "feeds.section.topstories"
+        );
       });
 
       it("should clear activation window variant pref", () => {
-        feed._prefs.isSet = sinon.stub().returns(false);
+        feed._prefs.isSet = jest.fn(() => false);
 
         feed.exitActivationWindowState();
 
-        assert.calledWith(feed._prefs.reset, "activationWindow.variant");
+        expect(feed._prefs.reset).toHaveBeenCalledWith(
+          "activationWindow.variant"
+        );
       });
 
       it("should handle user disabling top sites during activation window", () => {
-        feed._prefs.isSet = sinon.stub();
-        feed._prefs.isSet
-          .withArgs("activationWindow.temp.topSitesUserValue")
-          .returns(true);
-        feed._prefs.isSet
-          .withArgs("activationWindow.temp.topStoriesUserValue")
-          .returns(false);
+        feed._prefs.isSet = jest.fn(
+          name => name === "activationWindow.temp.topSitesUserValue"
+        );
         FAKE_PREFS.set("activationWindow.temp.topSitesUserValue", false);
 
         feed.exitActivationWindowState();
 
-        assert.calledWith(defaultBranch.setBoolPref, "feeds.topsites", true);
-        assert.calledWith(feed._prefs.set, "feeds.topsites", false);
+        expect(defaultBranch.setBoolPref).toHaveBeenCalledWith(
+          "feeds.topsites",
+          true
+        );
+        expect(feed._prefs.set).toHaveBeenCalledWith("feeds.topsites", false);
       });
 
       it("should handle user enabling top sites during activation window", () => {
-        feed._prefs.isSet = sinon.stub();
-        feed._prefs.isSet
-          .withArgs("activationWindow.temp.topSitesUserValue")
-          .returns(true);
-        feed._prefs.isSet
-          .withArgs("activationWindow.temp.topStoriesUserValue")
-          .returns(false);
+        feed._prefs.isSet = jest.fn(
+          name => name === "activationWindow.temp.topSitesUserValue"
+        );
         FAKE_PREFS.set("activationWindow.temp.topSitesUserValue", true);
 
         feed.exitActivationWindowState();
 
-        assert.calledWith(defaultBranch.setBoolPref, "feeds.topsites", true);
-        assert.calledWith(feed._prefs.set, "feeds.topsites", true);
+        expect(defaultBranch.setBoolPref).toHaveBeenCalledWith(
+          "feeds.topsites",
+          true
+        );
+        expect(feed._prefs.set).toHaveBeenCalledWith("feeds.topsites", true);
       });
     });
   });

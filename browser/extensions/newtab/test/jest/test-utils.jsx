@@ -79,12 +79,15 @@ const SERVICE_STUBS = {
     setBoolPref: jest.fn(),
     setIntPref: jest.fn(),
     setStringPref: jest.fn(),
+    getDefaultBranch: jest.fn(),
   }),
   urlFormatter: () => ({
     formatURL: jest.fn(url => url),
     formatURLPref: jest.fn(pref => pref),
   }),
-  vc: () => ({ compare: jest.fn() }),
+  // Version comparator; defaults to reporting equal versions so that
+  // backward-compat gates read as supported.
+  vc: () => ({ compare: jest.fn(() => 0) }),
   scriptSecurityManager: () => ({
     createContentPrincipalFromOrigin: jest.fn(origin => ({ origin })),
   }),
