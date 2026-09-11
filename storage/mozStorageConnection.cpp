@@ -1767,12 +1767,112 @@ int Connection::stepStatement(sqlite3* aNativeConnection,
     Telemetry::RecordSlowSQLStatement(
         statementString, mTelemetryFilename,
         static_cast<uint32_t>(duration.ToMilliseconds()));
+
+#ifdef NIGHTLY_BUILD
+    RecordSlowStatement(aStatement, duration);
+#endif  // NIGHTLY_BUILD
   }
 
   (void)::sqlite3_extended_result_codes(aNativeConnection, 0);
   // Drop off the extended result bits of the result code.
   return srv & 0xFF;
 }
+
+#ifdef NIGHTLY_BUILD
+// The maximum length (not including '...' appended after truncation) of slow
+// sql statements recorded.
+// Chosen to match Legacy Telemetry recording, and to make singular statements
+// less likely to blow the ping size budget.
+const uint32_t kMaxSlowStatementLength = 1000;
+
+// The list of dbs for which we record per-statement slow executions.
+constexpr nsLiteralCString kSlowSqlDbAllowlist[] = {
+    "818200132aebmoouht.sqlite"_ns,  // IndexedDB for about:home, see
+                                     // aboutHome.js
+    "addons.sqlite"_ns,
+    "content-prefs.sqlite"_ns,
+    "cookies.sqlite"_ns,
+    "extensions.sqlite"_ns,
+    "favicons.sqlite"_ns,
+    "formhistory.sqlite"_ns,
+    "index.sqlite"_ns,
+    "netpredictions.sqlite"_ns,
+    "permissions.sqlite"_ns,
+    "places.sqlite"_ns,
+    "search.sqlite"_ns,
+    "urlclassifier3.sqlite"_ns,
+    "webappsstore.sqlite"_ns,
+};
+
+constinit StaticDataMutex<glean::sqlite_store::SlowStatementsObject>
+    sSlowStatements("slow SQL statements");
+
+void Connection::RecordSlowStatement(sqlite3_stmt* aStatement,
+                                     TimeDuration aDuration) {
+  bool reportStatement = StringBeginsWith(mTelemetryFilename, "indexedDB-"_ns);
+  if (!reportStatement) {
+    for (const auto& allowed : kSlowSqlDbAllowlist) {
+      if (mTelemetryFilename.Equals(allowed)) {
+        reportStatement = true;
+        break;
+      }
+    }
+  }
+
+  const char* norm =
+      reportStatement ? ::sqlite3_normalized_sql(aStatement) : "<untracked>";
+  if (!norm) {
+    glean::sqlite_store::failed_normalize.Add(1);
+    return;
+  }
+  nsCString normalizedSql(norm);
+  if (normalizedSql.Length() > kMaxSlowStatementLength) {
+    normalizedSql.SetLength(kMaxSlowStatementLength);
+    normalizedSql.AppendLiteral("...");
+  }
+
+  {
+    auto slowStatements = sSlowStatements.Lock();
+
+    bool found = false;
+    for (auto& statement : *slowStatements) {
+      if (statement.db.ref().Equals(mTelemetryFilename) &&
+          statement.sql.ref().Equals(normalizedSql)) {
+        found = true;
+        if (NS_IsMainThread()) {
+          statement.main_thread_hits.ref() += 1;
+          statement.main_thread_ms.ref() += aDuration.ToMilliseconds();
+        } else {
+          statement.other_thread_hits.ref() += 1;
+          statement.other_thread_ms.ref() += aDuration.ToMilliseconds();
+        }
+        break;
+      }
+    }
+
+    if (!found) {
+      glean::sqlite_store::SlowStatementsObjectItem statement({
+          Some(mTelemetryFilename),
+          Some(normalizedSql),
+          Some(0),
+          Some(0),
+          Some(0),
+          Some(0),
+      });
+      if (NS_IsMainThread()) {
+        statement.main_thread_hits.ref() += 1;
+        statement.main_thread_ms.ref() += aDuration.ToMilliseconds();
+      } else {
+        statement.other_thread_hits.ref() += 1;
+        statement.other_thread_ms.ref() += aDuration.ToMilliseconds();
+      }
+      slowStatements->AppendElement(statement);
+    }
+
+    glean::sqlite_store::slow_statements.Set(*slowStatements);
+  }
+}
+#endif  // NIGHTLY_BUILD
 
 int Connection::prepareStatement(sqlite3* aNativeConnection,
                                  const nsCString& aSQL, sqlite3_stmt** _stmt) {
