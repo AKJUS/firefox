@@ -63,9 +63,10 @@ created under their own account with a chance to review and adjust.
    `enter_bug.cgi` field as a `field=value` argument; it URL-encodes the values and
    opens the form in the browser (cross-platform, so Linux, macOS, and Windows all work):
    ```
-   python3 .agents/skills/bug-filing/file-bug.py product=<P> component=<C> \
-       bug_type=<T> short_desc=<summary> comment=<description>
+   python3 .agents/skills/bug-filing/file-bug.py 'product=<P>' 'component=<C>' \
+       'bug_type=<T>' 'short_desc=<summary>' 'comment=<description>'
    ```
+   - Single-quote every `field=value` argument.
    - Write `short_desc` and `comment` as plain text, with markdown backticks around
      code identifiers; the script does all the encoding.
    - Any form field works, so add more as the bug needs them, e.g. `blocked=<bug>`
