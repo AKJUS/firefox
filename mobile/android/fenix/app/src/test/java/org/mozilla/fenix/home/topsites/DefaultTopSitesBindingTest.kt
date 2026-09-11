@@ -80,7 +80,7 @@ class DefaultTopSitesBindingTest {
             dispatcher.scheduler.advanceUntilIdle()
 
             coVerify {
-                topSitesStorage.addTopSites(topSites = topSites, isDefault = true)
+                topSitesStorage.addTopSites(topSites = topSites.map { it.title to it.url }, isDefault = true)
                 settings.defaultTopSitesAdded = true
             }
         }
@@ -100,7 +100,7 @@ class DefaultTopSitesBindingTest {
             dispatcher.scheduler.advanceUntilIdle()
 
             coVerify {
-                topSitesStorage.addTopSites(topSites = topSites, isDefault = true)
+                topSitesStorage.addTopSites(topSites = topSites.map { it.title to it.url }, isDefault = true)
                 settings.defaultTopSitesAdded = true
             }
         }
@@ -129,20 +129,20 @@ class DefaultTopSitesBindingTest {
             val topSites = binding.getTopSites(region = "US")
 
             assertEquals(7, topSites.size)
-            assertEquals("US Region Site", topSites[0].first)
-            assertEquals("https://www.example1.com/", topSites[0].second)
-            assertEquals("CA Excluded Region Site", topSites[1].first)
-            assertEquals("https://www.example2.com/", topSites[1].second)
-            assertEquals("All Region Site", topSites[2].first)
-            assertEquals("https://www.example3.com/", topSites[2].second)
-            assertEquals("www.example4.com", topSites[3].first)
-            assertEquals("https://www.example4.com/", topSites[3].second)
-            assertEquals("www.example5.com", topSites[4].first)
-            assertEquals("https://www.example5.com/", topSites[4].second)
-            assertEquals("www.example6.com", topSites[5].first)
-            assertEquals("https://www.example6.com/", topSites[5].second)
-            assertEquals("www.example7.com", topSites[6].first)
-            assertEquals("https://www.example7.com/", topSites[6].second)
+            assertEquals("US Region Site", topSites[0].title)
+            assertEquals("https://www.example1.com/", topSites[0].url)
+            assertEquals("CA Excluded Region Site", topSites[1].title)
+            assertEquals("https://www.example2.com/", topSites[1].url)
+            assertEquals("All Region Site", topSites[2].title)
+            assertEquals("https://www.example3.com/", topSites[2].url)
+            assertEquals("www.example4.com", topSites[3].title)
+            assertEquals("https://www.example4.com/", topSites[3].url)
+            assertEquals("www.example5.com", topSites[4].title)
+            assertEquals("https://www.example5.com/", topSites[4].url)
+            assertEquals("www.example6.com", topSites[5].title)
+            assertEquals("https://www.example6.com/", topSites[5].url)
+            assertEquals("www.example7.com", topSites[6].title)
+            assertEquals("https://www.example7.com/", topSites[6].url)
         }
 
     @Test
@@ -152,16 +152,16 @@ class DefaultTopSitesBindingTest {
             val topSites = binding.getTopSites(region = "CA")
 
             assertEquals(5, topSites.size)
-            assertEquals("All Region Site", topSites[0].first)
-            assertEquals("https://www.example3.com/", topSites[0].second)
-            assertEquals("www.example4.com", topSites[1].first)
-            assertEquals("https://www.example4.com/", topSites[1].second)
-            assertEquals("www.example5.com", topSites[2].first)
-            assertEquals("https://www.example5.com/", topSites[2].second)
-            assertEquals("www.example6.com", topSites[3].first)
-            assertEquals("https://www.example6.com/", topSites[3].second)
-            assertEquals("www.example7.com", topSites[4].first)
-            assertEquals("https://www.example7.com/", topSites[4].second)
+            assertEquals("All Region Site", topSites[0].title)
+            assertEquals("https://www.example3.com/", topSites[0].url)
+            assertEquals("www.example4.com", topSites[1].title)
+            assertEquals("https://www.example4.com/", topSites[1].url)
+            assertEquals("www.example5.com", topSites[2].title)
+            assertEquals("https://www.example5.com/", topSites[2].url)
+            assertEquals("www.example6.com", topSites[3].title)
+            assertEquals("https://www.example6.com/", topSites[3].url)
+            assertEquals("www.example7.com", topSites[4].title)
+            assertEquals("https://www.example7.com/", topSites[4].url)
         }
 
     @Test
@@ -171,18 +171,37 @@ class DefaultTopSitesBindingTest {
             val topSites = binding.getTopSites(region = "XX")
 
             assertEquals(6, topSites.size)
-            assertEquals("CA Excluded Region Site", topSites[0].first)
-            assertEquals("https://www.example2.com/", topSites[0].second)
-            assertEquals("All Region Site", topSites[1].first)
-            assertEquals("https://www.example3.com/", topSites[1].second)
-            assertEquals("www.example4.com", topSites[2].first)
-            assertEquals("https://www.example4.com/", topSites[2].second)
-            assertEquals("www.example5.com", topSites[3].first)
-            assertEquals("https://www.example5.com/", topSites[3].second)
-            assertEquals("www.example6.com", topSites[4].first)
-            assertEquals("https://www.example6.com/", topSites[4].second)
-            assertEquals("www.example7.com", topSites[5].first)
-            assertEquals("https://www.example7.com/", topSites[5].second)
+            assertEquals("CA Excluded Region Site", topSites[0].title)
+            assertEquals("https://www.example2.com/", topSites[0].url)
+            assertEquals("All Region Site", topSites[1].title)
+            assertEquals("https://www.example3.com/", topSites[1].url)
+            assertEquals("www.example4.com", topSites[2].title)
+            assertEquals("https://www.example4.com/", topSites[2].url)
+            assertEquals("www.example5.com", topSites[3].title)
+            assertEquals("https://www.example5.com/", topSites[3].url)
+            assertEquals("www.example6.com", topSites[4].title)
+            assertEquals("https://www.example6.com/", topSites[4].url)
+            assertEquals("www.example7.com", topSites[5].title)
+            assertEquals("https://www.example7.com/", topSites[5].url)
+        }
+
+    @Test
+    fun `GIVEN the raw resource is missing WHEN getTopSites is called THEN return empty list and report crash`() =
+        runTest(dispatcher) {
+            every { resources.openRawResource(R.raw.initial_shortcuts) } throws Resources.NotFoundException()
+
+            val binding = createBinding()
+            val topSites = binding.getTopSites(region = "XX")
+
+            assertTrue(topSites.isEmpty())
+            verify {
+                crashReporter.recordCrashBreadcrumb(any())
+                crashReporter.submitCaughtException(any<Resources.NotFoundException>())
+            }
+            coVerify(exactly = 0) {
+                topSitesStorage.addTopSites(topSites = any(), isDefault = any())
+                settings.defaultTopSitesAdded = any()
+            }
         }
 
     @Test
