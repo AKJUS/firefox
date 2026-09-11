@@ -421,6 +421,16 @@ describe("isWidgetAddable", () => {
       })
     ).toBe(true);
   });
+
+  it("is addable when revealed via the dedicated widgetRecentSearches namespace", () => {
+    const recentSearches = WIDGET_REGISTRY.find(w => w.id === "recentSearches");
+    expect(
+      isWidgetAddable(recentSearches, {
+        [recentSearches.systemEnabledPref]: false,
+        trainhopConfig: { widgetRecentSearches: { visible: true } },
+      })
+    ).toBe(true);
+  });
 });
 
 describe("isWidgetEnabled", () => {
