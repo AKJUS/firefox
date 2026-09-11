@@ -169,9 +169,6 @@ fail-if = [
 ]
 
 ["browser_dbg-preview-invalid-tokens.js"]
-skip-if = [
-  "debug", # Bug 1958748 intermittent toolbox documents leaks
-]
 
 ["browser_dbg-preview-jump-to-definition.js"]
 fail-if = [
