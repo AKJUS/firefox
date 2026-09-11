@@ -117,6 +117,7 @@ import org.mozilla.fenix.tabstray.data.TabsTrayItem
 import org.mozilla.fenix.tabstray.navigation.TabManagerNavDestination
 import org.mozilla.fenix.tabstray.redux.action.TabGroupAction
 import org.mozilla.fenix.tabstray.redux.action.TabsTrayAction
+import org.mozilla.fenix.tabstray.redux.middleware.CollectionsMigrationMiddleware
 import org.mozilla.fenix.tabstray.redux.middleware.TabManagerUiStateStorageMiddleware
 import org.mozilla.fenix.tabstray.redux.middleware.TabSearchMiddleware
 import org.mozilla.fenix.tabstray.redux.middleware.TabSearchNavigationMiddleware
@@ -708,6 +709,7 @@ class TabManagementFragment : Fragment() {
                                 ),
                             scope = lifecycleScope,
                         ),
+                        CollectionsMigrationMiddleware(repository = requireComponents.collectionsMigrationRepository),
                     ),
             )
         }
@@ -744,6 +746,11 @@ class TabManagementFragment : Fragment() {
                             privateLockEnabled = settings.privateBrowsingModeLocked,
                             shouldShowBanner = shouldShowBanner(settings),
                         ),
+                ),
+            tabGroupState =
+                TabsTrayState.TabGroupState(
+                    showCollectionsMigrationCard =
+                        requireComponents.collectionsMigrationRepository.shouldShowCollectionsMigrationCard()
                 ),
             sync = TabsTrayState.SyncState(isSignedIn = settings.signedInFxaAccount),
             config =

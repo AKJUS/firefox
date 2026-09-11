@@ -73,6 +73,8 @@ object TabGroupActionReducer {
                 state.copy(backStack = state.backStack.popDeleteTabGroupFlow())
             is TabGroupAction.OnboardingDismissed ->
                 state.copy(config = state.config.copy(tabGroupsOnboardingEnabled = false))
+            is TabGroupAction.CollectionsMigrationCardDismissed ->
+                state.copy(tabGroupState = state.tabGroupState.copy(showCollectionsMigrationCard = false))
             is TabGroupAction.OnboardingShown ->
                 state.copy(tabGroupState = state.tabGroupState.copy(hasRecordedOnboardingImpression = true))
             is TabGroupAction.DragAndDropProcessed ->

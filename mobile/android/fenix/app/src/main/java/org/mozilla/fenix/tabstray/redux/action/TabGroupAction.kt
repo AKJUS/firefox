@@ -177,4 +177,7 @@ sealed interface TabGroupAction : TabsTrayAction {
 
     /** Invoked when a new group's animation is played. */
     data object NewGroupAnimationFinished : TabGroupAction
+
+    /** Invoked when the user dismisses the Collections to Tab Groups migration card. */
+    data object CollectionsMigrationCardDismissed : TabGroupAction
 }

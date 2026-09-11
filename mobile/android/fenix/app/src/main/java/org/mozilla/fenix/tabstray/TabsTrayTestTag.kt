@@ -44,6 +44,7 @@ internal object TabsTrayTestTag {
     const val EMPTY_NORMAL_TABS_LIST = "$NORMAL_TABS_LIST.empty"
     const val EMPTY_PRIVATE_TABS_LIST = "$PRIVATE_TABS_LIST.empty"
     const val EMPTY_TAB_GROUPS_LIST = "$TAB_GROUPS_LIST.empty"
+    const val COLLECTIONS_MIGRATION_CARD = "$TAB_GROUPS_LIST.collectionsMigrationCard"
     const val UNAUTHENTICATED_SYNCED_TABS_PAGE = "$SYNCED_TABS_LIST.unauthenticated"
 
     // Tab items
