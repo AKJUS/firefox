@@ -24,11 +24,6 @@ const MILLISECONDS_PER_MINUTE = 60 * 1000;
 const MILLISECONDS_PER_HOUR = 60 * MILLISECONDS_PER_MINUTE;
 const MILLISECONDS_PER_DAY = 24 * MILLISECONDS_PER_HOUR;
 
-const PLATFORM_VERSION = "1.9.2";
-const APP_VERSION = "1";
-const APP_ID = "xpcshell@tests.mozilla.org";
-const APP_NAME = "XPCShell";
-
 const DISTRIBUTION_ID = "distributor-id";
 const DISTRIBUTION_VERSION = "4.5.6b";
 const DISTRIBUTOR_NAME = "Some Distributor";
@@ -238,12 +233,12 @@ export var TelemetryEnvironmentTesting = {
 
   checkBuildSection(data) {
     const expectedInfo = {
-      applicationId: APP_ID,
-      applicationName: APP_NAME,
+      applicationId: "",
+      applicationName: "",
       buildId: this.appInfo.appBuildID,
-      version: APP_VERSION,
-      vendor: "Mozilla",
-      platformVersion: PLATFORM_VERSION,
+      version: "00.",
+      vendor: null,
+      platformVersion: "00.",
       xpcomAbi: "noarch-spidermonkey",
     };
 
@@ -253,10 +248,6 @@ export var TelemetryEnvironmentTesting = {
     );
 
     for (let f in expectedInfo) {
-      lazy.Assert.ok(
-        this.checkString(data.build[f]),
-        f + " must be a valid string."
-      );
       lazy.Assert.equal(
         data.build[f],
         expectedInfo[f],
@@ -266,12 +257,6 @@ export var TelemetryEnvironmentTesting = {
 
     // Make sure architecture is in the environment.
     lazy.Assert.ok(this.checkString(data.build.architecture));
-
-    lazy.Assert.equal(
-      data.build.updaterAvailable,
-      AppConstants.MOZ_UPDATER,
-      "build.updaterAvailable must equal AppConstants.MOZ_UPDATER"
-    );
 
     // Check Glean's values
     lazy.Assert.equal(Glean.xpcom.abi.testGetValue(), expectedInfo.xpcomAbi);

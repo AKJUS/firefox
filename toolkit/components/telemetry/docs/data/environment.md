@@ -19,16 +19,14 @@ Structure:
 ```js
 {
   build: {
-    applicationId: <string>, // nsIXULAppInfo.ID
-    applicationName: <string>, // "Firefox"
+    applicationId: "",
+    applicationName: "",
     architecture: <string>, // e.g. "x86", build architecture for the active build
     buildId: <string>, // e.g. "20141126041045"
-    version: <string>, // e.g. "35.0"
-    vendor: <string>, // e.g. "Mozilla"
-    displayVersion: <string>, // e.g. "35.0b1"
-    platformVersion: <string>, // e.g. "35.0"
+    version: "00.",
+    vendor: null,
+    platformVersion: "00.",
     xpcomAbi: <string>, // e.g. "x86-msvc"
-    updaterAvailable: <bool>, // Whether the app was built with app update available (MOZ_UPDATER)
   },
   settings: {
     addonCompatibilityCheckEnabled: <bool>, // Whether application compatibility is respected for add-ons
@@ -462,6 +460,9 @@ In the event any of these fields are truncated, a warning is printed to the cons
 Note that this list includes other types of deliveries, including Normandy rollouts and Nimbus feature defaults.
 
 ## Version History
+
+- Firefox 157:
+  - Removed many fields and set ones unable to be removed to small, stable values. ([bug 2068624](https://bugzilla.mozilla.org/show_bug.cgi?id=2068624)
 
 - Firefox 155:
 
