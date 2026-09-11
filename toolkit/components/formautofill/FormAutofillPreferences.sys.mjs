@@ -52,7 +52,7 @@ export class FormAutofillPreferences {
    * @param  {HTMLDocument} document
    */
   createPreferenceGroup(document) {
-    const win = document.ownerGlobal;
+    const win = document.documentGlobal;
     Services.obs.notifyObservers(win, "formautofill-preferences-initialized");
   }
 
