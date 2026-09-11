@@ -745,6 +745,7 @@ void KeymapWrapper::HandleKeymap(uint32_t format, int fd, uint32_t size) {
   if (!xkb_context) {
     MOZ_LOG(gKeyLog, LogLevel::Info,
             ("KeymapWrapper::HandleKeymap(): failed to get xkb_context!"));
+    munmap(mapString, size);
     close(fd);
     return;
   }
