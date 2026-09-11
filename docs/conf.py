@@ -62,13 +62,13 @@ myst_enable_extensions = [
     "fieldlist",
 ]
 
-# sphinxcontrib-mermaid otherwise forces every diagram into a 100% x 500px box,
-# which scales tall diagrams down until their labels are unreadable and blows
-# short ones up to the full width. The cap keeps a diagram near its natural size
-# and lets it shrink with the column on a narrow screen. It has to be a definite
-# width: mermaid's SVG carries a viewBox but no intrinsic width, so a
-# content-sized box collapses to the CSS default object size of 300px.
-mermaid_width = "min(100%, 45rem)"
+# A diagram renders at the size mermaid laid it out at, which needs both
+# halves: useMaxWidth below gives the SVG an intrinsic size, without which a
+# content-sized box collapses to the CSS default object size of 300px, and
+# custom_theme.css overrides the extension's own stylesheet, which stretches
+# the SVG to the width of its container. A diagram wider than the column
+# scrolls there.
+mermaid_width = "fit-content"
 mermaid_height = "auto"
 
 # startOnLoad must stay off: the extension renders via mermaid.run() itself.
@@ -79,6 +79,14 @@ mermaid_init_config = {
     "themeVariables": {
         "fontSize": "18px",
     },
+    # useMaxWidth is configured per diagram type; these are the types the tree
+    # uses.
+    "flowchart": {"useMaxWidth": False},
+    "sequence": {"useMaxWidth": False},
+    "class": {"useMaxWidth": False},
+    "state": {"useMaxWidth": False},
+    "gantt": {"useMaxWidth": False},
+    "er": {"useMaxWidth": False},
 }
 
 # The paths are loaded from config.yml so they can be shared with a CI

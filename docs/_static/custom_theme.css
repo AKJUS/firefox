@@ -70,3 +70,17 @@ kbd {
 table.docutils {
   width: 100%;
 }
+
+/* The mermaid extension stretches a diagram's SVG to the width of its <pre>,
+   which scales the diagram up as readily as down. */
+pre.mermaid {
+  overflow-x: auto;
+
+  /* The extension declares both of these on the same selector, from a
+     stylesheet injected after this one, so beating it takes the !important
+     and the :root prefix for specificity. */
+  :root & > svg {
+    max-width: none !important;
+    width: auto;
+  }
+}
