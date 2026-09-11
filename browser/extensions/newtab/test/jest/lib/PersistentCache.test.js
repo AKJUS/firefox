@@ -1,5 +1,9 @@
-import { GlobalOverrider } from "test/unit/utils";
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import { PersistentCache } from "lib/PersistentCache.sys.mjs";
+import { stubGlobals } from "test/jest/test-utils";
 
 describe("PersistentCache", () => {
   let fakeIOUtils;
@@ -7,118 +11,119 @@ describe("PersistentCache", () => {
   let cache;
   let filename = "cache.json";
   let consoleErrorStub;
-  let globals;
-  let sandbox;
+  let restoreGlobals;
 
   beforeEach(() => {
-    globals = new GlobalOverrider();
-    sandbox = sinon.createSandbox();
     fakeIOUtils = {
-      writeJSON: sinon.stub().resolves(0),
-      readJSON: sinon.stub().resolves({}),
+      writeJSON: jest.fn().mockResolvedValue(0),
+      readJSON: jest.fn().mockResolvedValue({}),
     };
     fakePathUtils = {
-      join: sinon.stub().returns(filename),
+      join: jest.fn(() => filename),
       localProfileDir: "/",
     };
-    consoleErrorStub = sandbox.stub();
-    globals.set("console", { error: consoleErrorStub });
-    globals.set("IOUtils", fakeIOUtils);
-    globals.set("PathUtils", fakePathUtils);
+    consoleErrorStub = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    restoreGlobals = stubGlobals({
+      IOUtils: fakeIOUtils,
+      PathUtils: fakePathUtils,
+    });
 
     cache = new PersistentCache(filename);
   });
   afterEach(() => {
-    globals.restore();
-    sandbox.restore();
+    restoreGlobals();
+    consoleErrorStub.mockRestore();
   });
 
   describe("#get", () => {
     it("tries to read the file", async () => {
       await cache.get("foo");
-      assert.calledOnce(fakeIOUtils.readJSON);
+      expect(fakeIOUtils.readJSON).toHaveBeenCalledTimes(1);
     });
     it("doesnt try to read the file if it was already loaded", async () => {
       await cache._load();
-      fakeIOUtils.readJSON.resetHistory();
+      fakeIOUtils.readJSON.mockClear();
       await cache.get("foo");
-      assert.notCalled(fakeIOUtils.readJSON);
+      expect(fakeIOUtils.readJSON).not.toHaveBeenCalled();
     });
     it("should catch and report errors", async () => {
-      fakeIOUtils.readJSON.rejects(new SyntaxError("Failed to parse JSON"));
+      fakeIOUtils.readJSON.mockRejectedValue(
+        new SyntaxError("Failed to parse JSON")
+      );
       await cache._load();
-      assert.calledOnce(consoleErrorStub);
+      expect(consoleErrorStub).toHaveBeenCalledTimes(1);
 
       cache._cache = undefined;
-      consoleErrorStub.resetHistory();
+      consoleErrorStub.mockClear();
 
-      fakeIOUtils.readJSON.rejects(
+      fakeIOUtils.readJSON.mockRejectedValue(
         new DOMException("IOUtils shutting down", "AbortError")
       );
       await cache._load();
-      assert.calledOnce(consoleErrorStub);
+      expect(consoleErrorStub).toHaveBeenCalledTimes(1);
 
       cache._cache = undefined;
-      consoleErrorStub.resetHistory();
+      consoleErrorStub.mockClear();
 
-      fakeIOUtils.readJSON.rejects(
+      fakeIOUtils.readJSON.mockRejectedValue(
         new DOMException("File not found", "NotFoundError")
       );
       await cache._load();
-      assert.notCalled(consoleErrorStub);
+      expect(consoleErrorStub).not.toHaveBeenCalled();
     });
     it("returns data for a given cache key", async () => {
-      fakeIOUtils.readJSON.resolves({ foo: "bar" });
+      fakeIOUtils.readJSON.mockResolvedValue({ foo: "bar" });
       let value = await cache.get("foo");
-      assert.equal(value, "bar");
+      expect(value).toEqual("bar");
     });
     it("returns undefined for a cache key that doesn't exist", async () => {
       let value = await cache.get("baz");
-      assert.equal(value, undefined);
+      expect(value).toBeUndefined();
     });
     it("returns all the data if no cache key is specified", async () => {
-      fakeIOUtils.readJSON.resolves({ foo: "bar" });
+      fakeIOUtils.readJSON.mockResolvedValue({ foo: "bar" });
       let value = await cache.get();
-      assert.deepEqual(value, { foo: "bar" });
+      expect(value).toEqual({ foo: "bar" });
     });
   });
 
   describe("#set", () => {
     it("tries to read the file on the first set", async () => {
       await cache.set("foo", { x: 42 });
-      assert.calledOnce(fakeIOUtils.readJSON);
+      expect(fakeIOUtils.readJSON).toHaveBeenCalledTimes(1);
     });
     it("doesnt try to read the file if it was already loaded", async () => {
       cache = new PersistentCache(filename, true);
       await cache._load();
-      fakeIOUtils.readJSON.resetHistory();
+      fakeIOUtils.readJSON.mockClear();
       await cache.set("foo", { x: 42 });
-      assert.notCalled(fakeIOUtils.readJSON);
+      expect(fakeIOUtils.readJSON).not.toHaveBeenCalled();
     });
     it("sets a string value", async () => {
       const key = "testkey";
       const value = "testvalue";
       await cache.set(key, value);
       const cachedValue = await cache.get(key);
-      assert.equal(cachedValue, value);
+      expect(cachedValue).toEqual(value);
     });
     it("sets an object value", async () => {
       const key = "testkey";
       const value = { x: 1, y: 2, z: 3 };
       await cache.set(key, value);
       const cachedValue = await cache.get(key);
-      assert.deepEqual(cachedValue, value);
+      expect(cachedValue).toEqual(value);
     });
     it("writes the data to file", async () => {
       const key = "testkey";
       const value = { x: 1, y: 2, z: 3 };
 
       await cache.set(key, value);
-      assert.calledOnce(fakeIOUtils.writeJSON);
-      assert.calledWith(
-        fakeIOUtils.writeJSON,
+      expect(fakeIOUtils.writeJSON).toHaveBeenCalledTimes(1);
+      expect(fakeIOUtils.writeJSON).toHaveBeenCalledWith(
         filename,
-        { [[key]]: value },
+        { [key]: value },
         { tmpPath: `${filename}.tmp` }
       );
     });
@@ -136,7 +141,7 @@ describe("PersistentCache", () => {
         rejected = true;
       }
 
-      assert(rejected);
+      expect(rejected).toBe(true);
     });
   });
 });

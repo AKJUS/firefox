@@ -1,17 +1,20 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import { actionTypes as at } from "common/Actions.mjs";
-import { GlobalOverrider } from "test/unit/utils";
+import { mockServices, stubGlobals } from "test/jest/test-utils";
 import { WebNotificationsFeed } from "lib/WebNotificationsFeed.sys.mjs";
 
 describe("WebNotificationsFeed", () => {
   let feed;
-  let overrider;
-  let sandbox;
+  let restoreGlobals;
   let readUTF8Stub;
   let pathJoinSpy;
   let respondOnClickStub;
   let deleteStub;
   let closeAlertStub;
-  let createPrincipalStub;
+  let fakeServices;
   let addObserverStub;
   let removeObserverStub;
   let prefs;
@@ -58,22 +61,20 @@ describe("WebNotificationsFeed", () => {
   }
 
   function lastAction() {
-    return feed.store.dispatch.lastCall.args[0];
+    return feed.store.dispatch.mock.lastCall[0];
   }
 
   beforeEach(() => {
-    sandbox = sinon.createSandbox();
-    overrider = new GlobalOverrider();
-    readUTF8Stub = sandbox.stub().resolves("");
-    pathJoinSpy = sandbox.spy((...parts) => parts.join("/"));
-    respondOnClickStub = sandbox.stub().resolves();
-    deleteStub = sandbox.stub();
-    closeAlertStub = sandbox.stub();
-    createPrincipalStub = sandbox.spy(origin => ({ origin }));
-    addObserverStub = sandbox.stub();
-    removeObserverStub = sandbox.stub();
+    readUTF8Stub = jest.fn().mockResolvedValue("");
+    pathJoinSpy = jest.fn((...parts) => parts.join("/"));
+    respondOnClickStub = jest.fn().mockResolvedValue(undefined);
+    deleteStub = jest.fn();
+    closeAlertStub = jest.fn();
+    fakeServices = mockServices(["obs", "scriptSecurityManager"]);
+    addObserverStub = fakeServices.obs.addObserver;
+    removeObserverStub = fakeServices.obs.removeObserver;
     prefs = { "system.showWebNotifications": true, showWebNotifications: true };
-    overrider.set({
+    restoreGlobals = stubGlobals({
       IOUtils: { readUTF8: readUTF8Stub },
       PathUtils: { profileDir: "/tmp/test-profile", join: pathJoinSpy },
       DOMException: {
@@ -98,26 +99,17 @@ describe("WebNotificationsFeed", () => {
           getService: () => ({ delete: deleteStub }),
         },
       },
-      Services: {
-        obs: {
-          addObserver: addObserverStub,
-          removeObserver: removeObserverStub,
-        },
-        scriptSecurityManager: {
-          createContentPrincipalFromOrigin: createPrincipalStub,
-        },
-      },
+      Services: fakeServices,
     });
     feed = new WebNotificationsFeed();
     feed.store = {
-      dispatch: sandbox.spy(),
+      dispatch: jest.fn(),
       getState: () => ({ Prefs: { values: prefs } }),
     };
   });
 
   afterEach(() => {
-    overrider.restore();
-    sandbox.restore();
+    restoreGlobals();
   });
 
   it("registers capture observers on INIT when both prefs are set", async () => {
@@ -125,31 +117,45 @@ describe("WebNotificationsFeed", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    assert.calledWith(addObserverStub, feed, "web-notification-shown");
-    assert.calledWith(addObserverStub, feed, "web-notification-closed");
+    expect(addObserverStub).toHaveBeenCalledWith(
+      feed,
+      "web-notification-shown"
+    );
+    expect(addObserverStub).toHaveBeenCalledWith(
+      feed,
+      "web-notification-closed"
+    );
   });
 
   it("does not observe on INIT when the feature gate is off", () => {
     prefs["system.showWebNotifications"] = false;
     feed.onAction({ type: at.INIT });
 
-    assert.notCalled(addObserverStub);
+    expect(addObserverStub).not.toHaveBeenCalled();
   });
 
   it("does not observe on INIT when the user pref is off", () => {
     prefs.showWebNotifications = false;
     feed.onAction({ type: at.INIT });
 
-    assert.notCalled(addObserverStub);
+    expect(addObserverStub).not.toHaveBeenCalled();
   });
 
-  it("observes on INIT when trainhop enables the feature with the system pref off", () => {
+  it("observes on INIT when trainhop enables the feature with the system pref off", async () => {
     prefs["system.showWebNotifications"] = false;
     prefs.trainhopConfig = { webNotifications: { enabled: true } };
     feed.onAction({ type: at.INIT });
+    await Promise.resolve();
+    await Promise.resolve();
 
-    assert.calledWith(addObserverStub, feed, "web-notification-shown");
-    assert.calledWith(addObserverStub, feed, "web-notification-closed");
+    expect(addObserverStub).toHaveBeenCalledWith(
+      feed,
+      "web-notification-shown"
+    );
+    expect(addObserverStub).toHaveBeenCalledWith(
+      feed,
+      "web-notification-closed"
+    );
   });
 
   it("does not observe when trainhop enables the feature but the user pref is off", () => {
@@ -158,13 +164,13 @@ describe("WebNotificationsFeed", () => {
     prefs.trainhopConfig = { webNotifications: { enabled: true } };
     feed.onAction({ type: at.INIT });
 
-    assert.notCalled(addObserverStub);
+    expect(addObserverStub).not.toHaveBeenCalled();
   });
 
   it("starts observing when trainhop enrollment arrives mid-session", () => {
     prefs["system.showWebNotifications"] = false;
     feed.onAction({ type: at.INIT });
-    assert.notCalled(addObserverStub);
+    expect(addObserverStub).not.toHaveBeenCalled();
 
     prefs.trainhopConfig = { webNotifications: { enabled: true } };
     feed.onAction({
@@ -172,13 +178,16 @@ describe("WebNotificationsFeed", () => {
       data: { name: "trainhopConfig", value: prefs.trainhopConfig },
     });
 
-    assert.calledWith(addObserverStub, feed, "web-notification-shown");
+    expect(addObserverStub).toHaveBeenCalledWith(
+      feed,
+      "web-notification-shown"
+    );
   });
 
   it("starts observing when the user pref is turned on mid-session", () => {
     prefs.showWebNotifications = false;
     feed.onAction({ type: at.INIT });
-    assert.notCalled(addObserverStub);
+    expect(addObserverStub).not.toHaveBeenCalled();
 
     prefs.showWebNotifications = true;
     feed.onAction({
@@ -186,12 +195,15 @@ describe("WebNotificationsFeed", () => {
       data: { name: "showWebNotifications", value: true },
     });
 
-    assert.calledWith(addObserverStub, feed, "web-notification-shown");
+    expect(addObserverStub).toHaveBeenCalledWith(
+      feed,
+      "web-notification-shown"
+    );
   });
 
   it("stops observing and clears the slice when the feature is turned off", () => {
     feed.onAction({ type: at.INIT });
-    feed.store.dispatch.resetHistory();
+    feed.store.dispatch.mockClear();
 
     prefs.showWebNotifications = false;
     feed.onAction({
@@ -199,29 +211,35 @@ describe("WebNotificationsFeed", () => {
       data: { name: "showWebNotifications", value: false },
     });
 
-    assert.calledWith(removeObserverStub, feed, "web-notification-shown");
-    assert.calledWith(removeObserverStub, feed, "web-notification-closed");
-    const [action] = feed.store.dispatch.lastCall.args;
-    assert.equal(action.type, at.WEB_NOTIFICATIONS_UPDATED);
-    assert.deepEqual(action.data.notifications, {});
-    assert.deepEqual(action.data.byOrigin, {});
+    expect(removeObserverStub).toHaveBeenCalledWith(
+      feed,
+      "web-notification-shown"
+    );
+    expect(removeObserverStub).toHaveBeenCalledWith(
+      feed,
+      "web-notification-closed"
+    );
+    const [action] = feed.store.dispatch.mock.lastCall;
+    expect(action.type).toEqual(at.WEB_NOTIFICATIONS_UPDATED);
+    expect(action.data.notifications).toEqual({});
+    expect(action.data.byOrigin).toEqual({});
   });
 
   it("ignores PREF_CHANGED for unrelated prefs", () => {
     feed.onAction({ type: at.INIT });
-    addObserverStub.resetHistory();
+    addObserverStub.mockClear();
 
     feed.onAction({
       type: at.PREF_CHANGED,
       data: { name: "showWeather", value: false },
     });
 
-    assert.notCalled(removeObserverStub);
-    assert.notCalled(addObserverStub);
+    expect(removeObserverStub).not.toHaveBeenCalled();
+    expect(addObserverStub).not.toHaveBeenCalled();
   });
 
   it("seeds from disk and broadcasts a snapshot on INIT", async () => {
-    readUTF8Stub.resolves(
+    readUTF8Stub.mockResolvedValue(
       buildStoreText([
         { origin: "https://example.com", id: "abc", tag: "inbox" },
         { origin: "https://other.org", id: "ghi" },
@@ -232,25 +250,27 @@ describe("WebNotificationsFeed", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    assert.calledWith(
-      pathJoinSpy,
+    expect(pathJoinSpy).toHaveBeenCalledWith(
       "/tmp/test-profile",
       "notificationstore.json"
     );
     const action = lastAction();
-    assert.equal(action.type, at.WEB_NOTIFICATIONS_UPDATED);
-    assert.sameMembers(Object.keys(action.data.notifications), ["abc", "ghi"]);
-    assert.deepEqual(action.data.byOrigin["https://example.com"], ["abc"]);
+    expect(action.type).toEqual(at.WEB_NOTIFICATIONS_UPDATED);
+    expect(Object.keys(action.data.notifications).sort()).toEqual([
+      "abc",
+      "ghi",
+    ]);
+    expect(action.data.byOrigin["https://example.com"]).toEqual(["abc"]);
   });
 
   it("broadcasts an ADDED delta when a notification is shown", () => {
     feed.observe(makeAlert(), "web-notification-shown");
 
     const action = lastAction();
-    assert.equal(action.type, at.WEB_NOTIFICATIONS_ADDED);
-    assert.equal(action.data.notification.id, "id-1");
-    assert.equal(action.data.notification.origin, "https://example.com");
-    assert.equal(action.data.notification.body, "world");
+    expect(action.type).toEqual(at.WEB_NOTIFICATIONS_ADDED);
+    expect(action.data.notification.id).toEqual("id-1");
+    expect(action.data.notification.origin).toEqual("https://example.com");
+    expect(action.data.notification.body).toEqual("world");
   });
 
   it("broadcasts a REMOVED delta when a notification closes", () => {
@@ -258,15 +278,15 @@ describe("WebNotificationsFeed", () => {
     feed.observe(makeAlert(), "web-notification-closed");
 
     const action = lastAction();
-    assert.equal(action.type, at.WEB_NOTIFICATIONS_REMOVED);
-    assert.deepEqual(action.data.removed, [
+    expect(action.type).toEqual(at.WEB_NOTIFICATIONS_REMOVED);
+    expect(action.data.removed).toEqual([
       { origin: "https://example.com", id: "id-1" },
     ]);
   });
 
   it("does not broadcast a REMOVED for an unknown close", () => {
     feed.observe(makeAlert(), "web-notification-closed");
-    assert.notCalled(feed.store.dispatch);
+    expect(feed.store.dispatch).not.toHaveBeenCalled();
   });
 
   it("keeps a notification from a bell origin on close", () => {
@@ -274,12 +294,12 @@ describe("WebNotificationsFeed", () => {
       principal: { origin: "https://mail.google.com" },
     });
     feed.observe(alert, "web-notification-shown");
-    feed.store.dispatch.resetHistory();
+    feed.store.dispatch.mockClear();
 
     feed.observe(alert, "web-notification-closed");
 
-    assert.notCalled(feed.store.dispatch);
-    assert.property(feed._notifications, "id-1");
+    expect(feed.store.dispatch).not.toHaveBeenCalled();
+    expect(feed._notifications).toHaveProperty("id-1");
   });
 
   it("releases a notification from a non-bell origin on close", () => {
@@ -287,88 +307,92 @@ describe("WebNotificationsFeed", () => {
       principal: { origin: "https://calendar.google.com" },
     });
     feed.observe(alert, "web-notification-shown");
-    feed.store.dispatch.resetHistory();
+    feed.store.dispatch.mockClear();
 
     feed.observe(alert, "web-notification-closed");
 
-    assert.equal(lastAction().type, at.WEB_NOTIFICATIONS_REMOVED);
-    assert.notProperty(feed._notifications, "id-1");
+    expect(lastAction().type).toEqual(at.WEB_NOTIFICATIONS_REMOVED);
+    expect(feed._notifications).not.toHaveProperty("id-1");
   });
 
   it("releases a requireInteraction notification on close", () => {
     const alert = makeAlert({ requireInteraction: true });
     feed.observe(alert, "web-notification-shown");
-    feed.store.dispatch.resetHistory();
+    feed.store.dispatch.mockClear();
 
     feed.observe(alert, "web-notification-closed");
 
-    assert.equal(lastAction().type, at.WEB_NOTIFICATIONS_REMOVED);
-    assert.notProperty(feed._notifications, "id-1");
+    expect(lastAction().type).toEqual(at.WEB_NOTIFICATIONS_REMOVED);
+    expect(feed._notifications).not.toHaveProperty("id-1");
   });
 
   it("closes a still-showing notification and removes it on dismiss", () => {
     feed.observe(makeAlert(), "web-notification-shown");
-    feed.store.dispatch.resetHistory();
+    feed.store.dispatch.mockClear();
 
     feed.onAction({
       type: at.WEB_NOTIFICATIONS_DISMISS,
       data: { origin: "https://example.com", id: "id-1" },
     });
 
-    assert.calledWith(closeAlertStub, "id-1", false);
-    assert.calledWith(deleteStub, "https://example.com", "id-1");
-    assert.equal(lastAction().type, at.WEB_NOTIFICATIONS_REMOVED);
+    expect(closeAlertStub).toHaveBeenCalledWith("id-1", false);
+    expect(deleteStub).toHaveBeenCalledWith("https://example.com", "id-1");
+    expect(lastAction().type).toEqual(at.WEB_NOTIFICATIONS_REMOVED);
   });
 
   it("replays a click through respondOnClick and removes the entry", () => {
     feed.observe(makeAlert(), "web-notification-shown");
-    feed.store.dispatch.resetHistory();
+    feed.store.dispatch.mockClear();
 
     feed.onAction({
       type: at.WEB_NOTIFICATIONS_CLICK,
       data: { origin: "https://example.com", id: "id-1" },
     });
 
-    assert.calledWith(
-      respondOnClickStub,
+    expect(respondOnClickStub).toHaveBeenCalledWith(
       { origin: "https://example.com" },
       "id-1",
       "",
       true
     );
-    assert.equal(lastAction().type, at.WEB_NOTIFICATIONS_REMOVED);
+    expect(lastAction().type).toEqual(at.WEB_NOTIFICATIONS_REMOVED);
   });
 
   it("removes observers on UNINIT", () => {
     feed.onAction({ type: at.INIT });
     feed.onAction({ type: at.UNINIT });
 
-    assert.calledWith(removeObserverStub, feed, "web-notification-shown");
-    assert.calledWith(removeObserverStub, feed, "web-notification-closed");
+    expect(removeObserverStub).toHaveBeenCalledWith(
+      feed,
+      "web-notification-shown"
+    );
+    expect(removeObserverStub).toHaveBeenCalledWith(
+      feed,
+      "web-notification-closed"
+    );
   });
 
   it("reports a read error without throwing", async () => {
-    readUTF8Stub.rejects(new Error("boom"));
+    readUTF8Stub.mockRejectedValue(new Error("boom"));
     feed.onAction({ type: at.INIT });
     await Promise.resolve();
     await Promise.resolve();
 
-    const errorAction = feed.store.dispatch
-      .getCalls()
-      .map(c => c.args[0])
+    const errorAction = feed.store.dispatch.mock.calls
+      .map(c => c[0])
       .find(a => a.type === at.WEB_NOTIFICATIONS_ERROR);
-    assert.ok(errorAction);
-    assert.match(errorAction.data.message, /boom/);
+    expect(errorAction).toBeTruthy();
+    expect(errorAction.data.message).toMatch(/boom/);
   });
 
   it("treats a missing store file as empty", async () => {
-    readUTF8Stub.rejects(makeNotFoundError());
+    readUTF8Stub.mockRejectedValue(makeNotFoundError());
     feed.onAction({ type: at.INIT });
     await Promise.resolve();
     await Promise.resolve();
 
     const action = lastAction();
-    assert.equal(action.type, at.WEB_NOTIFICATIONS_UPDATED);
-    assert.deepEqual(action.data.notifications, {});
+    expect(action.type).toEqual(at.WEB_NOTIFICATIONS_UPDATED);
+    expect(action.data.notifications).toEqual({});
   });
 });

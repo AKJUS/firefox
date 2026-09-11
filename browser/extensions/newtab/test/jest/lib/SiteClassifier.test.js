@@ -1,4 +1,8 @@
-import { classifySite } from "lib/SiteClassifier.sys.mjs";
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import { stubGlobals } from "test/jest/test-utils";
 
 const FAKE_CLASSIFIER_DATA = [
   {
@@ -93,6 +97,23 @@ const FAKE_CLASSIFIER_DATA = [
 ];
 
 describe("SiteClassifier", () => {
+  let classifySite;
+  let restoreGlobals;
+
+  // SiteClassifier.sys.mjs reads its default RemoteSettings client through
+  // ChromeUtils.importESModule at load time, so the global has to exist before
+  // the module is evaluated.
+  beforeAll(async () => {
+    restoreGlobals = stubGlobals({
+      ChromeUtils: { importESModule: () => ({}) },
+    });
+    ({ classifySite } = await import("lib/SiteClassifier.sys.mjs"));
+  });
+
+  afterAll(() => {
+    restoreGlobals();
+  });
+
   function RemoteSettings() {
     return {
       get() {
@@ -102,151 +123,127 @@ describe("SiteClassifier", () => {
   }
 
   it("should return the right category", async () => {
-    assert.equal(
-      "hostname-and-params-match",
+    expect(
       await classifySite(
         "https://hostnameandparams.com?param1=val1",
         RemoteSettings
       )
-    );
-    assert.equal(
-      "other",
+    ).toEqual("hostname-and-params-match");
+    expect(
       await classifySite(
         "https://hostnameandparams.com?param1=val",
         RemoteSettings
       )
-    );
-    assert.equal(
-      "other",
+    ).toEqual("other");
+    expect(
       await classifySite(
         "https://hostnameandparams.com?param=val1",
         RemoteSettings
       )
-    );
-    assert.equal(
-      "other",
+    ).toEqual("other");
+    expect(
       await classifySite("https://hostnameandparams.com", RemoteSettings)
-    );
-    assert.equal(
-      "other",
+    ).toEqual("other");
+    expect(
       await classifySite("https://params.com?param1=val1", RemoteSettings)
-    );
+    ).toEqual("other");
 
-    assert.equal(
-      "url-match",
+    expect(
       await classifySite("https://fullurl.com/must/match", RemoteSettings)
-    );
-    assert.equal(
-      "other",
+    ).toEqual("url-match");
+    expect(
+      // eslint-disable-next-line sdl/no-insecure-url
       await classifySite("http://fullurl.com/must/match", RemoteSettings)
-    );
+    ).toEqual("other");
 
-    assert.equal(
-      "params-match",
+    expect(
       await classifySite(
         "https://example.com?param1=val1&param2=val2",
         RemoteSettings
       )
-    );
-    assert.equal(
-      "params-match",
+    ).toEqual("params-match");
+    expect(
       await classifySite(
         "https://example.com?param1=val1&param2=val2&other=other",
         RemoteSettings
       )
-    );
-    assert.equal(
-      "other",
+    ).toEqual("params-match");
+    expect(
       await classifySite(
         "https://example.com?param1=val2&param2=val1",
         RemoteSettings
       )
-    );
-    assert.equal(
-      "other",
+    ).toEqual("other");
+    expect(
       await classifySite("https://example.com?param1&param2", RemoteSettings)
-    );
+    ).toEqual("other");
 
-    assert.equal(
-      "params-prefix-match",
+    expect(
       await classifySite("https://search.com?client=firefox", RemoteSettings)
-    );
-    assert.equal(
-      "params-prefix-match",
+    ).toEqual("params-prefix-match");
+    expect(
       await classifySite("https://search.com?client=fir", RemoteSettings)
-    );
-    assert.equal(
-      "other",
+    ).toEqual("params-prefix-match");
+    expect(
       await classifySite(
         "https://search.com?client=mozillafirefox",
         RemoteSettings
       )
-    );
+    ).toEqual("other");
 
-    assert.equal(
-      "has-params",
+    expect(
       await classifySite(
         "https://example.com?has-param1=val1&has-param2=val2",
         RemoteSettings
       )
-    );
-    assert.equal(
-      "has-params",
+    ).toEqual("has-params");
+    expect(
       await classifySite(
         "https://example.com?has-param1&has-param2",
         RemoteSettings
       )
-    );
-    assert.equal(
-      "has-params",
+    ).toEqual("has-params");
+    expect(
       await classifySite(
         "https://example.com?has-param1&has-param2&other=other",
         RemoteSettings
       )
-    );
-    assert.equal(
-      "other",
+    ).toEqual("has-params");
+    expect(
       await classifySite("https://example.com?has-param1", RemoteSettings)
-    );
-    assert.equal(
-      "other",
+    ).toEqual("other");
+    expect(
       await classifySite("https://example.com?has-param2", RemoteSettings)
-    );
+    ).toEqual("other");
 
-    assert.equal(
-      "search-engine",
-      await classifySite("https://google.com", RemoteSettings)
+    expect(await classifySite("https://google.com", RemoteSettings)).toEqual(
+      "search-engine"
     );
-    assert.equal(
-      "search-engine",
-      await classifySite("https://google.de", RemoteSettings)
+    expect(await classifySite("https://google.de", RemoteSettings)).toEqual(
+      "search-engine"
     );
-    assert.equal(
-      "search-engine",
+    expect(
+      // eslint-disable-next-line sdl/no-insecure-url
       await classifySite("http://bing.com/?q=firefox", RemoteSettings)
+    ).toEqual("search-engine");
+
+    expect(await classifySite("https://yahoo.com", RemoteSettings)).toEqual(
+      "news-portal"
     );
 
-    assert.equal(
-      "news-portal",
-      await classifySite("https://yahoo.com", RemoteSettings)
-    );
-
-    assert.equal(
-      "social-media",
+    expect(
+      // eslint-disable-next-line sdl/no-insecure-url
       await classifySite("http://twitter.com/firefox", RemoteSettings)
-    );
+    ).toEqual("social-media");
 
-    assert.equal(
-      "ecommerce",
-      await classifySite("https://amazon.com", RemoteSettings)
+    expect(await classifySite("https://amazon.com", RemoteSettings)).toEqual(
+      "ecommerce"
     );
-    assert.equal(
-      "ecommerce",
-      await classifySite("https://amazon.ca", RemoteSettings)
+    expect(await classifySite("https://amazon.ca", RemoteSettings)).toEqual(
+      "ecommerce"
     );
-    assert.equal(
-      "ecommerce",
-      await classifySite("https://ebay.com", RemoteSettings)
+    expect(await classifySite("https://ebay.com", RemoteSettings)).toEqual(
+      "ecommerce"
     );
   });
 });

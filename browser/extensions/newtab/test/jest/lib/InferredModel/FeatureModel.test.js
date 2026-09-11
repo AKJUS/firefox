@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import { FeatureModel } from "lib/InferredModel/FeatureModel.sys.mjs";
 
 const jsonData = {
@@ -22,20 +26,20 @@ const jsonData = {
 describe("Inferred Model", () => {
   it("create model", () => {
     const model = FeatureModel.fromJSON(jsonData);
-    assert.equal(model.model_id, jsonData.modelId);
+    expect(model.model_id).toEqual(jsonData.modelId);
   });
   it("create time intervals", () => {
     const model = FeatureModel.fromJSON(jsonData);
-    assert.equal(model.model_id, jsonData.modelId);
+    expect(model.model_id).toEqual(jsonData.modelId);
 
     const curTime = new Date();
     const intervals = model.getDateIntervals(curTime);
 
-    assert.equal(intervals.length, jsonData.day_time_weighting.days.length);
+    expect(intervals).toHaveLength(jsonData.day_time_weighting.days.length);
     for (const interval of intervals) {
-      assert.isTrue(interval.start < curTime.getTime());
-      assert.isTrue(interval.end <= curTime.getTime());
-      assert.isTrue(interval.start <= interval.end);
+      expect(interval.start < curTime.getTime()).toBe(true);
+      expect(interval.end <= curTime.getTime()).toBe(true);
+      expect(interval.start <= interval.end).toBe(true);
     }
   });
 });

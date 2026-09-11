@@ -463,12 +463,6 @@ module.exports = function (config) {
               functions: 8,
               branches: 0,
             },
-            "lib/Screenshots.sys.mjs": {
-              statements: 94,
-              lines: 94,
-              functions: 75,
-              branches: 84,
-            },
             /**
              * Store.sys.mjs is tested via an xpcshell test
              */

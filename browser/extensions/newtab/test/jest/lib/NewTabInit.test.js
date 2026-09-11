@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import { actionCreators as ac, actionTypes as at } from "common/Actions.mjs";
 import { NewTabInit } from "lib/NewTabInit.sys.mjs";
 
@@ -11,7 +15,7 @@ describe("NewTabInit", () => {
     );
   beforeEach(() => {
     STATE = {};
-    store = { getState: sinon.stub().returns(STATE), dispatch: sinon.stub() };
+    store = { getState: jest.fn(() => STATE), dispatch: jest.fn() };
     instance = new NewTabInit();
     instance.store = store;
   });
@@ -22,7 +26,7 @@ describe("NewTabInit", () => {
       { type: at.NEW_TAB_INITIAL_STATE, data: STATE },
       123
     );
-    assert.calledWith(store.dispatch, resp);
+    expect(store.dispatch).toHaveBeenCalledWith(resp);
   });
   describe("early / simulated new tabs", () => {
     const simulateTabInit = portID =>
@@ -36,8 +40,7 @@ describe("NewTabInit", () => {
     it("should dispatch if not replied yet", () => {
       requestFromTab("foo");
 
-      assert.calledWith(
-        store.dispatch,
+      expect(store.dispatch).toHaveBeenCalledWith(
         ac.AlsoToOneContent(
           { type: at.NEW_TAB_INITIAL_STATE, data: STATE },
           "foo"
@@ -49,7 +52,7 @@ describe("NewTabInit", () => {
       requestFromTab("foo");
       requestFromTab("foo");
 
-      assert.calledOnce(store.dispatch);
+      expect(store.dispatch).toHaveBeenCalledTimes(1);
     });
     describe("multiple tabs", () => {
       beforeEach(() => {
@@ -58,20 +61,20 @@ describe("NewTabInit", () => {
       it("should dispatch once to each tab", () => {
         requestFromTab("foo");
         requestFromTab("bar");
-        assert.calledTwice(store.dispatch);
+        expect(store.dispatch).toHaveBeenCalledTimes(2);
         requestFromTab("foo");
         requestFromTab("bar");
 
-        assert.calledTwice(store.dispatch);
+        expect(store.dispatch).toHaveBeenCalledTimes(2);
       });
       it("should clean up when tabs close", () => {
-        assert.propertyVal(instance._repliedEarlyTabs, "size", 2);
+        expect(instance._repliedEarlyTabs.size).toBe(2);
         instance.onAction(ac.AlsoToMain({ type: at.NEW_TAB_UNLOAD }, "foo"));
-        assert.propertyVal(instance._repliedEarlyTabs, "size", 1);
+        expect(instance._repliedEarlyTabs.size).toBe(1);
         instance.onAction(ac.AlsoToMain({ type: at.NEW_TAB_UNLOAD }, "foo"));
-        assert.propertyVal(instance._repliedEarlyTabs, "size", 1);
+        expect(instance._repliedEarlyTabs.size).toBe(1);
         instance.onAction(ac.AlsoToMain({ type: at.NEW_TAB_UNLOAD }, "bar"));
-        assert.propertyVal(instance._repliedEarlyTabs, "size", 0);
+        expect(instance._repliedEarlyTabs.size).toBe(0);
       });
     });
   });
