@@ -51,6 +51,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <chrono>
+#include <time.h>
 
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -2802,6 +2804,24 @@ static void LaunchCallbackApp(const NS_tchar* workingDir, int argc,
 #endif
 }
 
+static void WriteUpdateTelemetry(const NS_tchar* aInstallDir) {
+  NS_tchar path[MAXPATHLEN];
+  NS_tsnprintf(path, sizeof(path) / sizeof(path[0]),
+               NS_T("%s/update_telemetry.json"), aInstallDir);
+
+  auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::system_clock::now().time_since_epoch())
+                   .count();
+  char content[128];
+  snprintf(content, sizeof(content) / sizeof(content[0]),
+           "{\"install_timestamp\":\"%lld\"}", (long long)nowMs);
+
+  AutoFile file(CreateAndOpenFile(path, true));
+  if (file != nullptr) {
+    fwrite(content, strlen(content), 1, file);
+  }
+}
+
 static bool WriteToFile(const NS_tchar* aFilename, const char* aStatus) {
   LOG(("Writing status to file: %s", aStatus));
 
@@ -3277,6 +3297,7 @@ static int ProcessReplaceRequest() {
 #endif
 
   gSucceeded = true;
+  WriteUpdateTelemetry(gInstallDirPath);
 
   return 0;
 }
@@ -3473,6 +3494,9 @@ static void UpdateThreadFunc(void* param) {
         LOG(("Couldn't set access/modification time on application bundle."));
       }
 #endif
+      if (!sStagedUpdate) {
+        WriteUpdateTelemetry(gInstallDirPath);
+      }
       LOG(("succeeded"));
     }
     WriteStatusFile(rv);
