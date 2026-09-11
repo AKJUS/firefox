@@ -107,6 +107,7 @@ class DOMMutationBreakpointsContents extends Component {
       ),
       React.createElement(CloseButton, {
         handleClick: () => deleteBreakpoint(nodeFront, mutationType),
+        tooltip: L10N.getStr("domMutation.remove.tooltip"),
       })
     );
   }
