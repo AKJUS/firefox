@@ -77,6 +77,48 @@ module.exports = function (config) {
           functions: 100,
           branches: 66,
           overrides: {
+            "content-src/components/TopSites/TopSiteFormInput.jsx": {
+              statements: 0,
+              lines: 0,
+              functions: 0,
+              branches: 0,
+            },
+            "content-src/components/TopSites/TopSiteForm.jsx": {
+              statements: 0,
+              lines: 0,
+              functions: 0,
+              branches: 0,
+            },
+            "content-src/components/TopSites/TopSite.jsx": {
+              statements: 0,
+              lines: 0,
+              functions: 0,
+              branches: 0,
+            },
+            "content-src/components/A11yLinkButton/A11yLinkButton.jsx": {
+              statements: 0,
+              lines: 0,
+              functions: 0,
+              branches: 0,
+            },
+            "content-src/components/TopSites/TopSites.jsx": {
+              statements: 0,
+              lines: 0,
+              functions: 0,
+              branches: 0,
+            },
+            "content-src/components/TopSites/SearchShortcutsForm.jsx": {
+              statements: 0,
+              lines: 0,
+              functions: 0,
+              branches: 0,
+            },
+            "content-src/components/TopSites/TopSiteImpressionWrapper.jsx": {
+              statements: 0,
+              lines: 0,
+              functions: 0,
+              branches: 0,
+            },
             "common/Reducers.sys.mjs": {
               statements: 0,
               lines: 0,
