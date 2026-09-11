@@ -2880,9 +2880,10 @@ pub unsafe extern "C" fn neqo_http3conn_export_keying_material(
 
 #[repr(C)]
 pub struct WebTransportSessionStats {
-    // Transport-level (for spec bytesSent/Received)
-    pub bytes_sent_total: u64,       // Total bytes sent (transport level)
-    pub bytes_received_total: u64,   // Total bytes received (transport level)
+    // Total bytes sent/received at QUIC transport level (includes framing and
+    // retransmissions; neqo does not expose payload-only byte counts separately).
+    pub bytes_sent_total: u64,
+    pub bytes_received_total: u64,
     // Transport-level details
     pub bytes_acked: u64,
     pub packets_sent: u64,
@@ -2896,7 +2897,7 @@ pub struct WebTransportSessionStats {
     // Congestion-derived
     pub estimated_send_rate: i64,  // bits/sec, -1 means null/unknown
     pub at_send_capacity: bool,
-    // Datagram stats (to be populated in future patch)
+    // Datagram stats
     pub datagrams_expired_outgoing: u64,
     // Firefox does not support WebTransport connection pooling, so this
     // connection-level counter is a valid per-session stand-in.

@@ -592,11 +592,12 @@ static void PopulateConnectionStats(WebTransportConnectionStats& aStats,
                                     const WebTransportStatsData& aSource,
                                     uint64_t aDroppedIncoming,
                                     uint64_t aExpiredIncoming) {
+  // bytesSent maps to neqo's bytes_tx (total wire bytes including QUIC
+  // framing and retransmissions). The spec calls for payload bytes excluding
+  // framing and retransmissions, which neqo does not expose separately, so
+  // bytesSentOverhead (the difference) is omitted rather than reported as 0,
+  // per the spec's "unavailable stats are absent" rule. See bug 2051624.
   aStats.mBytesSent.Construct(aSource.bytesSent());
-  // bytesSentOverhead is omitted: neqo does not separate application bytes
-  // from QUIC framing/header overhead in its public stats API, and the spec
-  // requires unavailable stats to be absent rather than reported as 0. See
-  // bug 2051624.
   aStats.mBytesAcknowledged.Construct(aSource.bytesAcknowledged());
   aStats.mPacketsSent.Construct(aSource.packetsSent());
   aStats.mBytesLost.Construct(aSource.bytesLost());
