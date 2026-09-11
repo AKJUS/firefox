@@ -457,14 +457,14 @@ void FetchStreamReader::ReportErrorToConsole(JSContext* aCx,
   WorkerPrivate* workerPrivate = GetWorkerPrivateFromContext(aCx);
   if (workerPrivate) {
     innerWindowId = workerPrivate->WindowID();
+
+    RefPtr<Runnable> r = NS_NewRunnableFunction(
+        "FetchStreamReader::ReportErrorToConsole", [reporter, innerWindowId]() {
+          reporter->FlushReportsToConsole(innerWindowId);
+        });
+
+    workerPrivate->DispatchToMainThread(r.forget());
   }
-
-  RefPtr<Runnable> r = NS_NewRunnableFunction(
-      "FetchStreamReader::ReportErrorToConsole", [reporter, innerWindowId]() {
-        reporter->FlushReportsToConsole(innerWindowId);
-      });
-
-  workerPrivate->DispatchToMainThread(r.forget());
 }
 
 }  // namespace mozilla::dom
