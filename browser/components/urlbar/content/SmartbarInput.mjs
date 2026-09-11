@@ -4860,7 +4860,6 @@ ${
     }
 
     let suffix = Services.locale.urlFixupSuffix;
-    Glean.urlfixup.suffix.get("smartbar", suffix).add(1);
     if (!suffix.endsWith("/")) {
       suffix += "/";
     }

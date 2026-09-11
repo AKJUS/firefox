@@ -4024,7 +4024,6 @@ ${
     }
 
     let suffix = Services.locale.urlFixupSuffix;
-    Glean.urlfixup.suffix.get("urlbar", suffix).add(1);
     if (!suffix.endsWith("/")) {
       suffix += "/";
     }

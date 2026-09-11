@@ -1306,9 +1306,12 @@ function maybeAddPrefixAndSuffix(oldHost) {
   let numDots = (oldHost.match(/\./g) || []).length;
   if (numDots == 0) {
     newHost = prefix + oldHost + suffix;
-    Glean.urlfixup.suffix.get("fixup", suffix).add(1);
-  } else if (numDots == 1 && !oldHost.startsWith(prefix)) {
-    newHost = prefix + oldHost;
+  } else if (numDots == 1) {
+    if (prefix && oldHost == prefix) {
+      newHost = oldHost + suffix;
+    } else if (suffix && !oldHost.startsWith(prefix)) {
+      newHost = prefix + oldHost;
+    }
   }
   return newHost ? newHost : oldHost;
 }
