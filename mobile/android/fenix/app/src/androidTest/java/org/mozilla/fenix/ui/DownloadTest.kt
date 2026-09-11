@@ -180,6 +180,11 @@ class DownloadTest {
     }
 
     // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1114970
+    @Converted(
+        replacedBy = ["org.mozilla.fenix.ui.efficiency.tests.DownloadTest#deleteDownloadedFileTest"],
+        bug = 2071272,
+        since = "2026-09",
+    )
     @Test
     @SkipLeaks(reasons = ["https://bugzilla.mozilla.org/show_bug.cgi?id=2004099"])
     fun deleteDownloadedFileTest() {
