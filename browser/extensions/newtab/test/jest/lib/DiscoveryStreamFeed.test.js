@@ -1335,9 +1335,9 @@ describe("DiscoveryStreamFeed", () => {
       expect(
         ADS_CLIENT.requestSpocAds.mock.invocationCallOrder[0]
       ).toBeLessThan(feed.cache.get.mock.invocationCallOrder[0]);
-      expect(
-        feed.cache.set.mock.calls.some(([key]) => key === "spocs")
-      ).toBe(false);
+      expect(feed.cache.set.mock.calls.some(([key]) => key === "spocs")).toBe(
+        false
+      );
 
       // The same entry does suppress the fetch on the direct MARS path, which
       // is what made it suppress the ads-client one too.
