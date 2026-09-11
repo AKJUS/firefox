@@ -14,6 +14,13 @@ name = "notification-helper"
 path = "src/main.rs"
 
 [dependencies]
+clap = { version = "4", default-features = false, features = [
+  "derive",
+  "error-context",
+  "help",
+  "std",
+  "usage",
+] }
 mozilla-central-workspace-hack = { version = "0.1", features = [
   "pushnotificationhelper",
 ], optional = true }

@@ -6660,6 +6660,7 @@ dependencies = [
 name = "pushnotificationhelper"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "mozilla-central-workspace-hack",
 ]
 
