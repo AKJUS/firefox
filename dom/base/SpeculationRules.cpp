@@ -170,11 +170,11 @@ void SpeculationRules::InnerConsiderLoads() {
 
   // Step 7 runs in various cases when we decide to actually fire a prefetch
   // based on the eagerness value of the candidates.
-  // Currently, we only support immediate eagerness, and we fire these
-  // prefetches now.
   SpeculationRulesManager* srm = mDocument->EnsureSpeculationRulesManager();
-  for (PrefetchCandidate& candidate : prefetchCandidates->AsArray()) {
-    srm->StartPrefetch(mDocument, candidate);
+  for (const PrefetchCandidate& candidate : prefetchCandidates->AsArray()) {
+    if (candidate.eagerness == Eagerness::Immediate) {
+      srm->StartPrefetch(mDocument, candidate);
+    }
   }
 }
 
