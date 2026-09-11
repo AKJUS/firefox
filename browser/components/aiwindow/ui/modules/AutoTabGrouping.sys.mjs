@@ -531,6 +531,24 @@ export const AutoTabGrouping = {
   },
 
   /**
+   * Names of the groups the "View Tab Groups" list offers. Despite hanging off
+   * one window's gBrowser, getAllTabGroups() spans every window that shares
+   * this one's privacy, and saved groups are global.
+   *
+   * @param {ChromeWindow} win
+   * @returns {string[]}
+   */
+  _takenGroupLabels(win) {
+    const saved = lazy.PrivateBrowsingUtils.isWindowPrivate(win)
+      ? []
+      : win.SessionStore.savedGroups.map(group => group.name);
+    return [
+      ...win.gBrowser.getAllTabGroups().map(group => group.label),
+      ...saved,
+    ].filter(Boolean);
+  },
+
+  /**
    * @param {ChromeWindow} win
    * @returns {number}
    */
@@ -1142,7 +1160,10 @@ export const AutoTabGrouping = {
       let errorType = "";
       try {
         const proposals = await this._withTimeout(
-          lazy.AutoTabGroupingSuggestions.buildProposals(candidates),
+          lazy.AutoTabGroupingSuggestions.buildProposals(
+            candidates,
+            this._takenGroupLabels(win)
+          ),
           lazy.timeoutMs
         );
         suggestions = proposals.map((proposal, index) => ({
