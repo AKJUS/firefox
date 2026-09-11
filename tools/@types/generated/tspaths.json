@@ -7640,7 +7640,7 @@
         "../../../browser/components/customizableui/test/CustomizableUITestUtils.sys.mjs"
       ],
       "resource://testing-common/DOMFullscreenTestUtils.sys.mjs": [
-        "../../../browser/base/content/test/fullscreen/DOMFullscreenTestUtils.sys.mjs"
+        "../../../browser/base/content/test/browser-fullscreen/DOMFullscreenTestUtils.sys.mjs"
       ],
       "resource://testing-common/DoHTestUtils.sys.mjs": [
         "../../../toolkit/components/doh/DoHTestUtils.sys.mjs"
