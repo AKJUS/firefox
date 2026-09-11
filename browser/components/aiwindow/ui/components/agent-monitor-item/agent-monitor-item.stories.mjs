@@ -22,6 +22,8 @@ const AGENT = {
   url: "soundnest.com/audio/sony-wh-1000xm5",
   faviconText: "S",
   faviconColor: "#e8663a",
+  value: "$299",
+  valueMeta: "checked 2:14 PM / was $299",
   condition: "",
   conditionPresets: [],
   status: { label: "$278 ▼ −7%", kind: "triggered" },
@@ -88,6 +90,8 @@ Create.args = {
   agent: {
     ...AGENT,
     monitorName: "",
+    value: "",
+    valueMeta: "found on this page just now",
     status: null,
     history: [],
   },

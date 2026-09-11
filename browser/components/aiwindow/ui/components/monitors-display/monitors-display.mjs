@@ -54,6 +54,10 @@ export class MonitorsDisplay extends MozLitElement {
       watchUrlTitles: monitor.watchUrlTitles || {},
       condition: monitor.monitorPrompt || "",
       status: monitorStatus,
+      value: monitor.currentValue || "",
+      valueMeta: monitor.lastRunTime
+        ? `checked ${new Date(monitor.lastRunTime).toLocaleTimeString()}`
+        : "",
       history: (monitor.history || []).slice().reverse(),
       // Pass the schedule data directly - agent-monitor-item will format it using FTL strings
       schedule: monitor.schedule

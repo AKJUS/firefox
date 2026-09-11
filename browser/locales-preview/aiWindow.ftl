@@ -9,28 +9,6 @@ smartwindow-monitor-button =
     .label = Monitors
     .tooltiptext = Monitors
 
-# Title of the panel opened by the toolbar button above
-smartwindow-monitor-panel-title = Tasks
-
-# Label above tasks that newly met their condition since the panel was last opened
-smartwindow-monitor-panel-new-matches = New matches
-# Label above the list of tasks the user has running
-smartwindow-monitor-panel-watching = Recent
-smartwindow-monitor-panel-empty-title = Nothing watched yet.
-smartwindow-monitor-panel-empty-description = { -brand-short-name } can keep an eye on a page and tell you the moment it changes. It only checks while { -brand-short-name } is open. Create new task below to get started.
-# Shown when the task's condition was met on its last check
-smartwindow-monitor-panel-result-match = Match
-smartwindow-monitor-panel-result-no-match = No match
-smartwindow-monitor-panel-result-error = Check failed
-smartwindow-monitor-panel-create = Create new task
-# Panel title while the user is filling in the create form
-smartwindow-monitor-panel-create-title = Create new task
-# Variables:
-#   $used (number) - How many tasks the user has
-#   $max (number) - The maximum number of tasks allowed
-smartwindow-monitor-panel-count = { $used } of { $max }
-smartwindow-monitor-panel-manage = Manage and view all tasks
-
 ## AI Tasks
 
 # Desktop notification shown when a AI Tasks fires. A "monitor" is
@@ -238,8 +216,8 @@ ai-tasks-alert-delete-confirm-button = Delete
 
 ## Used in the header to show the last check result
 
-ai-tasks-alert-last-result-met = Match
-ai-tasks-alert-last-result-not-met = No match
+ai-tasks-alert-last-result-met = Last result: Match
+ai-tasks-alert-last-result-not-met = Last result: No match
 
 ## Used in the history table as a simple status badge
 

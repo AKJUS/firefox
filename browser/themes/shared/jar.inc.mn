@@ -31,7 +31,6 @@
   skin/classic/browser/sidebar.css                             (../shared/sidebar.css)
   skin/classic/browser/smartbar.css                            (../shared/smartbar.css)
   skin/classic/browser/smartwindowGroupTabs.css                (../shared/smartwindowGroupTabs.css)
-  skin/classic/browser/smartwindowMonitor.css                  (../shared/smartwindowMonitor.css)
   skin/classic/browser/toolbarbuttons.css                      (../shared/toolbarbuttons.css)
   skin/classic/browser/toolbarbutton-icons.css                 (../shared/toolbarbutton-icons.css)
   skin/classic/browser/urlbar/badge-bookmark.svg               (../shared/urlbar/icons/badge-bookmark.svg)
