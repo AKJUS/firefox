@@ -64,9 +64,8 @@ line tool, please follow [Capture a minidump from the command line](#capture-a-m
    icons are registered under "Windows Kits" as below.
 
    ```{image} img/windbg-in-startmenu.png
-:width: 50%
-
-```
+   :width: 50%
+   ```
 
 2. Connect Firefox to the debugger.
 

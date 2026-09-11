@@ -589,7 +589,6 @@ If you've ever used the subscript loader, you might not know that it can
 load scripts asynchronously, and return a Promise once they're loaded.
 For example:
 
-
     Services.scriptloader.loadSubScriptWithOptions(myScriptURL, { async: true }).then(() => {
       console.log("Script at " + myScriptURL + " loaded asynchronously!");
     });
