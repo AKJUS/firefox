@@ -80,7 +80,7 @@ export var Policy = {
 var gActiveExperimentStartupBuffer = new Map();
 
 // For Powering arewegleanyet.com (See bug 1944592)
-// Legacy Count: 112
+// Legacy Count: 113
 // Glean Count: 113
 
 var gGlobalEnvironment;
@@ -585,9 +585,9 @@ function EnvironmentCache() {
   this._watchedPrefs = DEFAULT_ENVIRONMENT_PREFS;
 
   this._currentEnvironment = {
-    build: this._getBuild(), // required in environment.1.schema
-    partner: this._getPartner(), // required in environment.1.schema
-    system: this._getSystem(), // required in environment.1.schema
+    build: this._getBuild(),
+    partner: this._getPartner(),
+    system: this._getSystem(),
   };
 
   this._addObservers();
@@ -1087,7 +1087,7 @@ EnvironmentCache.prototype = {
       return;
     }
 
-    // Make sure we have a settings section as it's required by environment.1.schema.
+    // Make sure we have a settings section.
     this._currentEnvironment.settings = this._currentEnvironment.settings || {};
 
     // Update the search engine entry in the current environment.
@@ -1164,14 +1164,16 @@ EnvironmentCache.prototype = {
    */
   _getBuild() {
     let buildData = {
-      applicationId: "", // required string in environment.1.schema
-      applicationName: "", // required string in environment.1.schema
-      architecture: Services.sysinfo.get("arch"), // required in environment.1.schema
-      buildId: Services.appinfo.appBuildID || null, // required in environment.1.schema
-      version: "00.", // required string in environment.1.schema with pattern /^[0-9]{2,3}\\./`
-      vendor: null, // required but can be null in environment.1.schema
-      platformVersion: "00.", // required string in environment.1.schema with pattern /^[0-9]{2,3}\\./`
-      xpcomAbi: Services.appinfo.XPCOMABI, // required in environment.1.schema
+      applicationId: Services.appinfo.ID || null,
+      applicationName: Services.appinfo.name || null,
+      architecture: Services.sysinfo.get("arch"),
+      buildId: Services.appinfo.appBuildID || null,
+      version: Services.appinfo.version || null,
+      vendor: Services.appinfo.vendor || null,
+      displayVersion: AppConstants.MOZ_APP_VERSION_DISPLAY || null,
+      platformVersion: Services.appinfo.platformVersion || null,
+      xpcomAbi: Services.appinfo.XPCOMABI,
+      updaterAvailable: AppConstants.MOZ_UPDATER,
     };
 
     Glean.xpcom.abi.set(Services.appinfo.XPCOMABI);
