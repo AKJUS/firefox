@@ -71,12 +71,6 @@ myst_enable_extensions = [
 mermaid_width = "min(100%, 45rem)"
 mermaid_height = "auto"
 
-# sphinx-rtd-theme has no dark mode, so the page is always light. The extension
-# picks its diagram theme off prefers-color-scheme regardless, so a reader who
-# prefers dark gets a dark diagram in a light page unless both themes are the
-# light one.
-mermaid_dark_theme = "default"
-
 # startOnLoad must stay off: the extension renders via mermaid.run() itself.
 # Only theme-neutral values belong here, as this config is shared by the light
 # and dark themes.

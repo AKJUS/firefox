@@ -54,8 +54,8 @@ flowchart TD
     container --> win
     panels --> win
 
-    classDef offstrip fill:#fef3c7,stroke:#92400e;
-    classDef sink fill:#e5e7eb,stroke:#4b5563;
+    classDef offstrip fill:#fef3c7,stroke:#92400e,color:#1a1a1a;
+    classDef sink fill:#e5e7eb,stroke:#4b5563,color:#1a1a1a;
     class panels offstrip;
     class win sink;
 ```
