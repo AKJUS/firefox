@@ -744,8 +744,8 @@ void gfxDWriteFontEntry::InitSkrifaFontFace() {
   // No local file, or failed to open/mmap it. Get a reference to the entire
   // font data.
   RefPtr<IDWriteFontFileStream> stream;
-  if (FAILED(loader->CreateStreamFromKey(key, keySize,
-                                         getter_AddRefs(stream)))) {
+  if (FAILED(
+          loader->CreateStreamFromKey(key, keySize, getter_AddRefs(stream)))) {
     return;
   }
   uint64_t fileSize;
