@@ -1458,6 +1458,8 @@ interface nsIAlertAction extends nsISupports {
   readonly title: string;
   /** <!-- binding_to(idl, attribute, XPIDL_nsIAlertAction_iconURL) --> */
   readonly iconURL: string;
+  /** <!-- binding_to(idl, attribute, XPIDL_nsIAlertAction_navigate) --> */
+  readonly navigate: nsIURI;
   /** <!-- binding_to(idl, attribute, XPIDL_nsIAlertAction_windowsSystemActivationType) --> */
   readonly windowsSystemActivationType: boolean;
   /** <!-- binding_to(idl, attribute, XPIDL_nsIAlertAction_opaqueRelaunchData) --> */
@@ -1474,6 +1476,8 @@ interface nsIAlertNotification extends nsISupports {
   readonly id: string;
   /** <!-- binding_to(idl, attribute, XPIDL_nsIAlertNotification_name) --> */
   readonly name: string;
+  /** <!-- binding_to(idl, attribute, XPIDL_nsIAlertNotification_countId) --> */
+  readonly countId: u64;
   /** <!-- binding_to(idl, attribute, XPIDL_nsIAlertNotification_imageURL) --> */
   readonly imageURL: string;
   /** <!-- binding_to(idl, attribute, XPIDL_nsIAlertNotification_image) --> */
@@ -3312,8 +3316,6 @@ interface nsIURIFixup extends nsISupports {
   readonly FIXUP_FLAG_PRIVATE_CONTEXT?: 4;
   /** <!-- binding_to(idl, const, XPIDL_nsIURIFixup_FIXUP_FLAG_FIX_SCHEME_TYPOS) --> */
   readonly FIXUP_FLAG_FIX_SCHEME_TYPOS?: 8;
-  /** <!-- binding_to(idl, const, XPIDL_nsIURIFixup_FIXUP_FLAG_FORCE_KEYWORD_LOOKUP) --> */
-  readonly FIXUP_FLAG_FORCE_KEYWORD_LOOKUP?: 16;
 
   /** <!-- binding_to(idl, method, XPIDL_nsIURIFixup_getFixupURIInfo) --> */
   getFixupURIInfo(aURIText: string, aFixupFlags?: u32): nsIURIFixupInfo;
@@ -5581,6 +5583,16 @@ interface nsIScriptError extends nsIConsoleMessage {
   initSourceId(sourceId: u32): void;
 }
 
+// https://searchfox.org/firefox-main/source/dom/bindings/test/mozITestInterfaceJS.idl
+
+/** <!-- binding_to(idl, interface_name, XPIDL_mozITestInterfaceJS) --> */
+interface mozITestInterfaceJS extends nsISupports {
+  /** <!-- binding_to(idl, method, XPIDL_mozITestInterfaceJS_testThrowNsresult) --> */
+  testThrowNsresult(): void;
+  /** <!-- binding_to(idl, method, XPIDL_mozITestInterfaceJS_testThrowNsresultFromNative) --> */
+  testThrowNsresultFromNative(): void;
+}
+
 // https://searchfox.org/firefox-main/source/dom/interfaces/events/nsIDOMEventListener.idl
 
 // https://searchfox.org/firefox-main/source/dom/geolocation/nsIGeolocationUIUtils.idl
@@ -5902,6 +5914,8 @@ interface nsINotificationActionStorageEntry extends nsISupports {
   readonly name: string;
   /** <!-- binding_to(idl, attribute, XPIDL_nsINotificationActionStorageEntry_title) --> */
   readonly title: string;
+  /** <!-- binding_to(idl, attribute, XPIDL_nsINotificationActionStorageEntry_navigate) --> */
+  readonly navigate: string;
 }
 
 /** <!-- binding_to(idl, interface_name, XPIDL_nsINotificationStorageEntry) --> */
@@ -5920,6 +5934,8 @@ interface nsINotificationStorageEntry extends nsISupports {
   readonly tag: string;
   /** <!-- binding_to(idl, attribute, XPIDL_nsINotificationStorageEntry_icon) --> */
   readonly icon: string;
+  /** <!-- binding_to(idl, attribute, XPIDL_nsINotificationStorageEntry_navigate) --> */
+  readonly navigate: string;
   /** <!-- binding_to(idl, attribute, XPIDL_nsINotificationStorageEntry_requireInteraction) --> */
   readonly requireInteraction: boolean;
   /** <!-- binding_to(idl, attribute, XPIDL_nsINotificationStorageEntry_silent) --> */
@@ -7263,8 +7279,6 @@ interface nsIWebAuthnService extends nsISupports {
   /** <!-- binding_to(idl, method, XPIDL_nsIWebAuthnService_runCommand) --> */
   runCommand(aCommand: string): void;
 }
-
-// https://searchfox.org/firefox-main/source/dom/media/webspeech/recognition/nsISpeechRecognitionService.idl
 
 // https://searchfox.org/firefox-main/source/dom/media/webspeech/synth/nsISpeechService.idl
 
@@ -9459,6 +9473,54 @@ interface nsISVGPaintContext extends nsISupports {
   readonly strokeOpacity: float;
 }
 
+// https://searchfox.org/firefox-main/source/layout/tools/layout-debug/src/nsILayoutDebuggingTools.idl
+
+}  // global
+
+/** <!-- binding_to(idl, class, XPIDL_nsILayoutDebuggingTools_DumpFrameFlags) --> */
+declare enum nsILayoutDebuggingTools_DumpFrameFlags {
+  /** <!-- binding_to(idl, const, XPIDL_nsILayoutDebuggingTools_DumpFrameFlags_DUMP_FRAME_FLAGS_CSS_PIXELS) --> */
+  DUMP_FRAME_FLAGS_CSS_PIXELS = 1,
+  /** <!-- binding_to(idl, const, XPIDL_nsILayoutDebuggingTools_DumpFrameFlags_DUMP_FRAME_FLAGS_DETERMINISTIC) --> */
+  DUMP_FRAME_FLAGS_DETERMINISTIC = 2,
+}
+
+declare global {
+
+namespace nsILayoutDebuggingTools {
+  type DumpFrameFlags = nsILayoutDebuggingTools_DumpFrameFlags;
+}
+
+/** <!-- binding_to(idl, interface_name, XPIDL_nsILayoutDebuggingTools) --> */
+interface nsILayoutDebuggingTools extends nsISupports, Enums<typeof nsILayoutDebuggingTools_DumpFrameFlags> {
+  /** <!-- binding_to(idl, method, XPIDL_nsILayoutDebuggingTools_init) --> */
+  init(win: mozIDOMWindow): void;
+  /** <!-- binding_to(idl, method, XPIDL_nsILayoutDebuggingTools_forceRefresh) --> */
+  forceRefresh(): void;
+  /** <!-- binding_to(idl, method, XPIDL_nsILayoutDebuggingTools_setReflowCounts) --> */
+  setReflowCounts(enabled: boolean): void;
+  /** <!-- binding_to(idl, method, XPIDL_nsILayoutDebuggingTools_setPagedMode) --> */
+  setPagedMode(enabled: boolean): void;
+  /** <!-- binding_to(idl, method, XPIDL_nsILayoutDebuggingTools_dumpContent) --> */
+  dumpContent(anonymousSubtrees: boolean): void;
+  /** <!-- binding_to(idl, method, XPIDL_nsILayoutDebuggingTools_dumpFrames) --> */
+  dumpFrames(flags: u8): void;
+  /** <!-- binding_to(idl, method, XPIDL_nsILayoutDebuggingTools_dumpTextRuns) --> */
+  dumpTextRuns(): void;
+  /** <!-- binding_to(idl, method, XPIDL_nsILayoutDebuggingTools_dumpCounterManager) --> */
+  dumpCounterManager(): void;
+  /** <!-- binding_to(idl, method, XPIDL_nsILayoutDebuggingTools_dumpRetainedDisplayList) --> */
+  dumpRetainedDisplayList(): void;
+  /** <!-- binding_to(idl, method, XPIDL_nsILayoutDebuggingTools_dumpStyleSheets) --> */
+  dumpStyleSheets(): void;
+  /** <!-- binding_to(idl, method, XPIDL_nsILayoutDebuggingTools_dumpMatchedRules) --> */
+  dumpMatchedRules(): void;
+  /** <!-- binding_to(idl, method, XPIDL_nsILayoutDebuggingTools_dumpComputedStyles) --> */
+  dumpComputedStyles(): void;
+  /** <!-- binding_to(idl, method, XPIDL_nsILayoutDebuggingTools_dumpReflowStats) --> */
+  dumpReflowStats(): void;
+}
+
 // https://searchfox.org/firefox-main/source/layout/style/nsIPreloadedStyleSheet.idl
 
 /** <!-- binding_to(idl, interface_name, XPIDL_nsIPreloadedStyleSheet) --> */
@@ -10106,6 +10168,8 @@ interface nsIMLModelHub extends nsISupports {
   isModelInstalled(aEngineId: string, aModel: string, aRevision: string, aFilename: string): Promise<any>;
   /** <!-- binding_to(idl, method, XPIDL_nsIMLModelHub_downloadModel) --> */
   downloadModel(aEngineId: string, aTaskName: string, aModel: string, aRevision: string, aFiles: string[], aProgressToken: string, aProgressCallback: nsIMLModelDownloadProgressCallback, aCompletionCallback: nsIMLModelDownloadCompletionCallback): string;
+  /** <!-- binding_to(idl, method, XPIDL_nsIMLModelHub_cancelDownload) --> */
+  cancelDownload(aProgressToken: string): void;
   /** <!-- binding_to(idl, method, XPIDL_nsIMLModelHub_getModelBlob) --> */
   getModelBlob(aEngineId: string, aTaskName: string, aModel: string, aRevision: string, aFile: string): Promise<any>;
 }
@@ -11518,7 +11582,7 @@ interface nsILoadInfo extends nsISupports, Enums<typeof nsILoadInfo_StoragePermi
   /** <!-- binding_to(idl, method, XPIDL_nsILoadInfo_setTriggeringPrincipalForTesting) --> */
   setTriggeringPrincipalForTesting(aPrincipal: nsIPrincipal): void;
   /** <!-- binding_to(idl, attribute, XPIDL_nsILoadInfo_triggeringRemoteType) --> */
-  triggeringRemoteType: string;
+  readonly triggeringRemoteType: string;
   /** <!-- binding_to(idl, attribute, XPIDL_nsILoadInfo_principalToInherit) --> */
   principalToInherit: nsIPrincipal;
   /** <!-- binding_to(idl, attribute, XPIDL_nsILoadInfo_loadingDocument) --> */
@@ -12050,8 +12114,6 @@ interface nsINullChannel extends nsISupports {
 interface nsIParentChannel extends nsIStreamListener {
   /** <!-- binding_to(idl, method, XPIDL_nsIParentChannel_delete) --> */
   delete(): void;
-  /** <!-- binding_to(idl, attribute, XPIDL_nsIParentChannel_remoteType) --> */
-  readonly remoteType: string;
 }
 
 // https://searchfox.org/firefox-main/source/netwerk/base/nsIParentRedirectingChannel.idl
@@ -17044,7 +17106,7 @@ interface nsIX509CertDB extends nsISupports, Enums<typeof nsIX509CertDB_VerifyUs
   /** <!-- binding_to(idl, method, XPIDL_nsIX509CertDB_addCertFromBase64) --> */
   addCertFromBase64(base64: string, trust: string): nsIX509Cert;
   /** <!-- binding_to(idl, method, XPIDL_nsIX509CertDB_getCerts) --> */
-  getCerts(): nsIX509Cert[];
+  getCerts(): Promise<any>;
   /** <!-- binding_to(idl, method, XPIDL_nsIX509CertDB_asPKCS7Blob) --> */
   asPKCS7Blob(certList: nsIX509Cert[]): string;
   /** <!-- binding_to(idl, method, XPIDL_nsIX509CertDB_getAndroidCertificateFromAlias) --> */
@@ -18124,40 +18186,14 @@ interface mozISandboxSettings extends nsISupports {
   readonly contentWin32kLockdownStateString: string;
 }
 
-// https://searchfox.org/firefox-main/source/security/sandbox/linux/interfaces/mozISandboxReporter.idl
+// https://searchfox.org/firefox-main/source/security/sandbox/common/test/mozISandboxTest.idl
 
-/** <!-- binding_to(idl, interface_name, XPIDL_mozISandboxReport) --> */
-interface mozISandboxReport extends nsISupports {
-  /** <!-- binding_to(idl, attribute, XPIDL_mozISandboxReport_msecAgo) --> */
-  readonly msecAgo: u64;
-  /** <!-- binding_to(idl, attribute, XPIDL_mozISandboxReport_pid) --> */
-  readonly pid: i32;
-  /** <!-- binding_to(idl, attribute, XPIDL_mozISandboxReport_tid) --> */
-  readonly tid: i32;
-  /** <!-- binding_to(idl, attribute, XPIDL_mozISandboxReport_procType) --> */
-  readonly procType: string;
-  /** <!-- binding_to(idl, attribute, XPIDL_mozISandboxReport_syscall) --> */
-  readonly syscall: u32;
-  /** <!-- binding_to(idl, attribute, XPIDL_mozISandboxReport_numArgs) --> */
-  readonly numArgs: u32;
-  /** <!-- binding_to(idl, method, XPIDL_mozISandboxReport_getArg) --> */
-  getArg(aIndex: u32): string;
-}
-
-/** <!-- binding_to(idl, interface_name, XPIDL_mozISandboxReportArray) --> */
-interface mozISandboxReportArray extends nsISupports {
-  /** <!-- binding_to(idl, attribute, XPIDL_mozISandboxReportArray_begin) --> */
-  readonly begin: u64;
-  /** <!-- binding_to(idl, attribute, XPIDL_mozISandboxReportArray_end) --> */
-  readonly end: u64;
-  /** <!-- binding_to(idl, method, XPIDL_mozISandboxReportArray_getElement) --> */
-  getElement(aIndex: u64): mozISandboxReport;
-}
-
-/** <!-- binding_to(idl, interface_name, XPIDL_mozISandboxReporter) --> */
-interface mozISandboxReporter extends nsISupports {
-  /** <!-- binding_to(idl, method, XPIDL_mozISandboxReporter_snapshot) --> */
-  snapshot(): mozISandboxReportArray;
+/** <!-- binding_to(idl, interface_name, XPIDL_mozISandboxTest) --> */
+interface mozISandboxTest extends nsISupports {
+  /** <!-- binding_to(idl, method, XPIDL_mozISandboxTest_startTests) --> */
+  startTests(aProcessesList: string[]): void;
+  /** <!-- binding_to(idl, method, XPIDL_mozISandboxTest_finishTests) --> */
+  finishTests(): void;
 }
 
 // https://searchfox.org/firefox-main/source/toolkit/components/satchel/nsIFormFillController.idl
@@ -19275,6 +19311,8 @@ interface nsIBounceTrackingProtection extends nsISupports, Enums<typeof nsIBounc
   removeSiteHostExceptions(aSiteHosts: string[]): void;
   /** <!-- binding_to(idl, method, XPIDL_nsIBounceTrackingProtection_hasRecentlyPurgedSite) --> */
   hasRecentlyPurgedSite(aSiteHost: string): boolean;
+  /** <!-- binding_to(idl, method, XPIDL_nsIBounceTrackingProtection_getRecentPurgedChainEntriesForSite) --> */
+  getRecentPurgedChainEntriesForSite(aSiteHost: string): nsIBounceTrackingPurgeEntry[];
   /** <!-- binding_to(idl, method, XPIDL_nsIBounceTrackingProtection_testGetSiteHostExceptions) --> */
   testGetSiteHostExceptions(): string[];
   /** <!-- binding_to(idl, method, XPIDL_nsIBounceTrackingProtection_testRunPurgeBounceTrackers) --> */
@@ -22116,22 +22154,6 @@ interface nsINativeMessagingPortal extends nsISupports {
   start(aHandle: string, aName: string, aExtension: string): Promise<any>;
 }
 
-// https://searchfox.org/firefox-main/source/toolkit/components/extensions/nsINativeMessagingProxy.idl
-
-/** <!-- binding_to(idl, interface_name, XPIDL_nsINativeMessagingProxy) --> */
-interface nsINativeMessagingProxy extends nsISupports {
-  /** <!-- binding_to(idl, method, XPIDL_nsINativeMessagingProxy_shouldUse) --> */
-  shouldUse(): boolean;
-  /** <!-- binding_to(idl, attribute, XPIDL_nsINativeMessagingProxy_available) --> */
-  readonly available: Promise<any>;
-  /** <!-- binding_to(idl, method, XPIDL_nsINativeMessagingProxy_closeSession) --> */
-  closeSession(aHandle: string): Promise<any>;
-  /** <!-- binding_to(idl, method, XPIDL_nsINativeMessagingProxy_getManifest) --> */
-  getManifest(aName: string, aExtension: string): Promise<any>;
-  /** <!-- binding_to(idl, method, XPIDL_nsINativeMessagingProxy_start) --> */
-  start(aName: string, aExtension: string): Promise<any>;
-}
-
 // https://searchfox.org/firefox-main/source/dom/media/webvtt/nsIWebVTTListener.idl
 
 /** <!-- binding_to(idl, interface_name, XPIDL_nsIWebVTTListener) --> */
@@ -22743,6 +22765,14 @@ interface nsIGfxInfoDebug extends nsISupports {
   spoofDeviceID(aDeviceID: string): void;
   /** <!-- binding_to(idl, method, XPIDL_nsIGfxInfoDebug_spoofDriverVersion) --> */
   spoofDriverVersion(aDriverVersion: string): void;
+  /** <!-- binding_to(idl, method, XPIDL_nsIGfxInfoDebug_spoofVendorID2) --> */
+  spoofVendorID2(aVendorID: string): void;
+  /** <!-- binding_to(idl, method, XPIDL_nsIGfxInfoDebug_spoofDeviceID2) --> */
+  spoofDeviceID2(aDeviceID: string): void;
+  /** <!-- binding_to(idl, method, XPIDL_nsIGfxInfoDebug_spoofDriverVendor2) --> */
+  spoofDriverVendor2(aDriverVendor: string): void;
+  /** <!-- binding_to(idl, method, XPIDL_nsIGfxInfoDebug_spoofDriverVersion2) --> */
+  spoofDriverVersion2(aDriverVersion: string): void;
   /** <!-- binding_to(idl, method, XPIDL_nsIGfxInfoDebug_spoofOSVersion) --> */
   spoofOSVersion(aVersion: u32): void;
   /** <!-- binding_to(idl, method, XPIDL_nsIGfxInfoDebug_spoofOSVersionEx) --> */
@@ -23496,14 +23526,6 @@ interface nsIAvailableMemoryWatcherBase extends nsISupports {
   registerTabUnloader(aTabUnloader: nsITabUnloader): void;
   /** <!-- binding_to(idl, method, XPIDL_nsIAvailableMemoryWatcherBase_onUnloadAttemptCompleted) --> */
   onUnloadAttemptCompleted(aResult: nsresult): void;
-}
-
-// https://searchfox.org/firefox-main/source/xpcom/base/nsIAvailableMemoryWatcherTestingLinux.idl
-
-/** <!-- binding_to(idl, interface_name, XPIDL_nsIAvailableMemoryWatcherTestingLinux) --> */
-interface nsIAvailableMemoryWatcherTestingLinux extends nsISupports {
-  /** <!-- binding_to(idl, method, XPIDL_nsIAvailableMemoryWatcherTestingLinux_setPSIPathForTesting) --> */
-  setPSIPathForTesting(aPSIPath: string): void;
 }
 
 // https://searchfox.org/firefox-main/source/xpcom/base/nsIConsoleListener.idl
@@ -26414,6 +26436,32 @@ interface nsIControllers extends nsISupports {
   getControllerCount(): u32;
 }
 
+// https://searchfox.org/firefox-main/source/toolkit/xre/nsIASWebAuthSessionRequest.idl
+
+/** <!-- binding_to(idl, interface_name, XPIDL_nsIASWebAuthSessionRequest) --> */
+interface nsIASWebAuthSessionRequest extends nsISupports {
+  /** <!-- binding_to(idl, attribute, XPIDL_nsIASWebAuthSessionRequest_uuid) --> */
+  readonly uuid: string;
+  /** <!-- binding_to(idl, attribute, XPIDL_nsIASWebAuthSessionRequest_url) --> */
+  readonly url: string;
+  /** <!-- binding_to(idl, attribute, XPIDL_nsIASWebAuthSessionRequest_callbackScheme) --> */
+  readonly callbackScheme: string;
+  /** <!-- binding_to(idl, attribute, XPIDL_nsIASWebAuthSessionRequest_hasCallback) --> */
+  readonly hasCallback: boolean;
+  /** <!-- binding_to(idl, attribute, XPIDL_nsIASWebAuthSessionRequest_useEphemeralSession) --> */
+  readonly useEphemeralSession: boolean;
+  /** <!-- binding_to(idl, attribute, XPIDL_nsIASWebAuthSessionRequest_additionalHeaderNames) --> */
+  readonly additionalHeaderNames: string[];
+  /** <!-- binding_to(idl, method, XPIDL_nsIASWebAuthSessionRequest_getAdditionalHeader) --> */
+  getAdditionalHeader(name: string): string;
+  /** <!-- binding_to(idl, method, XPIDL_nsIASWebAuthSessionRequest_matchesCallbackURL) --> */
+  matchesCallbackURL(url: string): boolean;
+  /** <!-- binding_to(idl, method, XPIDL_nsIASWebAuthSessionRequest_complete) --> */
+  complete(callbackURL: string): void;
+  /** <!-- binding_to(idl, method, XPIDL_nsIASWebAuthSessionRequest_cancel) --> */
+  cancel(): void;
+}
+
 // https://searchfox.org/firefox-main/source/toolkit/xre/nsINativeAppSupport.idl
 
 /** <!-- binding_to(idl, interface_name, XPIDL_nsINativeAppSupport) --> */
@@ -26655,6 +26703,7 @@ interface nsIXPCComponents_Interfaces {
   nsITextInputProcessorListener: nsJSIID<nsITextInputProcessorListener>;
   nsIScriptErrorNote: nsJSIID<nsIScriptErrorNote>;
   nsIScriptError: nsJSIID<nsIScriptError>;
+  mozITestInterfaceJS: nsJSIID<mozITestInterfaceJS>;
   nsIGeolocationUIUtils: nsJSIID<nsIGeolocationUIUtils>;
   nsIDOMGeoPosition: nsJSIID<nsIDOMGeoPosition>;
   nsIDOMGeoPositionCallback: nsJSIID<nsIDOMGeoPositionCallback>;
@@ -26857,6 +26906,7 @@ interface nsIXPCComponents_Interfaces {
   nsIKeyValueVoidCallback: nsJSIID<nsIKeyValueVoidCallback>;
   nsILayoutHistoryState: nsJSIID<nsILayoutHistoryState>;
   nsISVGPaintContext: nsJSIID<nsISVGPaintContext>;
+  nsILayoutDebuggingTools: nsJSIID<nsILayoutDebuggingTools, typeof nsILayoutDebuggingTools_DumpFrameFlags>;
   nsIPreloadedStyleSheet: nsJSIID<nsIPreloadedStyleSheet>;
   nsIStyleSheetService: nsJSIID<nsIStyleSheetService>;
   nsITreeSelection: nsJSIID<nsITreeSelection>;
@@ -27245,9 +27295,7 @@ interface nsIXPCComponents_Interfaces {
   nsIApplicationReputationQuery: nsJSIID<nsIApplicationReputationQuery>;
   nsIApplicationReputationCallback: nsJSIID<nsIApplicationReputationCallback>;
   mozISandboxSettings: nsJSIID<mozISandboxSettings>;
-  mozISandboxReport: nsJSIID<mozISandboxReport>;
-  mozISandboxReportArray: nsJSIID<mozISandboxReportArray>;
-  mozISandboxReporter: nsJSIID<mozISandboxReporter>;
+  mozISandboxTest: nsJSIID<mozISandboxTest>;
   nsIFormFillFocusListener: nsJSIID<nsIFormFillFocusListener>;
   nsIFormFillController: nsJSIID<nsIFormFillController>;
   nsIFormFillCompleteObserver: nsJSIID<nsIFormFillCompleteObserver>;
@@ -27430,7 +27478,6 @@ interface nsIXPCComponents_Interfaces {
   mozIExtensionAPIRequestHandler: nsJSIID<mozIExtensionAPIRequestHandler>;
   mozIExtensionProcessScript: nsJSIID<mozIExtensionProcessScript>;
   nsINativeMessagingPortal: nsJSIID<nsINativeMessagingPortal>;
-  nsINativeMessagingProxy: nsJSIID<nsINativeMessagingProxy>;
   nsIWebVTTListener: nsJSIID<nsIWebVTTListener>;
   nsIWebVTTParserWrapper: nsJSIID<nsIWebVTTParserWrapper>;
   nsIBaseWindow: nsJSIID<nsIBaseWindow>;
@@ -27480,7 +27527,6 @@ interface nsIXPCComponents_Interfaces {
   nsIWindowWatcher: nsJSIID<nsIWindowWatcher>;
   nsITabUnloader: nsJSIID<nsITabUnloader>;
   nsIAvailableMemoryWatcherBase: nsJSIID<nsIAvailableMemoryWatcherBase>;
-  nsIAvailableMemoryWatcherTestingLinux: nsJSIID<nsIAvailableMemoryWatcherTestingLinux>;
   nsIConsoleListener: nsJSIID<nsIConsoleListener>;
   nsIConsoleMessage: nsJSIID<nsIConsoleMessage>;
   nsIConsoleService: nsJSIID<nsIConsoleService, typeof nsIConsoleService_OutputMode>;
@@ -27655,6 +27701,7 @@ interface nsIXPCComponents_Interfaces {
   nsIController: nsJSIID<nsIController>;
   nsICommandController: nsJSIID<nsICommandController>;
   nsIControllers: nsJSIID<nsIControllers>;
+  nsIASWebAuthSessionRequest: nsJSIID<nsIASWebAuthSessionRequest>;
   nsINativeAppSupport: nsJSIID<nsINativeAppSupport>;
   nsIXREDirProvider: nsJSIID<nsIXREDirProvider>;
   nsIZipWriter: nsJSIID<nsIZipWriter>;
