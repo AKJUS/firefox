@@ -3532,6 +3532,9 @@ pref("first-startup.category-tasks-enabled", true);
   // Timeouts used to receive push messages with --receive-push-messages
   pref("app.backgroundNotifications.receivePushMessages.perMessageTimeoutMs", 5000);
   pref("app.backgroundNotifications.receivePushMessages.totalTimeoutMs", 60000);
+
+  // Whether the push notification helper process should run.
+  pref("app.backgroundNotifications.helper.enabled", false);
 #endif
 
 // Shows 'View Image Info' item in the image context menu

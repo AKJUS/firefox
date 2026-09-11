@@ -216,6 +216,7 @@ category browser-idle-startup resource:///modules/UpdatePolicyEnforcer.sys.mjs U
 #endif
 #ifdef XP_WIN
 category browser-idle-startup resource:///modules/WindowsJumpLists.sys.mjs WinTaskbarJumpList.startup
+category browser-idle-startup resource://gre/modules/PushNotificationHelper.sys.mjs PushNotificationHelper.init
 #endif
 #ifdef MOZ_DEFAULT_BROWSER_AGENT
 category browser-idle-startup resource://gre/modules/DefaultAgentScheduler.sys.mjs DefaultAgentScheduler.maybeScheduleDefaultAgentTask
