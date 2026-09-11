@@ -6058,43 +6058,44 @@ void ScrollContainerFrame::EnableOverlayScrollbars() {
 
 // TODO: Convert this to MOZ_CAN_RUN_SCRIPT (bug 1415230, bug 1535398)
 MOZ_CAN_RUN_SCRIPT_BOUNDARY NS_IMETHODIMP ScrollEvent::Run() {
-  RefPtr<nsPresContext> presContext = mTarget->OwnerDoc()->GetPresContext();
+  RefPtr<nsPresContext> pc = mTarget->OwnerDoc()->GetPresContext();
   AutoProfilerTracing scrollEventMarker(
       "ScrollEvent::Run", geckoprofiler::category::GRAPHICS,
       std::move(mBacktrace),
       geckoprofiler::markers::detail::
-          profiler_get_inner_window_id_from_docshell(
-              presContext ? presContext->GetDocShell() : nullptr));
+          profiler_get_inner_window_id_from_docshell(pc ? pc->GetDocShell()
+                                                        : nullptr));
 
-  WidgetGUIEvent event(true, eScroll, nullptr);
+  Maybe<layers::ScrollLinkedEffectDetector> detector;
+  if (pc) {
+    // TODO: Do we want this for scrollend?
+    detector.emplace(pc->Document(), pc->RefreshDriver()->MostRecentRefresh());
+  }
+
   nsEventStatus status = nsEventStatus_eIgnore;
-  // Fire viewport scroll events at the document (where they
-  // will bubble to the window)
-  mozilla::layers::ScrollLinkedEffectDetector detector(
-      mTarget->GetComposedDoc(),
-      presContext->RefreshDriver()->MostRecentRefresh());
+  WidgetGUIEvent event(true, eScroll, nullptr);
   // scroll events fired at elements don't bubble (although scroll events
   // fired at documents do, to the window)
   event.mFlags.mBubbles = !mTarget->IsElement();
-  EventDispatcher::Dispatch(MOZ_KnownLive(mTarget), presContext, &event,
-                            nullptr, &status);
+  EventDispatcher::Dispatch(MOZ_KnownLive(mTarget), pc, &event, nullptr,
+                            &status);
   return NS_OK;
 }
 
 MOZ_CAN_RUN_SCRIPT_BOUNDARY NS_IMETHODIMP ScrollEndEvent::Run() {
-  RefPtr<nsPresContext> presContext = mTarget->OwnerDoc()->GetPresContext();
+  RefPtr<nsPresContext> pc = mTarget->OwnerDoc()->GetPresContext();
   AutoProfilerTracing scrollEventMarker(
       "ScrollEndEvent::Run", geckoprofiler::category::GRAPHICS,
       std::move(mBacktrace),
       geckoprofiler::markers::detail::
-          profiler_get_inner_window_id_from_docshell(
-              presContext ? presContext->GetDocShell() : nullptr));
+          profiler_get_inner_window_id_from_docshell(pc ? pc->GetDocShell()
+                                                        : nullptr));
   nsEventStatus status = nsEventStatus_eIgnore;
   WidgetGUIEvent event(true, eScrollend, nullptr);
   event.mFlags.mBubbles = !mTarget->IsElement();
   event.mFlags.mCancelable = false;
-  EventDispatcher::Dispatch(MOZ_KnownLive(mTarget), presContext, &event,
-                            nullptr, &status);
+  EventDispatcher::Dispatch(MOZ_KnownLive(mTarget), pc, &event, nullptr,
+                            &status);
   return NS_OK;
 }
 
