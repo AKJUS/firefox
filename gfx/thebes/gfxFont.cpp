@@ -3002,8 +3002,9 @@ bool gfxFont::MeasureGlyphs(const gfxTextRun* aTextRun, uint32_t aStart,
             aExtents->GetContainedGlyphWidthAppUnitsLocked(glyphIndex);
         if (extentsWidth != gfxGlyphExtents::INVALID_WIDTH &&
             aBoundingBoxType == LOOSE_INK_EXTENTS) {
-          UnionRange(x, aAdvanceMin, aAdvanceMax);
-          UnionRange(x + extentsWidth, aAdvanceMin, aAdvanceMax);
+          double glyphStart = aIsRTL ? x + advance - extentsWidth : x;
+          UnionRange(glyphStart, aAdvanceMin, aAdvanceMax);
+          UnionRange(glyphStart + extentsWidth, aAdvanceMin, aAdvanceMax);
         } else {
           gfxRect glyphRect;
           if (!aExtents->GetTightGlyphExtentsAppUnitsLocked(
