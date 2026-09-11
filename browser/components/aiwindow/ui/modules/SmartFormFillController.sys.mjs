@@ -5,10 +5,14 @@
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  AutofillDataTypes: "resource://gre/modules/shared/AutofillDataTypes.sys.mjs",
   clearTimeout: "resource://gre/modules/Timer.sys.mjs",
   MAX_SELECTED_TABS:
     "chrome://browser/content/aiwindow/modules/SmartFormFillConstants.mjs",
   getTabList: "moz-src:///browser/components/aiwindow/models/Tools.sys.mjs",
+  FormAutofill: "resource://autofill/FormAutofill.sys.mjs",
+  formAutofillStorage: "resource://autofill/FormAutofillStorage.sys.mjs",
+  FormAutofillUtils: "resource://gre/modules/shared/FormAutofillUtils.sys.mjs",
   FormHistory: "resource://gre/modules/FormHistory.sys.mjs",
   MemoriesManager:
     "moz-src:///browser/components/aiwindow/models/memories/MemoriesManager.sys.mjs",
@@ -613,18 +617,26 @@ export class SmartFormFillController {
     const valuesByToken = new Map();
     const tokensByFieldId = new Map();
     const typeCounts = new Map();
+    // Read once, and only for a form that has a field to spend it on.
+    let savedAddresses;
 
     for (const field of fields) {
-      if (!field.localGuess) {
+      const type = field.localGuess;
+      if (!type) {
         continue;
       }
 
-      const value = await this.#getStoredValue(field);
+      let value;
+      if (lazy.FormAutofillUtils.isAddressField(type)) {
+        savedAddresses ??= await this.#getSavedAddresses();
+        value = savedAddresses.find(address => address[type])?.[type];
+      }
+      value ??= await this.#getFormHistoryValue(field);
+
       if (!value) {
         continue;
       }
 
-      const type = field.localGuess;
       const count = (typeCounts.get(type) ?? 0) + 1;
       typeCounts.set(type, count);
 
@@ -639,12 +651,40 @@ export class SmartFormFillController {
   }
 
   /**
+   * Gets the saved addresses autofill would offer, most recently used first.
+   * The local guess a field carries is the canonical autofill field name, so
+   * it is also the key these records hold their values under.
+   * Only addresses: a saved card's `cc-number` comes back masked and the real
+   * one needs an OSKeyStore decrypt, which prompts the user to reauthenticate.
+   *
+   * @returns {Promise<Array<object>>}
+   */
+  async #getSavedAddresses() {
+    if (
+      !lazy.FormAutofill.isAutofillTypeEnabled(lazy.AutofillDataTypes.ADDRESS)
+    ) {
+      return [];
+    }
+
+    try {
+      await lazy.formAutofillStorage.initialize();
+      const addresses = await lazy.formAutofillStorage.addresses.getAll();
+
+      return addresses.sort(
+        (a, b) => (b.timeLastUsed ?? 0) - (a.timeLastUsed ?? 0)
+      );
+    } catch {
+      return [];
+    }
+  }
+
+  /**
    * Gets the latest Form History value for a field.
    *
    * @param {FieldData} field
    * @returns {Promise<string | null>}
    */
-  async #getStoredValue(field) {
+  async #getFormHistoryValue(field) {
     if (!field.formHistoryName) {
       return null;
     }

@@ -278,6 +278,8 @@ skip-if = [
 
 ["browser_smartformfill_shadow_dom.js"]
 
+["browser_smartformfill_stored_values.js"]
+
 ["browser_smartformfill_tab_selector.js"]
 
 ["browser_smartwindow_abort_on_tab_close.js"]
