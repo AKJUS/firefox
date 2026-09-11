@@ -224,6 +224,8 @@ support-files = [
 
 ["browser_pdfjs_update_preferences.js"]
 
+["browser_pdfjs_view_certificate_window.js"]
+
 ["browser_pdfjs_views.js"]
 
 ["browser_pdfjs_zoom.js"]

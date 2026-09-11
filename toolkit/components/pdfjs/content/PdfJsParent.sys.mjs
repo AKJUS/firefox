@@ -225,7 +225,7 @@ export class PdfJsParent extends JSWindowActorParent {
       const params = certs.map(d => `cert=${encodeURIComponent(d)}`).join("&");
       const url = `about:certificate?${params}`;
       const browser = this.browser;
-      let win = browser?.ownerGlobal;
+      let win = browser?.documentGlobal;
       if (!win?.openTrustedLinkIn) {
         win = Services.wm.getMostRecentBrowserWindow();
       }
