@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import React from "react";
-import { mount } from "enzyme";
+import { render } from "@testing-library/react";
 import { actionTypes as at } from "common/Actions.mjs";
 import { useWidgetTelemetry } from "content-src/components/Widgets/useWidgetTelemetry";
 
@@ -34,30 +33,28 @@ function TestComponent({
 }
 
 describe("useWidgetTelemetry", () => {
-  let sandbox;
   let dispatch;
   let observerStub;
 
   beforeEach(() => {
-    sandbox = sinon.createSandbox();
-    dispatch = sandbox.spy();
-    observerStub = sandbox
-      .stub(window, "IntersectionObserver")
-      .callsFake(function (cb) {
-        this.observe = sandbox.spy();
-        this.unobserve = sandbox.spy();
-        this.disconnect = sandbox.spy();
+    dispatch = jest.fn();
+    observerStub = jest
+      .spyOn(window, "IntersectionObserver")
+      .mockImplementation(function (cb) {
+        this.observe = jest.fn();
+        this.unobserve = jest.fn();
+        this.disconnect = jest.fn();
         this.callback = cb;
       });
   });
 
   afterEach(() => {
-    sandbox.restore();
+    jest.restoreAllMocks();
   });
 
   describe("impression observer", () => {
     it("dispatches WIDGETS_IMPRESSION once when element intersects", () => {
-      const wrapper = mount(
+      const { container } = render(
         <TestComponent
           dispatch={dispatch}
           widget={WEATHER_WIDGET}
@@ -65,22 +62,22 @@ describe("useWidgetTelemetry", () => {
           onRender={() => {}}
         />
       );
-      const observerInstance = observerStub.getCall(0).returnValue;
-      const el = wrapper.find("div").getDOMNode();
+      const [observerInstance] = observerStub.mock.instances;
+      const el = container.querySelector("div");
 
       observerInstance.callback([{ isIntersecting: true, target: el }]);
 
-      assert.calledOnce(dispatch);
-      const [action] = dispatch.getCall(0).args;
-      assert.equal(action.type, at.WIDGETS_IMPRESSION);
-      assert.deepEqual(action.data, {
+      expect(dispatch).toHaveBeenCalledTimes(1);
+      const [[action]] = dispatch.mock.calls;
+      expect(action.type).toBe(at.WIDGETS_IMPRESSION);
+      expect(action.data).toEqual({
         widget_name: "weather",
         widget_size: "medium",
       });
     });
 
     it("does not dispatch a second impression after the first", () => {
-      const wrapper = mount(
+      const { container } = render(
         <TestComponent
           dispatch={dispatch}
           widget={WEATHER_WIDGET}
@@ -88,17 +85,17 @@ describe("useWidgetTelemetry", () => {
           onRender={() => {}}
         />
       );
-      const observerInstance = observerStub.getCall(0).returnValue;
-      const el = wrapper.find("div").getDOMNode();
+      const [observerInstance] = observerStub.mock.instances;
+      const el = container.querySelector("div");
 
       observerInstance.callback([{ isIntersecting: true, target: el }]);
       observerInstance.callback([{ isIntersecting: true, target: el }]);
 
-      assert.calledOnce(dispatch);
+      expect(dispatch).toHaveBeenCalledTimes(1);
     });
 
     it("observes an element that mounts after the initial render", () => {
-      const wrapper = mount(
+      const { container, rerender } = render(
         <TestComponent
           dispatch={dispatch}
           widget={WEATHER_WIDGET}
@@ -107,22 +104,30 @@ describe("useWidgetTelemetry", () => {
           onRender={() => {}}
         />
       );
-      const observerInstance = observerStub.getCall(0).returnValue;
+      const [observerInstance] = observerStub.mock.instances;
       // Initial render: no element, observer didn't observe anything yet.
-      assert.notCalled(observerInstance.observe);
+      expect(observerInstance.observe).not.toHaveBeenCalled();
 
       // Later render reveals the element; the callback ref should observe it.
-      wrapper.setProps({ showEl: true });
-      assert.calledOnce(observerInstance.observe);
+      rerender(
+        <TestComponent
+          dispatch={dispatch}
+          widget={WEATHER_WIDGET}
+          widgetSize="medium"
+          showEl={true}
+          onRender={() => {}}
+        />
+      );
+      expect(observerInstance.observe).toHaveBeenCalledTimes(1);
 
-      const el = wrapper.find("div").getDOMNode();
+      const el = container.querySelector("div");
       observerInstance.callback([{ isIntersecting: true, target: el }]);
-      assert.calledOnce(dispatch);
-      assert.equal(dispatch.getCall(0).args[0].type, at.WIDGETS_IMPRESSION);
+      expect(dispatch).toHaveBeenCalledTimes(1);
+      expect(dispatch.mock.calls[0][0].type).toBe(at.WIDGETS_IMPRESSION);
     });
 
     it("ignores a queued intersection entry for a previously-unobserved target", () => {
-      const wrapper = mount(
+      const { container, rerender } = render(
         <TestComponent
           dispatch={dispatch}
           widget={WEATHER_WIDGET}
@@ -130,22 +135,38 @@ describe("useWidgetTelemetry", () => {
           onRender={() => {}}
         />
       );
-      const observerInstance = observerStub.getCall(0).returnValue;
-      const firstEl = wrapper.find("div").getDOMNode();
+      const [observerInstance] = observerStub.mock.instances;
+      const firstEl = container.querySelector("div");
 
       // Reassign the ref to a different node; firstEl is no longer the
       // observed target.
-      wrapper.setProps({ showEl: false });
-      wrapper.setProps({ showEl: true });
+      rerender(
+        <TestComponent
+          dispatch={dispatch}
+          widget={WEATHER_WIDGET}
+          widgetSize="medium"
+          showEl={false}
+          onRender={() => {}}
+        />
+      );
+      rerender(
+        <TestComponent
+          dispatch={dispatch}
+          widget={WEATHER_WIDGET}
+          widgetSize="medium"
+          showEl={true}
+          onRender={() => {}}
+        />
+      );
 
       // A queued callback for the old target fires; hook must not dispatch.
       observerInstance.callback([{ isIntersecting: true, target: firstEl }]);
 
-      assert.notCalled(dispatch);
+      expect(dispatch).not.toHaveBeenCalled();
     });
 
     it("unobserves the previous element when the ref is reassigned", () => {
-      const wrapper = mount(
+      const { container, rerender } = render(
         <TestComponent
           dispatch={dispatch}
           widget={WEATHER_WIDGET}
@@ -153,27 +174,43 @@ describe("useWidgetTelemetry", () => {
           onRender={() => {}}
         />
       );
-      const observerInstance = observerStub.getCall(0).returnValue;
-      const firstEl = wrapper.find("div").getDOMNode();
-      assert.calledOnce(observerInstance.observe);
-      assert.calledWith(observerInstance.observe, firstEl);
+      const [observerInstance] = observerStub.mock.instances;
+      const firstEl = container.querySelector("div");
+      expect(observerInstance.observe).toHaveBeenCalledTimes(1);
+      expect(observerInstance.observe).toHaveBeenCalledWith(firstEl);
 
       // Force the element to remount with a different node.
-      wrapper.setProps({ showEl: false });
-      assert.calledOnce(observerInstance.unobserve);
-      assert.calledWith(observerInstance.unobserve, firstEl);
+      rerender(
+        <TestComponent
+          dispatch={dispatch}
+          widget={WEATHER_WIDGET}
+          widgetSize="medium"
+          showEl={false}
+          onRender={() => {}}
+        />
+      );
+      expect(observerInstance.unobserve).toHaveBeenCalledTimes(1);
+      expect(observerInstance.unobserve).toHaveBeenCalledWith(firstEl);
 
-      wrapper.setProps({ showEl: true });
-      const secondEl = wrapper.find("div").getDOMNode();
-      assert.calledTwice(observerInstance.observe);
-      assert.equal(observerInstance.observe.lastCall.args[0], secondEl);
+      rerender(
+        <TestComponent
+          dispatch={dispatch}
+          widget={WEATHER_WIDGET}
+          widgetSize="medium"
+          showEl={true}
+          onRender={() => {}}
+        />
+      );
+      const secondEl = container.querySelector("div");
+      expect(observerInstance.observe).toHaveBeenCalledTimes(2);
+      expect(observerInstance.observe.mock.lastCall[0]).toBe(secondEl);
     });
   });
 
   describe("onImpression", () => {
     it("invokes onImpression once when the impression fires", () => {
-      const onImpression = sandbox.spy();
-      const wrapper = mount(
+      const onImpression = jest.fn();
+      const { container } = render(
         <TestComponent
           dispatch={dispatch}
           widget={WEATHER_WIDGET}
@@ -182,19 +219,19 @@ describe("useWidgetTelemetry", () => {
           onRender={() => {}}
         />
       );
-      const observerInstance = observerStub.getCall(0).returnValue;
-      const el = wrapper.find("div").getDOMNode();
+      const [observerInstance] = observerStub.mock.instances;
+      const el = container.querySelector("div");
 
       observerInstance.callback([{ isIntersecting: true, target: el }]);
       observerInstance.callback([{ isIntersecting: true, target: el }]);
 
-      assert.calledOnce(onImpression);
+      expect(onImpression).toHaveBeenCalledTimes(1);
     });
 
     it("also fires onImpression for a manual recordImpression", () => {
       let telemetry;
-      const onImpression = sandbox.spy();
-      mount(
+      const onImpression = jest.fn();
+      render(
         <TestComponent
           dispatch={dispatch}
           widget={WEATHER_WIDGET}
@@ -207,14 +244,14 @@ describe("useWidgetTelemetry", () => {
 
       telemetry.recordImpression();
 
-      assert.calledOnce(onImpression);
+      expect(onImpression).toHaveBeenCalledTimes(1);
     });
   });
 
   describe("recordImpression", () => {
     it("dispatches WIDGETS_IMPRESSION manually with the current size", () => {
       let telemetry;
-      mount(
+      render(
         <TestComponent
           dispatch={dispatch}
           widget={WEATHER_WIDGET}
@@ -226,10 +263,10 @@ describe("useWidgetTelemetry", () => {
 
       telemetry.recordImpression();
 
-      assert.calledOnce(dispatch);
-      const [action] = dispatch.getCall(0).args;
-      assert.equal(action.type, at.WIDGETS_IMPRESSION);
-      assert.deepEqual(action.data, {
+      expect(dispatch).toHaveBeenCalledTimes(1);
+      const [[action]] = dispatch.mock.calls;
+      expect(action.type).toBe(at.WIDGETS_IMPRESSION);
+      expect(action.data).toEqual({
         widget_name: "weather",
         widget_size: "medium",
       });
@@ -237,7 +274,7 @@ describe("useWidgetTelemetry", () => {
 
     it("shares the impressionFired guard with the observer", () => {
       let telemetry;
-      const wrapper = mount(
+      const { container } = render(
         <TestComponent
           dispatch={dispatch}
           widget={WEATHER_WIDGET}
@@ -245,18 +282,18 @@ describe("useWidgetTelemetry", () => {
           onRender={t => (telemetry = t)}
         />
       );
-      const observerInstance = observerStub.getCall(0).returnValue;
-      const el = wrapper.find("div").getDOMNode();
+      const [observerInstance] = observerStub.mock.instances;
+      const el = container.querySelector("div");
 
       observerInstance.callback([{ isIntersecting: true, target: el }]);
       telemetry.recordImpression();
 
-      assert.calledOnce(dispatch);
+      expect(dispatch).toHaveBeenCalledTimes(1);
     });
 
     it("honors per-call size override", () => {
       let telemetry;
-      mount(
+      render(
         <TestComponent
           dispatch={dispatch}
           widget={WEATHER_WIDGET}
@@ -268,14 +305,14 @@ describe("useWidgetTelemetry", () => {
 
       telemetry.recordImpression({ size: "large" });
 
-      assert.equal(dispatch.getCall(0).args[0].data.widget_size, "large");
+      expect(dispatch.mock.calls[0][0].data.widget_size).toBe("large");
     });
   });
 
   describe("recordUserAction", () => {
     it("dispatches WIDGETS_USER_EVENT via OnlyToMain by default", () => {
       let telemetry;
-      mount(
+      render(
         <TestComponent
           dispatch={dispatch}
           widget={WEATHER_WIDGET}
@@ -286,12 +323,12 @@ describe("useWidgetTelemetry", () => {
 
       telemetry.recordUserAction("learn_more", { source: "context_menu" });
 
-      assert.calledOnce(dispatch);
-      const [action] = dispatch.getCall(0).args;
-      assert.equal(action.type, at.WIDGETS_USER_EVENT);
-      assert.equal(action.meta.to, "ActivityStream:Main");
-      assert.equal(action.meta.skipLocal, true);
-      assert.deepEqual(action.data, {
+      expect(dispatch).toHaveBeenCalledTimes(1);
+      const [[action]] = dispatch.mock.calls;
+      expect(action.type).toBe(at.WIDGETS_USER_EVENT);
+      expect(action.meta.to).toBe("ActivityStream:Main");
+      expect(action.meta.skipLocal).toBe(true);
+      expect(action.data).toEqual({
         widget_name: "weather",
         widget_size: "small",
         widget_source: "context_menu",
@@ -301,7 +338,7 @@ describe("useWidgetTelemetry", () => {
 
     it("dispatches via AlsoToMain when alsoToMain: true", () => {
       let telemetry;
-      mount(
+      render(
         <TestComponent
           dispatch={dispatch}
           widget={LISTS_WIDGET}
@@ -315,15 +352,15 @@ describe("useWidgetTelemetry", () => {
         alsoToMain: true,
       });
 
-      const [action] = dispatch.getCall(0).args;
-      assert.equal(action.type, at.WIDGETS_USER_EVENT);
-      assert.equal(action.meta.to, "ActivityStream:Main");
-      assert.notEqual(action.meta.skipLocal, true);
+      const [[action]] = dispatch.mock.calls;
+      expect(action.type).toBe(at.WIDGETS_USER_EVENT);
+      expect(action.meta.to).toBe("ActivityStream:Main");
+      expect(action.meta.skipLocal).not.toBe(true);
     });
 
     it("includes action_value when value is provided", () => {
       let telemetry;
-      mount(
+      render(
         <TestComponent
           dispatch={dispatch}
           widget={WEATHER_WIDGET}
@@ -337,12 +374,12 @@ describe("useWidgetTelemetry", () => {
         value: "c",
       });
 
-      assert.equal(dispatch.getCall(0).args[0].data.action_value, "c");
+      expect(dispatch.mock.calls[0][0].data.action_value).toBe("c");
     });
 
     it("omits action_value when value is not provided", () => {
       let telemetry;
-      mount(
+      render(
         <TestComponent
           dispatch={dispatch}
           widget={WEATHER_WIDGET}
@@ -353,12 +390,12 @@ describe("useWidgetTelemetry", () => {
 
       telemetry.recordUserAction("learn_more", { source: "context_menu" });
 
-      assert.notProperty(dispatch.getCall(0).args[0].data, "action_value");
+      expect(dispatch.mock.calls[0][0].data).not.toHaveProperty("action_value");
     });
 
     it("reads the latest widget_size after a prop change", () => {
       let telemetry;
-      const wrapper = mount(
+      const { rerender } = render(
         <TestComponent
           dispatch={dispatch}
           widget={WEATHER_WIDGET}
@@ -367,15 +404,22 @@ describe("useWidgetTelemetry", () => {
         />
       );
 
-      wrapper.setProps({ widgetSize: "large" });
+      rerender(
+        <TestComponent
+          dispatch={dispatch}
+          widget={WEATHER_WIDGET}
+          widgetSize="large"
+          onRender={t => (telemetry = t)}
+        />
+      );
       telemetry.recordUserAction("provider_link_click", { source: "widget" });
 
-      assert.equal(dispatch.getCall(0).args[0].data.widget_size, "large");
+      expect(dispatch.mock.calls[0][0].data.widget_size).toBe("large");
     });
 
     it("honors an explicit size override", () => {
       let telemetry;
-      mount(
+      render(
         <TestComponent
           dispatch={dispatch}
           widget={WEATHER_WIDGET}
@@ -390,14 +434,14 @@ describe("useWidgetTelemetry", () => {
         size: "small",
       });
 
-      assert.equal(dispatch.getCall(0).args[0].data.widget_size, "small");
+      expect(dispatch.mock.calls[0][0].data.widget_size).toBe("small");
     });
   });
 
   describe("recordEnabled", () => {
     it("dispatches WIDGETS_ENABLED with enabled flag and widget_size", () => {
       let telemetry;
-      mount(
+      render(
         <TestComponent
           dispatch={dispatch}
           widget={WEATHER_WIDGET}
@@ -408,10 +452,10 @@ describe("useWidgetTelemetry", () => {
 
       telemetry.recordEnabled(false, { source: "context_menu" });
 
-      assert.calledOnce(dispatch);
-      const [action] = dispatch.getCall(0).args;
-      assert.equal(action.type, at.WIDGETS_ENABLED);
-      assert.deepEqual(action.data, {
+      expect(dispatch).toHaveBeenCalledTimes(1);
+      const [[action]] = dispatch.mock.calls;
+      expect(action.type).toBe(at.WIDGETS_ENABLED);
+      expect(action.data).toEqual({
         widget_name: "weather",
         widget_size: "medium",
         widget_source: "context_menu",
@@ -421,7 +465,7 @@ describe("useWidgetTelemetry", () => {
 
     it("honors size override", () => {
       let telemetry;
-      mount(
+      render(
         <TestComponent
           dispatch={dispatch}
           widget={WEATHER_WIDGET}
@@ -432,15 +476,15 @@ describe("useWidgetTelemetry", () => {
 
       telemetry.recordEnabled(true, { source: "widget", size: "large" });
 
-      assert.equal(dispatch.getCall(0).args[0].data.widget_size, "large");
-      assert.equal(dispatch.getCall(0).args[0].data.enabled, true);
+      expect(dispatch.mock.calls[0][0].data.widget_size).toBe("large");
+      expect(dispatch.mock.calls[0][0].data.enabled).toBe(true);
     });
   });
 
   describe("recordError", () => {
     it("dispatches WIDGETS_ERROR with error_type and no widget_source", () => {
       let telemetry;
-      mount(
+      render(
         <TestComponent
           dispatch={dispatch}
           widget={WEATHER_WIDGET}
@@ -451,20 +495,20 @@ describe("useWidgetTelemetry", () => {
 
       telemetry.recordError("load_error");
 
-      assert.calledOnce(dispatch);
-      const [action] = dispatch.getCall(0).args;
-      assert.equal(action.type, at.WIDGETS_ERROR);
-      assert.deepEqual(action.data, {
+      expect(dispatch).toHaveBeenCalledTimes(1);
+      const [[action]] = dispatch.mock.calls;
+      expect(action.type).toBe(at.WIDGETS_ERROR);
+      expect(action.data).toEqual({
         widget_name: "weather",
         widget_size: "medium",
         error_type: "load_error",
       });
-      assert.notProperty(action.data, "widget_source");
+      expect(action.data).not.toHaveProperty("widget_source");
     });
 
     it("honors size override", () => {
       let telemetry;
-      mount(
+      render(
         <TestComponent
           dispatch={dispatch}
           widget={WEATHER_WIDGET}
@@ -475,7 +519,7 @@ describe("useWidgetTelemetry", () => {
 
       telemetry.recordError("load_error", { size: "small" });
 
-      assert.equal(dispatch.getCall(0).args[0].data.widget_size, "small");
+      expect(dispatch.mock.calls[0][0].data.widget_size).toBe("small");
     });
   });
 
@@ -484,7 +528,7 @@ describe("useWidgetTelemetry", () => {
   describe("legacy co-dispatch", () => {
     describe("impression", () => {
       it("co-dispatches legacy impression types BEFORE WIDGETS_IMPRESSION", () => {
-        const wrapper = mount(
+        const { container } = render(
           <TestComponent
             dispatch={dispatch}
             widget={FOCUS_TIMER_WIDGET}
@@ -493,24 +537,23 @@ describe("useWidgetTelemetry", () => {
             onRender={() => {}}
           />
         );
-        const observerInstance = observerStub.getCall(0).returnValue;
-        const el = wrapper.find("div").getDOMNode();
+        const [observerInstance] = observerStub.mock.instances;
+        const el = container.querySelector("div");
 
         observerInstance.callback([{ isIntersecting: true, target: el }]);
 
-        assert.calledTwice(dispatch);
-        assert.equal(
-          dispatch.getCall(0).args[0].type,
+        expect(dispatch).toHaveBeenCalledTimes(2);
+        expect(dispatch.mock.calls[0][0].type).toBe(
           at.WIDGETS_TIMER_USER_IMPRESSION
         );
-        assert.equal(dispatch.getCall(1).args[0].type, at.WIDGETS_IMPRESSION);
+        expect(dispatch.mock.calls[1][0].type).toBe(at.WIDGETS_IMPRESSION);
       });
     });
 
     describe("user event", () => {
       it("co-dispatches the legacy user-event type BEFORE the unified event when legacy: true", () => {
         let telemetry;
-        mount(
+        render(
           <TestComponent
             dispatch={dispatch}
             widget={FOCUS_TIMER_WIDGET}
@@ -525,17 +568,16 @@ describe("useWidgetTelemetry", () => {
           legacy: true,
         });
 
-        assert.calledTwice(dispatch);
-        const [legacy] = dispatch.getCall(0).args;
-        const [modern] = dispatch.getCall(1).args;
-        assert.equal(legacy.type, at.WIDGETS_TIMER_USER_EVENT);
-        assert.deepEqual(legacy.data, { userAction: "timer_play" });
-        assert.equal(modern.type, at.WIDGETS_USER_EVENT);
+        expect(dispatch).toHaveBeenCalledTimes(2);
+        const [[legacy], [modern]] = dispatch.mock.calls;
+        expect(legacy.type).toBe(at.WIDGETS_TIMER_USER_EVENT);
+        expect(legacy.data).toEqual({ userAction: "timer_play" });
+        expect(modern.type).toBe(at.WIDGETS_USER_EVENT);
       });
 
       it("does NOT co-dispatch legacy when legacy flag is omitted", () => {
         let telemetry;
-        mount(
+        render(
           <TestComponent
             dispatch={dispatch}
             widget={FOCUS_TIMER_WIDGET}
@@ -551,13 +593,13 @@ describe("useWidgetTelemetry", () => {
           size: "small",
         });
 
-        assert.calledOnce(dispatch);
-        assert.equal(dispatch.getCall(0).args[0].type, at.WIDGETS_USER_EVENT);
+        expect(dispatch).toHaveBeenCalledTimes(1);
+        expect(dispatch.mock.calls[0][0].type).toBe(at.WIDGETS_USER_EVENT);
       });
 
       it("legacy co-dispatch follows the alsoToMain routing flag", () => {
         let telemetry;
-        mount(
+        render(
           <TestComponent
             dispatch={dispatch}
             widget={LISTS_WIDGET}
@@ -573,9 +615,9 @@ describe("useWidgetTelemetry", () => {
           legacy: true,
         });
 
-        assert.calledTwice(dispatch);
-        assert.notEqual(dispatch.getCall(0).args[0].meta.skipLocal, true);
-        assert.notEqual(dispatch.getCall(1).args[0].meta.skipLocal, true);
+        expect(dispatch).toHaveBeenCalledTimes(2);
+        expect(dispatch.mock.calls[0][0].meta.skipLocal).not.toBe(true);
+        expect(dispatch.mock.calls[1][0].meta.skipLocal).not.toBe(true);
       });
     });
   });

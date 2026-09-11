@@ -77,6 +77,36 @@ module.exports = function (config) {
           functions: 100,
           branches: 66,
           overrides: {
+            "content-src/components/Widgets/WidgetMenuFooter.jsx": {
+              statements: 0,
+              lines: 0,
+              functions: 0,
+              branches: 0,
+            },
+            "content-src/components/Widgets/Lists/Lists.jsx": {
+              statements: 0,
+              lines: 0,
+              functions: 0,
+              branches: 0,
+            },
+            "content-src/components/Widgets/FocusTimer/FocusTimer.jsx": {
+              statements: 0,
+              lines: 0,
+              functions: 0,
+              branches: 0,
+            },
+            "content-src/components/Widgets/useWidgetCelebration.jsx": {
+              statements: 0,
+              lines: 0,
+              functions: 0,
+              branches: 0,
+            },
+            "content-src/components/Widgets/useWidgetTelemetry.jsx": {
+              statements: 0,
+              lines: 0,
+              functions: 0,
+              branches: 0,
+            },
             "content-src/components/TopSites/TopSiteFormInput.jsx": {
               statements: 0,
               lines: 0,
@@ -767,9 +797,9 @@ module.exports = function (config) {
             },
             "content-src/lib/utils.jsx": {
               branches: 60,
-              statements: 95.56,
-              lines: 95.4,
-              functions: 92.86,
+              statements: 90.76,
+              lines: 92,
+              functions: 81.82,
             },
             "content-src/components/MessageWrapper/MessageWrapper.jsx": {
               statements: 0,
