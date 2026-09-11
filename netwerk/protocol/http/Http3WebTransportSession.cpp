@@ -338,7 +338,9 @@ void Http3WebTransportSession::Close(nsresult aResult) {
   LOG(("Http3WebTransportSession::Close %p", this));
   if (RefPtr<WebTransportSessionEventListener> listener = TakeListener()) {
     mozilla::dom::WebTransportStatsData emptyStats;
-    listener->OnSessionClosed(NS_SUCCEEDED(aResult), 0, ""_ns, &emptyStats);
+    nsCOMPtr<nsIWebTransportSessionStats> statsWrapper =
+        new WebTransportSessionStatsWrapper(emptyStats);
+    listener->OnSessionClosed(NS_SUCCEEDED(aResult), 0, ""_ns, statsWrapper);
   }
   if (mTransaction) {
     mTransaction->Close(aResult);
@@ -379,7 +381,9 @@ void Http3WebTransportSession::OnSessionClosed(bool aCleanly, uint32_t aStatus,
   }
   if (RefPtr<WebTransportSessionEventListener> listener = TakeListener()) {
     // Use cached stats captured at close time
-    listener->OnSessionClosed(aCleanly, aStatus, aReason, &mCachedStats);
+    nsCOMPtr<nsIWebTransportSessionStats> statsWrapper =
+        new WebTransportSessionStatsWrapper(mCachedStats);
+    listener->OnSessionClosed(aCleanly, aStatus, aReason, statsWrapper);
   }
   mRecvState = RECV_DONE;
   mSendState = SEND_DONE;
@@ -410,7 +414,9 @@ void Http3WebTransportSession::CloseSession(uint32_t aStatus,
     // Notify listener with cached stats before clearing it
     RefPtr<WebTransportSessionEventListener> listener = GetListener();
     if (listener) {
-      listener->OnSessionClosed(true, mStatus, mReason, &mCachedStats);
+      nsCOMPtr<nsIWebTransportSessionStats> statsWrapper =
+          new WebTransportSessionStatsWrapper(mCachedStats);
+      listener->OnSessionClosed(true, mStatus, mReason, statsWrapper);
     }
 
     mSession->ConnectSlowConsumer(this);
@@ -624,7 +630,9 @@ void Http3WebTransportSession::GetStats() {
     return;
   }
 
-  listener->OnStatsAvailable(&stats);
+  nsCOMPtr<nsIWebTransportSessionStats> statsWrapper =
+      new WebTransportSessionStatsWrapper(stats);
+  listener->OnStatsAvailable(statsWrapper);
 }
 
 void Http3WebTransportSession::GetNegotiatedProtocol(nsACString& aProtocol) {

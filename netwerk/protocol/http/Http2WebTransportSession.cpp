@@ -89,7 +89,9 @@ void Http2WebTransportSessionImpl::GetStats() {
   // so getStats()'s Promise settles instead of staying pending forever.
   if (RefPtr<WebTransportSessionEventListener> listener = GetListener()) {
     mozilla::dom::WebTransportStatsData stats;
-    listener->OnStatsAvailable(&stats);
+    nsCOMPtr<nsIWebTransportSessionStats> statsWrapper =
+        new WebTransportSessionStatsWrapper(stats);
+    listener->OnStatsAvailable(statsWrapper);
   }
 }
 

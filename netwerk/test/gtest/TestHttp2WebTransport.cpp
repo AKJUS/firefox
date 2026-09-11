@@ -251,7 +251,7 @@ MockWebTransportSessionEventListener::OnSessionReady(uint64_t ready) {
 NS_IMETHODIMP
 MockWebTransportSessionEventListener::OnSessionClosed(
     bool aCleanly, uint32_t aStatus, const nsACString& aReason,
-    mozilla::dom::WebTransportStatsData* aStats) {
+    nsIWebTransportSessionStats* aStats) {
   return NS_OK;
 }
 
@@ -293,7 +293,7 @@ NS_IMETHODIMP MockWebTransportSessionEventListener::OnResetReceived(
 }
 
 NS_IMETHODIMP MockWebTransportSessionEventListener::OnStatsAvailable(
-    mozilla::dom::WebTransportStatsData* aStats) {
+    nsIWebTransportSessionStats* aStats) {
   return NS_OK;
 }
 

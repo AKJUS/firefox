@@ -106,16 +106,24 @@ interface nsIWebTransport : nsISupports {
   [noscript] void retargetTo(in nsIEventTarget aTarget);
 };
 
+// Wraps a WebTransportStatsData snapshot so it can be passed through a
+// scriptable interface. The raw data is only accessible to native (C++)
+// consumers, since WebTransportStatsData itself is not scriptable.
+[builtinclass, scriptable, uuid(bd8549d7-002f-4032-96a4-19430399d081)]
+interface nsIWebTransportSessionStats : nsISupports {
+  [noscript] readonly attribute WebTransportStatsDataPtr rawStats;
+};
+
 // Events related to a WebTransport session.
 [scriptable, uuid(0e3cb269-f318-43c8-959e-897f57894b71)]
 interface WebTransportSessionEventListener : nsISupports {
   // This is used to let the consumer of nsIWebTransport know that the
   // underlying WebTransportSession object is ready to use.
   void onSessionReady(in uint64_t aSessionId);
-  [noscript] void onSessionClosed(in boolean aCleanly,
-                                  in uint32_t aErrorCode,
-                                  in ACString aReason,
-                                  in WebTransportStatsDataPtr aStats);
+  void onSessionClosed(in boolean aCleanly,
+                       in uint32_t aErrorCode,
+                       in ACString aReason,
+                       in nsIWebTransportSessionStats aStats);
   void onDraining();
 
   // When a new stream has been received.
@@ -141,7 +149,7 @@ interface WebTransportSessionEventListener : nsISupports {
     in WebTransportSessionEventListener_DatagramOutcome aOutCome);
 
   // aStats is null if stats could not be gathered for this session.
-  [noscript] void onStatsAvailable(in WebTransportStatsDataPtr aStats);
+  void onStatsAvailable(in nsIWebTransportSessionStats aStats);
 };
 
 [uuid(8fb30aa9-5163-4eb3-81f3-371e1ccb5b0e)]

@@ -8,7 +8,9 @@
 #include <functional>
 
 #include "mozilla/Mutex.h"
+#include "mozilla/dom/PWebTransport.h"
 #include "nsISupportsImpl.h"
+#include "nsIWebTransport.h"
 #include "nsTArray.h"
 
 class WebTransportSessionEventListener;
@@ -17,6 +19,27 @@ namespace mozilla::net {
 
 class WebTransportStreamBase;
 class Http3WebTransportSession;
+
+// Wraps a WebTransportStatsData snapshot so it can be passed through the
+// scriptable WebTransportSessionEventListener::OnSessionClosed/
+// OnStatsAvailable methods; the raw data itself is only accessible to
+// native (C++) consumers via the noscript GetRawStats().
+class WebTransportSessionStatsWrapper final
+    : public nsIWebTransportSessionStats {
+ public:
+  NS_DECL_THREADSAFE_ISUPPORTS
+
+  explicit WebTransportSessionStatsWrapper(
+      const mozilla::dom::WebTransportStatsData& aStats)
+      : mStats(aStats) {}
+
+  NS_IMETHOD GetRawStats(mozilla::dom::WebTransportStatsData** aStats) override;
+
+ private:
+  ~WebTransportSessionStatsWrapper() = default;
+
+  mozilla::dom::WebTransportStatsData mStats;
+};
 
 class WebTransportSessionBase {
  public:

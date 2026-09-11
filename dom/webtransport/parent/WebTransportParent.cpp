@@ -675,11 +675,15 @@ NS_IMETHODIMP
 WebTransportParent::OnSessionClosed(const bool aCleanly,
                                     const uint32_t aErrorCode,
                                     const nsACString& aReason,
-                                    WebTransportStatsData* aStats) {
+                                    nsIWebTransportSessionStats* aStats) {
   nsresult rv = NS_OK;
 
   MOZ_ASSERT(mOwningEventTarget);
   MOZ_ASSERT(!mOwningEventTarget->IsOnCurrentThread());
+
+  WebTransportStatsData* rawStats = nullptr;
+  MOZ_ALWAYS_SUCCEEDS(aStats->GetRawStats(&rawStats));
+  MOZ_ASSERT(rawStats);
 
   // currently we just know if session was closed gracefully or not.
   // we need better error propagation from lower-levels of http3
@@ -714,7 +718,7 @@ WebTransportParent::OnSessionClosed(const bool aCleanly,
         LOG(("[%p] NotifyRemoteClosed to be called later", this));
         // NotifyRemoteClosed needs to wait until mResolver is invoked.
         mExecuteAfterResolverCallback = [self = RefPtr{this}, aCleanly,
-                                         aErrorCode, statsData = *aStats,
+                                         aErrorCode, statsData = *rawStats,
                                          reason = nsCString{aReason}]() {
           self->NotifyRemoteClosed(aCleanly, aErrorCode, reason, statsData);
         };
@@ -726,7 +730,7 @@ WebTransportParent::OnSessionClosed(const bool aCleanly,
     // stream associated with the CONNECT request that initiated
     // transport.[[Session]] is in the "Data Recvd" state. [QUIC]
     // XXX not calculated yet
-    NotifyRemoteClosed(aCleanly, aErrorCode, aReason, *aStats);
+    NotifyRemoteClosed(aCleanly, aErrorCode, aReason, *rawStats);
   }
 
   return NS_OK;
@@ -998,15 +1002,19 @@ NS_IMETHODIMP WebTransportParent::OnMaxDatagramSize(uint64_t aSize) {
 // duration of this synchronous call, or null if stats could not be gathered.
 // We copy the data into the resolver before returning.
 NS_IMETHODIMP WebTransportParent::OnStatsAvailable(
-    WebTransportStatsData* aStats) {
+    nsIWebTransportSessionStats* aStats) {
   MOZ_ASSERT(mSocketThread->IsOnCurrentThread());
+  WebTransportStatsData* rawStats = nullptr;
   if (aStats) {
+    MOZ_ALWAYS_SUCCEEDS(aStats->GetRawStats(&rawStats));
+  }
+  if (rawStats) {
     LOG(
         ("Stats available: bytesSent=%llu, bytesReceived=%llu, minRtt=%f, "
          "smoothedRtt=%f",
-         (unsigned long long)aStats->bytesSent(),
-         (unsigned long long)aStats->bytesReceived(), aStats->minRtt(),
-         aStats->smoothedRtt()));
+         (unsigned long long)rawStats->bytesSent(),
+         (unsigned long long)rawStats->bytesReceived(), rawStats->minRtt(),
+         rawStats->smoothedRtt()));
   } else {
     LOG(("Stats unavailable"));
   }
@@ -1018,7 +1026,7 @@ NS_IMETHODIMP WebTransportParent::OnStatsAvailable(
     return NS_OK;
   }
 
-  ResolvePendingGetStats(aStats ? Some(*aStats) : Nothing());
+  ResolvePendingGetStats(rawStats ? Some(*rawStats) : Nothing());
   return NS_OK;
 }
 
