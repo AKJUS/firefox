@@ -180,7 +180,7 @@ ${
           <input class="urlbar-input textbox-input"
                  role="combobox"
                  aria-autocomplete="both"
-                 inputmode="mozAwesomebar"
+                 inputmode="search"
                  preserveundohistory=""
                  data-l10n-id="urlbar-placeholder"/>
         </div>
@@ -409,6 +409,9 @@ ${
       // out. Elsewhere the field holds free-form text and takes the locale's
       // direction like any other text input.
       this.inputField.dir = "auto";
+      // A chrome-only input mode: it offers the on-screen keyboard's URL keys
+      // without the IME-closing effect that "url" has.
+      this.inputField.inputMode = "mozAwesomebar";
 
       let schemeField = document.createElement("input");
       schemeField.id = "urlbar-scheme";
