@@ -969,12 +969,6 @@ module.exports = function (config) {
               functions: 0,
               branches: 0,
             },
-            "content-src/components/Widgets/Widgets.jsx": {
-              statements: 51.1,
-              lines: 52,
-              functions: 31.2,
-              branches: 31.2,
-            },
             "content-src/components/Widgets/useWidgetDnD.jsx": {
               statements: 0,
               lines: 0,
