@@ -6,6 +6,7 @@ package org.mozilla.fenix.debugsettings.listentopage
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -17,8 +18,11 @@ import mozilla.components.compose.base.button.FilledButton
 import mozilla.components.feature.listentopage.ListenAction
 import mozilla.components.feature.listentopage.ListenState
 import mozilla.components.feature.listentopage.ListenStore
+import mozilla.components.feature.listentopage.PlaybackState
 import mozilla.components.feature.listentopage.listenReducer
 import mozilla.components.feature.listentopage.ui.VoiceSelection
+
+private const val MILLIS_PER_SECOND = 1000
 
 /** Tools for listen to page. */
 @Composable
@@ -28,6 +32,7 @@ fun ListenToPageTools(listenStore: ListenStore) {
 
     Surface {
         Column {
+            Text(text = listenState.playbackState.describe())
             FilledButton(text = "Open voice selection") {
                 voicesExpanded = !voicesExpanded
             }
@@ -40,6 +45,12 @@ fun ListenToPageTools(listenStore: ListenStore) {
             )
         }
     }
+}
+
+private fun PlaybackState.describe(): String {
+    val duration = chunk.durationMs?.let { "${it / MILLIS_PER_SECOND}s" } ?: "unknown"
+
+    return "${phase.name}, chunk ${chunk.index} at ${positionMs / MILLIS_PER_SECOND}s of $duration"
 }
 
 @PreviewLightDark
