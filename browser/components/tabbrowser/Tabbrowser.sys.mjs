@@ -7040,6 +7040,15 @@ export class Tabbrowser {
       tab => !excludeTabs.has(tab)
     );
 
+    // Filter out pending tabs if there are loaded tabs left
+    const loadedTabs = Array.prototype.filter.call(
+      remainingTabs,
+      tab => !tab.hasAttribute("pending")
+    );
+    if (loadedTabs.length) {
+      remainingTabs = loadedTabs;
+    }
+
     if (Services.prefs.getBoolPref("browser.tabs.selectMRUOnClose", false)) {
       let mruTab = remainingTabs
         .filter(t => t !== aTab)
