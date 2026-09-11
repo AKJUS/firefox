@@ -787,6 +787,19 @@ def main():
         help="If true, list installed packages.",
     )
 
+    parser.add_argument(
+        "--os-name",
+        dest="os_name",
+        choices=["linux", "macosx", "windows"],
+        help="Download the JDK for the specified OS rather than the host OS. Requires --jdk-only.",
+    )
+    parser.add_argument(
+        "--os-arch",
+        dest="os_arch",
+        choices=["x86_64", "arm64"],
+        help="Download the JDK for the specified CPU architecture rather than the host's. Requires --jdk-only.",
+    )
+
     exclusive_group = parser.add_mutually_exclusive_group()
 
     exclusive_group.add_argument(
@@ -816,9 +829,12 @@ def main():
     if options.artifact_mode and options.emulator_only:
         raise NotImplementedError("Use no options to install the SDK and emulators.")
 
-    os_name = get_os_name_for_android()
+    if (options.os_name or options.os_arch) and not options.jdk_only:
+        parser.error("--os-name and --os-arch are only supported with --jdk-only.")
+
+    os_name = options.os_name or get_os_name_for_android()
     os_tag = get_os_tag_for_android(os_name)
-    os_arch = platform.machine()
+    os_arch = options.os_arch or platform.machine()
 
     avd_manifest_path = (
         Path(options.avd_manifest_path) if options.avd_manifest_path else None
