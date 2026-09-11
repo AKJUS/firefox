@@ -95,23 +95,6 @@ Structure:
         distro: <string>, // linux only, or null on failure
         distroVersion: <string>, // linux only, or null on failure
     },
-    hdd: {
-      profile: { // hdd where the profile folder is located
-          model: <string>, // windows only or null on failure
-          revision: <string>, // windows only or null on failure
-          type: <string>, // "SSD" or "HDD" windows only or null on failure
-      },
-      binary:  { // hdd where the application binary is located
-          model: <string>, // windows only or null on failure
-          revision: <string>, // windows only or null on failure
-          type: <string>, // "SSD" or "HDD" windows only or null on failure
-      },
-      system:  { // hdd where the system files are located
-          model: <string>, // windows only or null on failure
-          revision: <string>, // windows only or null on failure
-          type: <string>, // "SSD" or "HDD" windows only or null on failure
-      },
-    },
     gfx: {
         DWriteEnabled: <bool>, // null on failure
         ContentBackend: <string> // One of "Cairo", "Skia", or "Direct2D 1.1"

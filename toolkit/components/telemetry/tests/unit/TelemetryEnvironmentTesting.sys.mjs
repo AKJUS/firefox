@@ -43,8 +43,6 @@ const PROFILE_SOURCE = "telemetry-tests";
 const GFX_VENDOR_ID = "0xabcd";
 const GFX_DEVICE_ID = "0x1234";
 
-const EXPECTED_HDD_FIELDS = ["profile", "binary", "system"];
-
 // Valid attribution code to write so that settings.attribution can be tested.
 const ATTRIBUTION_CODE = [
   ["source", "%3D", "google.com"],
@@ -112,8 +110,6 @@ var SysInfo = {
  * reporting.
  */
 export var TelemetryEnvironmentTesting = {
-  EXPECTED_HDD_FIELDS,
-
   init(appInfo) {
     this.appInfo = appInfo;
   },
@@ -554,7 +550,7 @@ export var TelemetryEnvironmentTesting = {
   },
 
   checkSystemSection(data, assertProcessData) {
-    const EXPECTED_FIELDS = ["memoryMB", "cpu", "os", "hdd", "gfx"];
+    const EXPECTED_FIELDS = ["memoryMB", "cpu", "os", "gfx"];
 
     lazy.Assert.ok(
       "system" in data,
@@ -662,22 +658,6 @@ export var TelemetryEnvironmentTesting = {
         osData.distroVersion,
         Glean.systemOs.distroVersion.testGetValue()
       );
-    }
-
-    for (let disk of EXPECTED_HDD_FIELDS) {
-      let diskData = Glean.hdd[disk].testGetValue();
-      lazy.Assert.ok(this.checkNullOrString(data.system.hdd[disk].model));
-      lazy.Assert.ok(this.checkNullOrString(data.system.hdd[disk].revision));
-      lazy.Assert.ok(this.checkNullOrString(data.system.hdd[disk].type));
-      if (data.system.hdd[disk].model !== null) {
-        lazy.Assert.equal(data.system.hdd[disk].model, diskData.model);
-      }
-      if (data.system.hdd[disk].revision !== null) {
-        lazy.Assert.equal(data.system.hdd[disk].revision, diskData.revision);
-      }
-      if (data.system.hdd[disk].type !== null) {
-        lazy.Assert.equal(data.system.hdd[disk].type, diskData.diskType);
-      }
     }
 
     this.checkGfx(data.system.gfx);

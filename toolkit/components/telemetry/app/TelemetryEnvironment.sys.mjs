@@ -80,7 +80,7 @@ export var Policy = {
 var gActiveExperimentStartupBuffer = new Map();
 
 // For Powering arewegleanyet.com (See bug 1944592)
-// Legacy Count: 77
+// Legacy Count: 68
 // Glean Count: 113
 
 var gGlobalEnvironment;
@@ -700,7 +700,6 @@ EnvironmentCache.prototype = {
       this._osData = this._getOSData();
 
       this._currentEnvironment.system.os = this._getOSData();
-      this._currentEnvironment.system.hdd = this._getHDDData();
 
       // Windows only values stored in processData
       const processData = this._getProcessData();
@@ -1800,7 +1799,6 @@ EnvironmentCache.prototype = {
       memoryMB,
       cpu: this._getCPUData(),
       os: this._getOSData(),
-      hdd: this._getHDDData(),
       gfx: this._getGFXData(),
     };
     Glean.system.appleModelId.set(getSysinfoProperty("appleModelId", null));
