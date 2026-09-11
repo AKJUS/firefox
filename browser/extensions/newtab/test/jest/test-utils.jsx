@@ -12,24 +12,33 @@ export function WrapWithProvider({ children, state = INITIAL_STATE }) {
 }
 
 /**
- * Replaces properties on the global object, the way the karma harness'
- * GlobalOverrider did. Call from `beforeEach` and call the returned function
- * from `afterEach`.
+ * stubGlobals - Replace properties on globalThis for the duration of a test,
+ * the jest replacement for karma's GlobalOverrider. Uses property descriptors so
+ * that getter-only globals can be stubbed and faithfully restored.
  *
- * @param {object} overrides Keys to assign onto `globalThis`.
- * @returns {Function} Restores every key to what it was (deleting keys that
- *                     did not exist before).
+ * @param {object} overrides Keys are global names, values the stubs to install
+ * @returns {Function} restore, which puts every key back the way it was
+ *                     (deleting the ones that did not exist). Call in afterEach.
  */
 export function stubGlobals(overrides) {
-  const originals = new Map();
+  const originals = Object.entries(overrides).map(([key]) => [
+    key,
+    Object.getOwnPropertyDescriptor(globalThis, key),
+  ]);
+
   for (const [key, value] of Object.entries(overrides)) {
-    originals.set(key, { existed: key in globalThis, value: globalThis[key] });
-    globalThis[key] = value;
+    Object.defineProperty(globalThis, key, {
+      value,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    });
   }
+
   return function restore() {
-    for (const [key, original] of originals) {
-      if (original.existed) {
-        globalThis[key] = original.value;
+    for (const [key, descriptor] of originals) {
+      if (descriptor) {
+        Object.defineProperty(globalThis, key, descriptor);
       } else {
         delete globalThis[key];
       }

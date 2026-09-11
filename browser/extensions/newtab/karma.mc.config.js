@@ -442,12 +442,6 @@ module.exports = function (config) {
               functions: 9,
               branches: 0,
             },
-            "content-src/lib/init-store.js": {
-              statements: 98,
-              lines: 98,
-              functions: 100,
-              branches: 100,
-            },
             "lib/DownloadsManager.sys.mjs": {
               statements: 100,
               lines: 100,
@@ -916,11 +910,14 @@ module.exports = function (config) {
               functions: 96,
               branches: 70,
             },
+            /**
+             * utils.jsx is tested via Jest (see test/jest/content-src/lib/utils.test.jsx).
+             */
             "content-src/lib/utils.jsx": {
-              branches: 60,
-              statements: 90.51,
-              lines: 91.67,
-              functions: 81.82,
+              statements: 0,
+              lines: 0,
+              functions: 0,
+              branches: 0,
             },
             "content-src/components/MessageWrapper/MessageWrapper.jsx": {
               statements: 0,

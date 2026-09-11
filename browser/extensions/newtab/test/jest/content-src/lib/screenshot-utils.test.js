@@ -1,26 +1,29 @@
-import { GlobalOverrider } from "test/unit/utils";
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import { stubGlobals } from "test/jest/test-utils";
 import { ScreenshotUtils } from "content-src/lib/screenshot-utils";
 
 const DEFAULT_BLOB_URL = "blob://test";
 
 describe("ScreenshotUtils", () => {
-  let globals;
+  let restoreGlobals;
   let url;
   beforeEach(() => {
-    globals = new GlobalOverrider();
     url = {
-      createObjectURL: globals.sandbox.stub().returns(DEFAULT_BLOB_URL),
-      revokeObjectURL: globals.sandbox.spy(),
+      createObjectURL: jest.fn().mockReturnValue(DEFAULT_BLOB_URL),
+      revokeObjectURL: jest.fn(),
     };
-    globals.set("URL", url);
+    restoreGlobals = stubGlobals({ URL: url });
   });
-  afterEach(() => globals.restore());
+  afterEach(() => restoreGlobals());
   describe("#createLocalImageObject", () => {
     it("should return null if no remoteImage is supplied", () => {
       let localImageObject = ScreenshotUtils.createLocalImageObject(null);
 
-      assert.notCalled(url.createObjectURL);
-      assert.equal(localImageObject, null);
+      expect(url.createObjectURL).not.toHaveBeenCalled();
+      expect(localImageObject).toBe(null);
     });
     it("should create a local image object with the correct properties if remoteImage is a blob", () => {
       let localImageObject = ScreenshotUtils.createLocalImageObject({
@@ -28,8 +31,8 @@ describe("ScreenshotUtils", () => {
         data: new Blob([0]),
       });
 
-      assert.calledOnce(url.createObjectURL);
-      assert.deepEqual(localImageObject, {
+      expect(url.createObjectURL).toHaveBeenCalledTimes(1);
+      expect(localImageObject).toEqual({
         path: "/path1",
         url: DEFAULT_BLOB_URL,
       });
@@ -38,8 +41,8 @@ describe("ScreenshotUtils", () => {
       const imageUrl = "https://test-url";
       let localImageObject = ScreenshotUtils.createLocalImageObject(imageUrl);
 
-      assert.notCalled(url.createObjectURL);
-      assert.deepEqual(localImageObject, { url: imageUrl });
+      expect(url.createObjectURL).not.toHaveBeenCalled();
+      expect(localImageObject).toEqual({ url: imageUrl });
     });
   });
   describe("#maybeRevokeBlobObjectURL", () => {
@@ -50,70 +53,70 @@ describe("ScreenshotUtils", () => {
         url: "blob://test",
       });
 
-      assert.calledOnce(url.revokeObjectURL);
+      expect(url.revokeObjectURL).toHaveBeenCalledTimes(1);
     });
     it("should not call revokeObjectURL if image is not a blob", () => {
       ScreenshotUtils.maybeRevokeBlobObjectURL({ url: "https://test-url" });
 
-      assert.notCalled(url.revokeObjectURL);
+      expect(url.revokeObjectURL).not.toHaveBeenCalled();
     });
   });
   describe("#isRemoteImageLocal", () => {
     it("should return true if both propsImage and stateImage are not present", () => {
-      assert.isTrue(ScreenshotUtils.isRemoteImageLocal(null, null));
+      expect(ScreenshotUtils.isRemoteImageLocal(null, null)).toBe(true);
     });
     it("should return false if propsImage is present and stateImage is not present", () => {
-      assert.isFalse(ScreenshotUtils.isRemoteImageLocal(null, {}));
+      expect(ScreenshotUtils.isRemoteImageLocal(null, {})).toBe(false);
     });
     it("should return false if propsImage is not present and stateImage is present", () => {
-      assert.isFalse(ScreenshotUtils.isRemoteImageLocal({}, null));
+      expect(ScreenshotUtils.isRemoteImageLocal({}, null)).toBe(false);
     });
     it("should return true if both propsImage and stateImage are equal blobs", () => {
       const blobPath = "/test-blob-path/test.png";
-      assert.isTrue(
+      expect(
         ScreenshotUtils.isRemoteImageLocal(
           { path: blobPath, url: "blob://test" }, // state
           { path: blobPath, data: new Blob([0]) } // props
         )
-      );
+      ).toBe(true);
     });
     it("should return false if both propsImage and stateImage are different blobs", () => {
-      assert.isFalse(
+      expect(
         ScreenshotUtils.isRemoteImageLocal(
           { path: "/path1", url: "blob://test" }, // state
           { path: "/path2", data: new Blob([0]) } // props
         )
-      );
+      ).toBe(false);
     });
     it("should return true if both propsImage and stateImage are equal normal images", () => {
-      assert.isTrue(
+      expect(
         ScreenshotUtils.isRemoteImageLocal(
           { url: "test url" }, // state
           "test url" // props
         )
-      );
+      ).toBe(true);
     });
     it("should return false if both propsImage and stateImage are different normal images", () => {
-      assert.isFalse(
+      expect(
         ScreenshotUtils.isRemoteImageLocal(
           { url: "test url 1" }, // state
           "test url 2" // props
         )
-      );
+      ).toBe(false);
     });
     it("should return false if both propsImage and stateImage are different type of images", () => {
-      assert.isFalse(
+      expect(
         ScreenshotUtils.isRemoteImageLocal(
           { path: "/path1", url: "blob://test" }, // state
           "test url 2" // props
         )
-      );
-      assert.isFalse(
+      ).toBe(false);
+      expect(
         ScreenshotUtils.isRemoteImageLocal(
           { url: "https://test-url" }, // state
           { path: "/path1", data: new Blob([0]) } // props
         )
-      );
+      ).toBe(false);
     });
   });
   describe("#isBlob", () => {
@@ -126,22 +129,22 @@ describe("ScreenshotUtils", () => {
       normalImage: "https://test-url",
     };
     it("should return false if image is null", () => {
-      assert.isFalse(ScreenshotUtils.isBlob(true, null));
-      assert.isFalse(ScreenshotUtils.isBlob(false, null));
+      expect(ScreenshotUtils.isBlob(true, null)).toBe(false);
+      expect(ScreenshotUtils.isBlob(false, null)).toBe(false);
     });
     it("should return true if image is a blob and type matches", () => {
-      assert.isTrue(ScreenshotUtils.isBlob(true, state.blobImage));
-      assert.isTrue(ScreenshotUtils.isBlob(false, props.blobImage));
+      expect(ScreenshotUtils.isBlob(true, state.blobImage)).toBe(true);
+      expect(ScreenshotUtils.isBlob(false, props.blobImage)).toBe(true);
     });
     it("should return false if image is not a blob and type matches", () => {
-      assert.isFalse(ScreenshotUtils.isBlob(true, state.normalImage));
-      assert.isFalse(ScreenshotUtils.isBlob(false, props.normalImage));
+      expect(ScreenshotUtils.isBlob(true, state.normalImage)).toBe(false);
+      expect(ScreenshotUtils.isBlob(false, props.normalImage)).toBe(false);
     });
     it("should return false if type does not match", () => {
-      assert.isFalse(ScreenshotUtils.isBlob(false, state.blobImage));
-      assert.isFalse(ScreenshotUtils.isBlob(false, state.normalImage));
-      assert.isFalse(ScreenshotUtils.isBlob(true, props.blobImage));
-      assert.isFalse(ScreenshotUtils.isBlob(true, props.normalImage));
+      expect(ScreenshotUtils.isBlob(false, state.blobImage)).toBe(false);
+      expect(ScreenshotUtils.isBlob(false, state.normalImage)).toBe(false);
+      expect(ScreenshotUtils.isBlob(true, props.blobImage)).toBe(false);
+      expect(ScreenshotUtils.isBlob(true, props.normalImage)).toBe(false);
     });
   });
 });

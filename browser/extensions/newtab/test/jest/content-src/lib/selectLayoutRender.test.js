@@ -1,6 +1,9 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import { combineReducers, createStore } from "redux";
 import { actionTypes as at } from "common/Actions.mjs";
-import { GlobalOverrider } from "test/unit/utils";
 import { reducers } from "common/Reducers.sys.mjs";
 import { selectLayoutRender } from "content-src/lib/selectLayoutRender";
 const FAKE_LAYOUT = [
@@ -17,15 +20,9 @@ const FAKE_FEEDS = {
 
 describe("selectLayoutRender", () => {
   let store;
-  let globals;
 
   beforeEach(() => {
-    globals = new GlobalOverrider();
     store = createStore(combineReducers(reducers));
-  });
-
-  afterEach(() => {
-    globals.restore();
   });
 
   const SPONSORED_STORIES_PREFS = {
@@ -39,7 +36,7 @@ describe("selectLayoutRender", () => {
       prefs: {},
       rollCache: [],
     });
-    assert.deepEqual(layoutRender, []);
+    expect(layoutRender).toEqual([]);
   });
 
   it("should add .data property from feeds to each component in .layout", () => {
@@ -57,9 +54,9 @@ describe("selectLayoutRender", () => {
       state: store.getState().DiscoveryStream,
     });
 
-    assert.lengthOf(layoutRender, 1);
-    assert.propertyVal(layoutRender[0], "width", 3);
-    assert.deepEqual(layoutRender[0].components[0], {
+    expect(layoutRender).toHaveLength(1);
+    expect(layoutRender[0]).toHaveProperty("width", 3);
+    expect(layoutRender[0].components[0]).toEqual({
       type: "foo",
       feed: { url: "foo.com" },
       properties: { items: 2 },
@@ -84,9 +81,9 @@ describe("selectLayoutRender", () => {
       state: store.getState().DiscoveryStream,
     });
 
-    assert.lengthOf(layoutRender, 1);
-    assert.propertyVal(layoutRender[0], "width", 3);
-    assert.deepEqual(layoutRender[0].components[0].data.recommendations, [
+    expect(layoutRender).toHaveLength(1);
+    expect(layoutRender[0]).toHaveProperty("width", 3);
+    expect(layoutRender[0].components[0].data.recommendations).toEqual([
       { placeholder: true },
       { placeholder: true },
     ]);
@@ -109,9 +106,9 @@ describe("selectLayoutRender", () => {
       state: store.getState().DiscoveryStream,
     });
 
-    assert.lengthOf(layoutRender, 1);
-    assert.propertyVal(layoutRender[0], "width", 3);
-    assert.deepEqual(layoutRender[0].components[0].data.spocs, []);
+    expect(layoutRender).toHaveLength(1);
+    expect(layoutRender[0]).toHaveProperty("width", 3);
+    expect(layoutRender[0].components[0].data.spocs).toEqual([]);
   });
 
   it("should return layout with spocs data if feed isn't defined but spocs is", () => {
@@ -142,9 +139,9 @@ describe("selectLayoutRender", () => {
       state: store.getState().DiscoveryStream,
     });
 
-    assert.lengthOf(layoutRender, 1);
-    assert.propertyVal(layoutRender[0], "width", 3);
-    assert.deepEqual(layoutRender[0].components[0].data.spocs, [
+    expect(layoutRender).toHaveLength(1);
+    expect(layoutRender[0]).toHaveProperty("width", 3);
+    expect(layoutRender[0].components[0].data.spocs).toEqual([
       { id: 1, pos: 0 },
       { id: 2, pos: 1 },
       { id: 3, pos: 2 },
@@ -179,9 +176,9 @@ describe("selectLayoutRender", () => {
       state: store.getState().DiscoveryStream,
     });
 
-    assert.lengthOf(layoutRender, 1);
-    assert.propertyVal(layoutRender[0], "width", 3);
-    assert.equal(layoutRender[0].components[0].data.spocs.length, 0);
+    expect(layoutRender).toHaveLength(1);
+    expect(layoutRender[0]).toHaveProperty("width", 3);
+    expect(layoutRender[0].components[0].data.spocs.length).toBe(0);
   });
 
   it("should return feed data offset by layout set prop", () => {
@@ -207,7 +204,7 @@ describe("selectLayoutRender", () => {
       state: store.getState().DiscoveryStream,
     });
 
-    assert.deepEqual(layoutRender[0].components[0].data, {
+    expect(layoutRender[0].components[0].data).toEqual({
       recommendations: [{ id: "bar" }],
       sections: [],
     });
@@ -251,20 +248,20 @@ describe("selectLayoutRender", () => {
       prefs: SPONSORED_STORIES_PREFS,
     });
 
-    assert.lengthOf(layoutRender, 1);
-    assert.deepEqual(layoutRender[0].components[0].data.recommendations[0], {
+    expect(layoutRender).toHaveLength(1);
+    expect(layoutRender[0].components[0].data.recommendations[0]).toEqual({
       id: "fooSpoc",
       is_ad_eligible_position: true,
     });
-    assert.deepEqual(layoutRender[0].components[0].data.recommendations[1], {
+    expect(layoutRender[0].components[0].data.recommendations[1]).toEqual({
       id: "barSpoc",
       is_ad_eligible_position: true,
     });
-    assert.deepEqual(layoutRender[0].components[0].data.recommendations[2], {
+    expect(layoutRender[0].components[0].data.recommendations[2]).toEqual({
       id: "foo",
       is_ad_eligible_position: true,
     });
-    assert.deepEqual(layoutRender[0].components[0].data.recommendations[3], {
+    expect(layoutRender[0].components[0].data.recommendations[3]).toEqual({
       id: "bar",
     });
   });
@@ -302,11 +299,11 @@ describe("selectLayoutRender", () => {
     });
 
     const { recommendations } = layoutRender[0].components[0].data;
-    assert.equal(recommendations.length, 4);
-    assert.equal(recommendations[0].pos, 0);
-    assert.equal(recommendations[1].pos, 1);
-    assert.equal(recommendations[2].pos, 2);
-    assert.equal(recommendations[3].pos, undefined);
+    expect(recommendations.length).toBe(4);
+    expect(recommendations[0].pos).toBe(0);
+    expect(recommendations[1].pos).toBe(1);
+    expect(recommendations[2].pos).toBe(2);
+    expect(recommendations[3].pos).toBe(undefined);
   });
 
   it("should render everything if everything is ready", () => {
@@ -343,11 +340,11 @@ describe("selectLayoutRender", () => {
       state: store.getState().DiscoveryStream,
     });
 
-    assert.equal(layoutRender[0].components[0].type, "foo1");
-    assert.equal(layoutRender[0].components[1].type, "foo2");
-    assert.equal(layoutRender[0].components[2].type, "foo3");
-    assert.equal(layoutRender[0].components[3].type, "foo4");
-    assert.equal(layoutRender[0].components[4].type, "foo5");
+    expect(layoutRender[0].components[0].type).toBe("foo1");
+    expect(layoutRender[0].components[1].type).toBe("foo2");
+    expect(layoutRender[0].components[2].type).toBe("foo3");
+    expect(layoutRender[0].components[3].type).toBe("foo4");
+    expect(layoutRender[0].components[4].type).toBe("foo5");
   });
 
   it("should stop rendering feeds if we hit a not ready spoc", () => {
@@ -389,9 +386,9 @@ describe("selectLayoutRender", () => {
       state: store.getState().DiscoveryStream,
     });
 
-    assert.equal(layoutRender[0].components[0].type, "foo1");
-    assert.equal(layoutRender[0].components[1].type, "foo2");
-    assert.deepEqual(layoutRender[0].components[2].data.recommendations, [
+    expect(layoutRender[0].components[0].type).toBe("foo1");
+    expect(layoutRender[0].components[1].type).toBe("foo2");
+    expect(layoutRender[0].components[2].data.recommendations).toEqual([
       { placeholder: true },
       { placeholder: true },
       { placeholder: true },
@@ -433,10 +430,10 @@ describe("selectLayoutRender", () => {
         state: store.getState().DiscoveryStream,
         prefs,
       });
-      assert.isUndefined(
+      expect(
         layoutRender[0].components[0].data.recommendations[0]
           .is_ad_eligible_position
-      );
+      ).toBeUndefined();
     }
   });
 
@@ -488,7 +485,7 @@ describe("selectLayoutRender", () => {
       prefs: SPONSORED_STORIES_PREFS,
     });
 
-    assert.deepEqual(layoutRender[0].components[2].data.recommendations[0], {
+    expect(layoutRender[0].components[2].data.recommendations[0]).toEqual({
       name: "rec",
       pos: 0,
       is_ad_eligible_position: true,
@@ -516,8 +513,8 @@ describe("selectLayoutRender", () => {
       prefs: { "feeds.topsites": true },
     });
 
-    assert.equal(layoutRender[0].components[0].type, "TopSites");
-    assert.equal(layoutRender[1], undefined);
+    expect(layoutRender[0].components[0].type).toBe("TopSites");
+    expect(layoutRender[1]).toBe(undefined);
   });
 
   it("should not render a component if filtered", () => {
@@ -537,8 +534,8 @@ describe("selectLayoutRender", () => {
       prefs: { "feeds.topsites": true },
     });
 
-    assert.equal(layoutRender[0].components[0].type, "TopSites");
-    assert.equal(layoutRender[0].components[1], undefined);
+    expect(layoutRender[0].components[0].type).toBe("TopSites");
+    expect(layoutRender[0].components[1]).toBe(undefined);
   });
 
   it("should skip rendering a spoc in position if that spoc is blocked for that session", () => {
@@ -592,13 +589,13 @@ describe("selectLayoutRender", () => {
       prefs: SPONSORED_STORIES_PREFS,
     });
 
-    assert.deepEqual(layout1[0].components[0].data.recommendations[0], {
+    expect(layout1[0].components[0].data.recommendations[0]).toEqual({
       name: "spoc",
       url: "https://foo.com",
       pos: 0,
       is_ad_eligible_position: true,
     });
-    assert.deepEqual(layout2[0].components[0].data.recommendations[0], {
+    expect(layout2[0].components[0].data.recommendations[0]).toEqual({
       name: "rec",
       pos: 0,
       is_ad_eligible_position: true,
@@ -622,9 +619,9 @@ describe("selectLayoutRender", () => {
       },
     });
 
-    assert.lengthOf(layoutRender, 1);
-    assert.lengthOf(layoutRender[0].components, 1);
-    assert.propertyVal(layoutRender[0].components[0], "type", "Widgets");
+    expect(layoutRender).toHaveLength(1);
+    expect(layoutRender[0].components).toHaveLength(1);
+    expect(layoutRender[0].components[0]).toHaveProperty("type", "Widgets");
   });
 
   it("should include Widgets when (Nimbus) widgetsConfig.enabled is true", () => {
@@ -644,9 +641,9 @@ describe("selectLayoutRender", () => {
       },
     });
 
-    assert.lengthOf(layoutRender, 1);
-    assert.lengthOf(layoutRender[0].components, 1);
-    assert.propertyVal(layoutRender[0].components[0], "type", "Widgets");
+    expect(layoutRender).toHaveLength(1);
+    expect(layoutRender[0].components).toHaveLength(1);
+    expect(layoutRender[0].components[0]).toHaveProperty("type", "Widgets");
   });
 
   it("should filter out Widgets when both widget prefs are false", () => {
@@ -667,7 +664,7 @@ describe("selectLayoutRender", () => {
       },
     });
 
-    assert.lengthOf(layoutRender, 0);
+    expect(layoutRender).toHaveLength(0);
   });
 
   describe("spoc injection based on allowAds", () => {
@@ -744,11 +741,9 @@ describe("selectLayoutRender", () => {
       });
 
       const [renderedSection] = layoutRender[0].components[0].data.sections;
-      assert.lengthOf(
-        renderedSection.data.filter(item => item.id === "spoc1"),
-        0,
-        "spoc should not be injected when allowAds is false"
-      );
+      expect(
+        renderedSection.data.filter(item => item.id === "spoc1")
+      ).toHaveLength(0);
     });
 
     it("should add spoc positions for sections with allowAds: true", () => {
@@ -760,10 +755,7 @@ describe("selectLayoutRender", () => {
       });
 
       const [renderedSection] = layoutRender[0].components[0].data.sections;
-      assert.isTrue(
-        renderedSection.data.some(item => item.id === "spoc1"),
-        "spoc should be injected when allowAds is true"
-      );
+      expect(renderedSection.data.some(item => item.id === "spoc1")).toBe(true);
     });
 
     it("should add spoc positions for sections with allowAds: undefined", () => {
@@ -775,10 +767,7 @@ describe("selectLayoutRender", () => {
       });
 
       const [renderedSection] = layoutRender[0].components[0].data.sections;
-      assert.isTrue(
-        renderedSection.data.some(item => item.id === "spoc1"),
-        "spoc should be injected when allowAds is undefined"
-      );
+      expect(renderedSection.data.some(item => item.id === "spoc1")).toBe(true);
     });
   });
 });

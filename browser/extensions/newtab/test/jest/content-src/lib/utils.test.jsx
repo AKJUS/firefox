@@ -1,5 +1,10 @@
-import React, { useEffect } from "react";
-import { mount } from "enzyme";
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import { useEffect } from "react";
+import { render } from "@testing-library/react";
+import { stubGlobals } from "test/jest/test-utils";
 import {
   useIntersectionObserver,
   getActiveCardSize,
@@ -12,7 +17,13 @@ import {
 // Test component to use the useIntersectionObserver
 function TestComponent({ callback, threshold }) {
   const ref = useIntersectionObserver(callback, threshold);
-  return <div ref={el => ref.current.push(el)}></div>;
+  return (
+    <div
+      ref={el => {
+        ref.current.push(el);
+      }}
+    ></div>
+  );
 }
 
 function TestConfettiComponent({ count, spread }) {
@@ -29,74 +40,73 @@ function TestConfettiComponent({ count, spread }) {
 describe("useIntersectionObserver", () => {
   let callback;
   let threshold;
-  let sandbox;
   let observerStub;
-  let wrapper;
+  let restoreGlobals;
 
   beforeEach(() => {
-    sandbox = sinon.createSandbox();
-    callback = sandbox.spy();
+    callback = jest.fn();
     threshold = 0.5;
-    observerStub = sandbox
-      .stub(window, "IntersectionObserver")
-      .callsFake(function (cb) {
-        this.observe = sandbox.spy();
-        this.unobserve = sandbox.spy();
-        this.disconnect = sandbox.spy();
-        this.callback = cb;
-      });
-    wrapper = mount(
-      <TestComponent callback={callback} threshold={threshold} />
-    );
+    observerStub = jest.fn(function (cb) {
+      this.observe = jest.fn();
+      this.unobserve = jest.fn();
+      this.disconnect = jest.fn();
+      this.callback = cb;
+    });
+    restoreGlobals = stubGlobals({ IntersectionObserver: observerStub });
+    // RTL unmounts this render for us in its own afterEach cleanup.
+    render(<TestComponent callback={callback} threshold={threshold} />);
   });
 
   afterEach(() => {
-    sandbox.restore();
-    wrapper.unmount();
+    restoreGlobals();
   });
 
   it("should create an IntersectionObserver instance with the correct options", () => {
-    assert.calledWithNew(observerStub);
-    assert.calledWith(observerStub, sinon.match.any, { threshold });
+    // The equivalent of sinon's calledWithNew: a plain call would leave the
+    // recorded `this` undefined.
+    expect(observerStub.mock.instances.at(0)).toBeInstanceOf(observerStub);
+    expect(observerStub).toHaveBeenCalledWith(expect.any(Function), {
+      threshold,
+    });
   });
 
   it("should observe elements when mounted", () => {
-    const observerInstance = observerStub.getCall(0).returnValue;
-    assert.called(observerInstance.observe);
+    const [observerInstance] = observerStub.mock.instances;
+    expect(observerInstance.observe).toHaveBeenCalled();
   });
 
   it("should call callback and unobserve element when it intersects", () => {
-    wrapper = mount(
+    const secondRender = render(
       <TestComponent callback={callback} threshold={threshold} />
     );
-    const observerInstance = observerStub.getCall(0).returnValue;
-    const observedElement = wrapper.find("div").getDOMNode();
+    const [observerInstance] = observerStub.mock.instances;
+    const observedElement = secondRender.container.querySelector("div");
 
     // Simulate an intersection
     observerInstance.callback([
       { isIntersecting: true, target: observedElement },
     ]);
 
-    assert.calledOnce(callback);
-    assert.calledWith(callback, observedElement);
-    assert.calledOnce(observerInstance.unobserve);
-    assert.calledWith(observerInstance.unobserve, observedElement);
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenCalledWith(observedElement);
+    expect(observerInstance.unobserve).toHaveBeenCalledTimes(1);
+    expect(observerInstance.unobserve).toHaveBeenCalledWith(observedElement);
   });
 
   it("should not call callback if element is not intersecting", () => {
-    wrapper = mount(
+    const secondRender = render(
       <TestComponent callback={callback} threshold={threshold} />
     );
-    const observerInstance = observerStub.getCall(0).returnValue;
-    const observedElement = wrapper.find("div").getDOMNode();
+    const [observerInstance] = observerStub.mock.instances;
+    const observedElement = secondRender.container.querySelector("div");
 
     // Simulate a non-intersecting entry
     observerInstance.callback([
       { isIntersecting: false, target: observedElement },
     ]);
 
-    assert.notCalled(callback);
-    assert.notCalled(observerInstance.unobserve);
+    expect(callback).not.toHaveBeenCalled();
+    expect(observerInstance.unobserve).not.toHaveBeenCalled();
   });
 });
 
@@ -107,7 +117,7 @@ describe("getActiveCardSize", () => {
       "col-4-large col-3-medium col-2-small col-1-small",
       true
     );
-    assert.equal(result, "large-card");
+    expect(result).toBe("large-card");
   });
 
   it("returns 'medium-card' for col-3-medium and screen width 1200 and sections enabled", () => {
@@ -116,7 +126,7 @@ describe("getActiveCardSize", () => {
       "col-4-large col-3-medium col-2-small col-1-small",
       true
     );
-    assert.equal(result, "medium-card");
+    expect(result).toBe("medium-card");
   });
 
   it("returns 'small-card' for col-2-small and screen width 800 and sections enabled", () => {
@@ -125,7 +135,7 @@ describe("getActiveCardSize", () => {
       "col-4-large col-3-medium col-2-small col-1-medium",
       true
     );
-    assert.equal(result, "small-card");
+    expect(result).toBe("small-card");
   });
 
   it("returns 'medium-card' for col-1-medium at 500px", () => {
@@ -134,7 +144,7 @@ describe("getActiveCardSize", () => {
       "col-1-medium col-1-position-0",
       true
     );
-    assert.equal(result, "medium-card");
+    expect(result).toBe("medium-card");
   });
 
   it("returns null when no matching card type is found (edge case)", () => {
@@ -143,22 +153,22 @@ describe("getActiveCardSize", () => {
       "col-4-position-0 col-3-position-0",
       true
     );
-    assert.isNull(result);
+    expect(result).toBeNull();
   });
 
   it("returns 'medium-card' when required arguments are missing and sections are disabled", () => {
     const result = getActiveCardSize(null, null, false);
-    assert.equal(result, "medium-card");
+    expect(result).toBe("medium-card");
   });
 
   it("returns null when required arguments are missing and sections are enabled", () => {
     const result = getActiveCardSize(null, null, true);
-    assert.isNull(result);
+    expect(result).toBeNull();
   });
 
   it("returns 'spoc' when flightId has value", () => {
     const result = getActiveCardSize(null, null, false, 123);
-    assert.equal(result, "spoc");
+    expect(result).toBe("spoc");
   });
 
   it("uses columnLayout override instead of screenWidth when provided", () => {
@@ -169,7 +179,7 @@ describe("getActiveCardSize", () => {
       null,
       "col-3"
     );
-    assert.equal(result, "medium-card");
+    expect(result).toBe("medium-card");
   });
 
   it("returns correct size with columnLayout and no screenWidth", () => {
@@ -180,19 +190,19 @@ describe("getActiveCardSize", () => {
       null,
       "col-3"
     );
-    assert.equal(result, "large-card");
+    expect(result).toBe("large-card");
   });
 });
 
 describe("getNovaColumnLayout", () => {
   it("returns null when el is null", () => {
-    assert.isNull(getNovaColumnLayout(null));
+    expect(getNovaColumnLayout(null)).toBeNull();
   });
 
   it("returns null when --sections-col-count is not set", () => {
     const el = document.createElement("div");
     document.body.appendChild(el);
-    assert.isNull(getNovaColumnLayout(el));
+    expect(getNovaColumnLayout(el)).toBeNull();
     el.remove();
   });
 
@@ -200,7 +210,7 @@ describe("getNovaColumnLayout", () => {
     const el = document.createElement("div");
     el.style.setProperty("--sections-col-count", "3");
     document.body.appendChild(el);
-    assert.equal(getNovaColumnLayout(el), "col-3");
+    expect(getNovaColumnLayout(el)).toBe("col-3");
     el.remove();
   });
 });
@@ -208,24 +218,43 @@ describe("getNovaColumnLayout", () => {
 describe("getCardColumn", () => {
   const COL_WIDTH = 100;
   const GAP = 10;
+  const STRIDE = COL_WIDTH + GAP;
   let grid;
+  let gridWidth;
+  let nextColumn;
 
+  // jsdom does not lay out CSS grid, so the geometry getCardColumn measures is
+  // stubbed instead: equal-width columns separated by GAP, with cards placed
+  // in order from the inline start.
   function buildGrid(columnCount) {
+    gridWidth = columnCount * COL_WIDTH + (columnCount - 1) * GAP;
+    nextColumn = 1;
     grid = document.createElement("div");
     grid.className = "ds-section-grid";
-    grid.style.display = "grid";
-    grid.style.gridTemplateColumns = `repeat(${columnCount}, ${COL_WIDTH}px)`;
-    grid.style.gap = `${GAP}px`;
-    grid.style.width = `${columnCount * COL_WIDTH + (columnCount - 1) * GAP}px`;
+    grid.style.columnGap = `${GAP}px`;
     grid.style.setProperty("--sections-col-count", `${columnCount}`);
+    grid.getBoundingClientRect = () => ({
+      left: 0,
+      right: gridWidth,
+      width: gridWidth,
+    });
     document.body.appendChild(grid);
     return grid;
   }
 
   function addCard(span = 1) {
     const card = document.createElement("article");
-    card.style.gridColumn = `span ${span}`;
-    card.style.height = "20px";
+    const width = span * COL_WIDTH + (span - 1) * GAP;
+    const inlineStart = (nextColumn - 1) * STRIDE;
+    nextColumn += span;
+    card.getBoundingClientRect = () =>
+      document.dir === "rtl"
+        ? {
+            left: gridWidth - inlineStart - width,
+            right: gridWidth - inlineStart,
+            width,
+          }
+        : { left: inlineStart, right: inlineStart + width, width };
     grid.appendChild(card);
     return card;
   }
@@ -239,17 +268,15 @@ describe("getCardColumn", () => {
   it("returns null for a card with no layout", () => {
     buildGrid(4);
     const card = addCard();
-    card.style.display = "none";
-    assert.isNull(getCardColumn(card));
+    // An unlaid-out card measures zero-width.
+    card.getBoundingClientRect = () => ({ left: 0, right: 0, width: 0 });
+    expect(getCardColumn(card)).toBeNull();
   });
 
   it("reports each column across a full row", () => {
     buildGrid(4);
     const cards = [addCard(), addCard(), addCard(), addCard()];
-    assert.deepEqual(
-      cards.map(card => getCardColumn(card)),
-      [1, 2, 3, 4]
-    );
+    expect(cards.map(card => getCardColumn(card))).toEqual([1, 2, 3, 4]);
   });
 
   it("reports the leftmost column for a card spanning several", () => {
@@ -257,19 +284,16 @@ describe("getCardColumn", () => {
     const wide = addCard(2);
     const next = addCard();
     const last = addCard();
-    assert.equal(getCardColumn(wide), 1);
-    assert.equal(getCardColumn(next), 3);
-    assert.equal(getCardColumn(last), 4);
+    expect(getCardColumn(wide)).toBe(1);
+    expect(getCardColumn(next)).toBe(3);
+    expect(getCardColumn(last)).toBe(4);
   });
 
   it("counts columns from the inline start under RTL", () => {
     document.dir = "rtl";
     buildGrid(3);
     const cards = [addCard(), addCard(), addCard()];
-    assert.deepEqual(
-      cards.map(card => getCardColumn(card)),
-      [1, 2, 3]
-    );
+    expect(cards.map(card => getCardColumn(card))).toEqual([1, 2, 3]);
   });
 
   it("resolves the grid item from an element inside the card", () => {
@@ -278,97 +302,95 @@ describe("getCardColumn", () => {
     const card = addCard();
     const inner = document.createElement("span");
     card.appendChild(inner);
-    assert.equal(getCardColumn(inner), 2);
+    expect(getCardColumn(inner)).toBe(2);
   });
 });
 
 describe("getActiveColumnLayout", () => {
   it("returns 'col-4' for screen width 1920", () => {
     const result = getActiveColumnLayout(1920);
-    assert.equal(result, "col-4");
+    expect(result).toBe("col-4");
   });
 
   it("returns 'col-3' for screen width 1200", () => {
     const result = getActiveColumnLayout(1200);
-    assert.equal(result, "col-3");
+    expect(result).toBe("col-3");
   });
 
   it("returns 'col-2' for screen width 800", () => {
     const result = getActiveColumnLayout(800);
-    assert.equal(result, "col-2");
+    expect(result).toBe("col-2");
   });
 
   it("returns 'col-1' for screen width 500", () => {
     const result = getActiveColumnLayout(500);
-    assert.equal(result, "col-1");
+    expect(result).toBe("col-1");
   });
 
   it("returns 'col-1' when screen width is missing", () => {
     const result = getActiveColumnLayout(undefined);
-    assert.equal(result, "col-1");
+    expect(result).toBe("col-1");
   });
 });
 
 describe("useConfetti hook", () => {
-  let sandbox;
   let rafStub;
-  // eslint-disable-next-line no-unused-vars
-  let cafStub;
   let getContextStub;
   let fakeContext;
+  let prefersReducedMotion;
 
   beforeEach(() => {
-    sandbox = sinon.createSandbox();
+    prefersReducedMotion = false;
 
     // Create a fake 2D context
     fakeContext = {
-      clearRect: sandbox.spy(),
-      setTransform: sandbox.spy(),
-      rotate: sandbox.spy(),
-      scale: sandbox.spy(),
-      fillRect: sandbox.spy(),
+      clearRect: jest.fn(),
+      setTransform: jest.fn(),
+      rotate: jest.fn(),
+      scale: jest.fn(),
+      fillRect: jest.fn(),
       globalAlpha: 1,
     };
 
     // Stub getContext on all canvas elements
-    getContextStub = sandbox
-      .stub(HTMLCanvasElement.prototype, "getContext")
-      .withArgs("2d")
-      .returns(fakeContext);
+    getContextStub = jest
+      .spyOn(HTMLCanvasElement.prototype, "getContext")
+      .mockImplementation(type => (type === "2d" ? fakeContext : null));
 
-    sandbox
-      .stub(window, "matchMedia")
-      .withArgs("(prefers-reduced-motion: reduce)")
-      .returns({ matches: false });
+    jest
+      .spyOn(window, "matchMedia")
+      .mockImplementation(query =>
+        query === "(prefers-reduced-motion: reduce)"
+          ? { matches: prefersReducedMotion }
+          : { matches: false }
+      );
 
     // stub so that it only runs for one frame
-    rafStub = sandbox.stub(window, "requestAnimationFrame").returns(24);
-    cafStub = sandbox.stub(window, "cancelAnimationFrame");
+    rafStub = jest.spyOn(window, "requestAnimationFrame").mockReturnValue(24);
+    jest.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
   });
 
   afterEach(() => {
-    sandbox.restore();
+    jest.restoreAllMocks();
   });
 
   it("should initialize and animate confetti when fireConfetti is called", () => {
     // Mount the component, which calls fireConfetti in useEffect
-    mount(<TestConfettiComponent count={5} />);
-    assert.calledWith(getContextStub, "2d");
-    assert.ok(fakeContext.clearRect.calledOnce);
-    assert.equal(fakeContext.fillRect.callCount, 5);
-    assert.ok(rafStub.calledOnce);
+    render(<TestConfettiComponent count={5} />);
+    expect(getContextStub).toHaveBeenCalledWith("2d");
+    expect(fakeContext.clearRect).toHaveBeenCalledTimes(1);
+    expect(fakeContext.fillRect).toHaveBeenCalledTimes(5);
+    expect(rafStub).toHaveBeenCalledTimes(1);
   });
   it("does nothing when prefers-reduced-motion is enabled", () => {
     // simulate prefers reduced motion
-    window.matchMedia
-      .withArgs("(prefers-reduced-motion: reduce)")
-      .returns({ matches: true });
+    prefersReducedMotion = true;
 
-    mount(<TestConfettiComponent count={5} />);
+    render(<TestConfettiComponent count={5} />);
 
     // Confrim the confetti hasnt been drawn
-    assert.ok(fakeContext.clearRect.notCalled);
-    assert.ok(fakeContext.fillRect.notCalled);
-    assert.ok(rafStub.notCalled);
+    expect(fakeContext.clearRect).not.toHaveBeenCalled();
+    expect(fakeContext.fillRect).not.toHaveBeenCalled();
+    expect(rafStub).not.toHaveBeenCalled();
   });
 });

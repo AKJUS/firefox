@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import {
   getNotificationIdsForUrl,
   isWebNotificationsEnabled,
@@ -8,45 +12,40 @@ import {
 describe("web-notification-match", () => {
   describe("originFromUrl", () => {
     it("returns the http(s) origin", () => {
-      assert.equal(
-        originFromUrl("https://mail.google.com/mail/u/0"),
+      expect(originFromUrl("https://mail.google.com/mail/u/0")).toBe(
         "https://mail.google.com"
       );
     });
     it("returns null for non-http(s) schemes", () => {
-      assert.isNull(originFromUrl("about:newtab"));
-      assert.isNull(originFromUrl("chrome://browser/content"));
+      expect(originFromUrl("about:newtab")).toBeNull();
+      expect(originFromUrl("chrome://browser/content")).toBeNull();
     });
     it("returns null for malformed input", () => {
-      assert.isNull(originFromUrl("not a url"));
+      expect(originFromUrl("not a url")).toBeNull();
     });
   });
 
   describe("notificationKeyForUrl", () => {
     it("redirects a known apex to its app origin", () => {
-      assert.equal(
-        notificationKeyForUrl("https://gmail.com"),
+      expect(notificationKeyForUrl("https://gmail.com")).toBe(
         "https://mail.google.com"
       );
-      assert.equal(
-        notificationKeyForUrl("https://www.slack.com/"),
+      expect(notificationKeyForUrl("https://www.slack.com/")).toBe(
         "https://app.slack.com"
       );
     });
     it("passes unknown origins through unchanged", () => {
-      assert.equal(
-        notificationKeyForUrl("https://example.com/x"),
+      expect(notificationKeyForUrl("https://example.com/x")).toBe(
         "https://example.com"
       );
     });
     it("does not merge sibling subdomains onto one key", () => {
-      assert.equal(
-        notificationKeyForUrl("https://calendar.google.com"),
+      expect(notificationKeyForUrl("https://calendar.google.com")).toBe(
         "https://calendar.google.com"
       );
     });
     it("returns null for non-http(s) urls", () => {
-      assert.isNull(notificationKeyForUrl("about:blank"));
+      expect(notificationKeyForUrl("about:blank")).toBeNull();
     });
   });
 
@@ -60,27 +59,25 @@ describe("web-notification-match", () => {
       },
     };
     it("resolves ids through the apex alias", () => {
-      assert.deepEqual(getNotificationIdsForUrl(state, "https://gmail.com"), [
+      expect(getNotificationIdsForUrl(state, "https://gmail.com")).toEqual([
         "a",
         "b",
       ]);
     });
     it("resolves ids for an exact origin", () => {
-      assert.deepEqual(
-        getNotificationIdsForUrl(state, "https://example.com/path"),
-        ["c"]
-      );
+      expect(
+        getNotificationIdsForUrl(state, "https://example.com/path")
+      ).toEqual(["c"]);
     });
     it("returns a stable empty array for an unmatched url", () => {
       const first = getNotificationIdsForUrl(state, "https://nobody.example");
-      assert.deepEqual(first, []);
-      assert.strictEqual(
-        first,
+      expect(first).toEqual([]);
+      expect(first).toBe(
         getNotificationIdsForUrl(state, "https://other.example")
       );
     });
     it("returns empty for a non-http(s) url", () => {
-      assert.deepEqual(getNotificationIdsForUrl(state, "about:newtab"), []);
+      expect(getNotificationIdsForUrl(state, "about:newtab")).toEqual([]);
     });
   });
 
@@ -88,18 +85,18 @@ describe("web-notification-match", () => {
     const stateWith = values => ({ Prefs: { values } });
 
     it("is enabled when the system and user prefs are set", () => {
-      assert.isTrue(
+      expect(
         isWebNotificationsEnabled(
           stateWith({
             "system.showWebNotifications": true,
             showWebNotifications: true,
           })
         )
-      );
+      ).toBe(true);
     });
 
     it("is enabled via trainhop with the system pref off", () => {
-      assert.isTrue(
+      expect(
         isWebNotificationsEnabled(
           stateWith({
             "system.showWebNotifications": false,
@@ -107,11 +104,11 @@ describe("web-notification-match", () => {
             trainhopConfig: { webNotifications: { enabled: true } },
           })
         )
-      );
+      ).toBe(true);
     });
 
     it("is disabled when the user pref is off even if trainhop enables it", () => {
-      assert.isFalse(
+      expect(
         isWebNotificationsEnabled(
           stateWith({
             "system.showWebNotifications": false,
@@ -119,18 +116,18 @@ describe("web-notification-match", () => {
             trainhopConfig: { webNotifications: { enabled: true } },
           })
         )
-      );
+      ).toBe(false);
     });
 
     it("is disabled when neither the system pref nor trainhop enable it", () => {
-      assert.isFalse(
+      expect(
         isWebNotificationsEnabled(
           stateWith({
             "system.showWebNotifications": false,
             showWebNotifications: true,
           })
         )
-      );
+      ).toBe(false);
     });
   });
 });

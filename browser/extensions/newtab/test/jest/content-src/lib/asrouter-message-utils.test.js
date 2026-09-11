@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import {
   ASROUTER_NEWTAB_MESSAGE_POSITIONS,
   shouldShowOMCHighlight,
@@ -9,29 +13,29 @@ const { ABOVE_TOPSITES, ABOVE_WIDGETS, ABOVE_CONTENT_FEED } =
 
 describe("shouldShowOMCHighlight", () => {
   it("returns false when messagesProp is null", () => {
-    assert.isFalse(shouldShowOMCHighlight(null, "TestComponent"));
+    expect(shouldShowOMCHighlight(null, "TestComponent")).toBe(false);
   });
 
   it("returns false when messageData is null", () => {
-    assert.isFalse(
+    expect(
       shouldShowOMCHighlight(
         { messageData: null, isVisible: true },
         "TestComponent"
       )
-    );
+    ).toBe(false);
   });
 
   it("returns false when messageData is empty", () => {
-    assert.isFalse(
+    expect(
       shouldShowOMCHighlight(
         { messageData: {}, isVisible: true },
         "TestComponent"
       )
-    );
+    ).toBe(false);
   });
 
   it("returns false when isVisible is false", () => {
-    assert.isFalse(
+    expect(
       shouldShowOMCHighlight(
         {
           messageData: { content: { messageType: "TestComponent" } },
@@ -39,11 +43,11 @@ describe("shouldShowOMCHighlight", () => {
         },
         "TestComponent"
       )
-    );
+    ).toBe(false);
   });
 
   it("returns false when componentId does not match messageType", () => {
-    assert.isFalse(
+    expect(
       shouldShowOMCHighlight(
         {
           messageData: { content: { messageType: "OtherComponent" } },
@@ -51,11 +55,11 @@ describe("shouldShowOMCHighlight", () => {
         },
         "TestComponent"
       )
-    );
+    ).toBe(false);
   });
 
   it("returns true when messageType matches and message is visible", () => {
-    assert.isTrue(
+    expect(
       shouldShowOMCHighlight(
         {
           messageData: { content: { messageType: "TestComponent" } },
@@ -63,7 +67,7 @@ describe("shouldShowOMCHighlight", () => {
         },
         "TestComponent"
       )
-    );
+    ).toBe(true);
   });
 });
 
@@ -81,33 +85,33 @@ describe("shouldShowASRouterNewTabMessage", () => {
   }
 
   it("returns false when messagesProps is null", () => {
-    assert.isFalse(
+    expect(
       shouldShowASRouterNewTabMessage(
         null,
         "ASRouterNewTabMessage",
         ABOVE_TOPSITES
       )
-    );
+    ).toBe(false);
   });
 
   it("returns false when messageData is null", () => {
-    assert.isFalse(
+    expect(
       shouldShowASRouterNewTabMessage(
         { messageData: null, isVisible: true },
         "ASRouterNewTabMessage",
         ABOVE_TOPSITES
       )
-    );
+    ).toBe(false);
   });
 
   it("returns false when the message is not visible", () => {
-    assert.isFalse(
+    expect(
       shouldShowASRouterNewTabMessage(
         makeMessages({ isVisible: false }),
         "ASRouterNewTabMessage",
         ABOVE_TOPSITES
       )
-    );
+    ).toBe(false);
   });
 
   describe("with no position configured (defaults to ABOVE_TOPSITES)", () => {
@@ -118,33 +122,33 @@ describe("shouldShowASRouterNewTabMessage", () => {
     });
 
     it("returns true at ABOVE_TOPSITES", () => {
-      assert.isTrue(
+      expect(
         shouldShowASRouterNewTabMessage(
           messages,
           "ASRouterNewTabMessage",
           ABOVE_TOPSITES
         )
-      );
+      ).toBe(true);
     });
 
     it("returns false at ABOVE_WIDGETS", () => {
-      assert.isFalse(
+      expect(
         shouldShowASRouterNewTabMessage(
           messages,
           "ASRouterNewTabMessage",
           ABOVE_WIDGETS
         )
-      );
+      ).toBe(false);
     });
 
     it("returns false at ABOVE_CONTENT_FEED", () => {
-      assert.isFalse(
+      expect(
         shouldShowASRouterNewTabMessage(
           messages,
           "ASRouterNewTabMessage",
           ABOVE_CONTENT_FEED
         )
-      );
+      ).toBe(false);
     });
   });
 
@@ -156,33 +160,33 @@ describe("shouldShowASRouterNewTabMessage", () => {
     });
 
     it("returns true at ABOVE_TOPSITES", () => {
-      assert.isTrue(
+      expect(
         shouldShowASRouterNewTabMessage(
           messages,
           "ASRouterNewTabMessage",
           ABOVE_TOPSITES
         )
-      );
+      ).toBe(true);
     });
 
     it("returns false at ABOVE_WIDGETS", () => {
-      assert.isFalse(
+      expect(
         shouldShowASRouterNewTabMessage(
           messages,
           "ASRouterNewTabMessage",
           ABOVE_WIDGETS
         )
-      );
+      ).toBe(false);
     });
 
     it("returns false at ABOVE_CONTENT_FEED", () => {
-      assert.isFalse(
+      expect(
         shouldShowASRouterNewTabMessage(
           messages,
           "ASRouterNewTabMessage",
           ABOVE_CONTENT_FEED
         )
-      );
+      ).toBe(false);
     });
   });
 
@@ -194,33 +198,33 @@ describe("shouldShowASRouterNewTabMessage", () => {
     });
 
     it("returns false at ABOVE_TOPSITES", () => {
-      assert.isFalse(
+      expect(
         shouldShowASRouterNewTabMessage(
           messages,
           "ASRouterNewTabMessage",
           ABOVE_TOPSITES
         )
-      );
+      ).toBe(false);
     });
 
     it("returns true at ABOVE_WIDGETS", () => {
-      assert.isTrue(
+      expect(
         shouldShowASRouterNewTabMessage(
           messages,
           "ASRouterNewTabMessage",
           ABOVE_WIDGETS
         )
-      );
+      ).toBe(true);
     });
 
     it("returns false at ABOVE_CONTENT_FEED", () => {
-      assert.isFalse(
+      expect(
         shouldShowASRouterNewTabMessage(
           messages,
           "ASRouterNewTabMessage",
           ABOVE_CONTENT_FEED
         )
-      );
+      ).toBe(false);
     });
   });
 
@@ -232,33 +236,33 @@ describe("shouldShowASRouterNewTabMessage", () => {
     });
 
     it("returns false at ABOVE_TOPSITES", () => {
-      assert.isFalse(
+      expect(
         shouldShowASRouterNewTabMessage(
           messages,
           "ASRouterNewTabMessage",
           ABOVE_TOPSITES
         )
-      );
+      ).toBe(false);
     });
 
     it("returns false at ABOVE_WIDGETS", () => {
-      assert.isFalse(
+      expect(
         shouldShowASRouterNewTabMessage(
           messages,
           "ASRouterNewTabMessage",
           ABOVE_WIDGETS
         )
-      );
+      ).toBe(false);
     });
 
     it("returns true at ABOVE_CONTENT_FEED", () => {
-      assert.isTrue(
+      expect(
         shouldShowASRouterNewTabMessage(
           messages,
           "ASRouterNewTabMessage",
           ABOVE_CONTENT_FEED
         )
-      );
+      ).toBe(true);
     });
   });
 });
