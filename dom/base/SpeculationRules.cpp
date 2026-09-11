@@ -7,6 +7,7 @@
 #include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/PrefetchCandidates.h"
+#include "mozilla/dom/PrefetchLog.h"
 #include "mozilla/dom/ReferrerPolicyBinding.h"
 #include "mozilla/dom/SpeculationRuleSet.h"
 #include "mozilla/dom/SpeculationRulesManager.h"
@@ -16,7 +17,9 @@
 #include "nsIFrame.h"
 #include "nsIScriptElement.h"
 #include "nsIURI.h"
+#include "nsNetUtil.h"
 #include "nsTArray.h"
+#include "nsTHashMap.h"
 
 namespace mozilla::dom {
 
@@ -167,14 +170,58 @@ void SpeculationRules::InnerConsiderLoads() {
   // Step 5-6.
   // Here, we group the candidates in-place, unlike the spec.
   prefetchCandidates->Group();
+  mCandidateGroups = prefetchCandidates->AsArray();
 
   // Step 7 runs in various cases when we decide to actually fire a prefetch
-  // based on the eagerness value of the candidates.
-  SpeculationRulesManager* srm = mDocument->EnsureSpeculationRulesManager();
-  for (const PrefetchCandidate& candidate : prefetchCandidates->AsArray()) {
-    if (candidate.eagerness == Eagerness::Immediate) {
-      srm->StartPrefetch(mDocument, candidate);
+  // based on the eagerness value of the candidates. Immediate candidates are
+  // fired now; the less eager ones wait in mCandidateGroups until the user
+  // shows interest in a link matching them.
+  EnactCandidates(nullptr, Eagerness::Immediate);
+}
+
+void SpeculationRules::EnactCandidates(nsIURI* aURL, Eagerness aTriggerLevel) {
+  LOG_SPECRULES(("EnactCandidates: %zu group(s), eagerness>=%d, url=%s",
+                 mCandidateGroups.Length(), static_cast<int>(aTriggerLevel),
+                 aURL ? aURL->GetSpecOrDefault().get() : "(any)"));
+  if (mCandidateGroups.IsEmpty() || !mDocument || !mDocument->IsFullyActive()) {
+    return;
+  }
+
+  // The groups for one URL are all redundant with each other, so of those that
+  // are eager enough, only the least eager one is enacted: it is the one whose
+  // tags were collected from every candidate the trigger justifies.
+  nsTHashMap<nsCString, const PrefetchCandidate*> leastEager;
+  for (const PrefetchCandidate& candidate : mCandidateGroups) {
+    if (candidate.eagerness < aTriggerLevel) {
+      continue;
     }
+
+    if (aURL) {
+      // Candidate URLs are serialized by the Rust URL parser, so they are
+      // compared as URIs rather than as strings, to avoid relying on it and
+      // nsIURI agreeing on a normal form.
+      nsCOMPtr<nsIURI> uri;
+      bool equals = false;
+      if (NS_FAILED(NS_NewURI(getter_AddRefs(uri), candidate.url)) ||
+          NS_FAILED(aURL->Equals(uri, &equals)) || !equals) {
+        continue;
+      }
+    }
+
+    const PrefetchCandidate*& slot =
+        leastEager.LookupOrInsert(candidate.url, nullptr);
+    if (!slot || candidate.eagerness < slot->eagerness) {
+      slot = &candidate;
+    }
+  }
+
+  if (leastEager.IsEmpty()) {
+    return;
+  }
+
+  SpeculationRulesManager* srm = mDocument->EnsureSpeculationRulesManager();
+  for (const PrefetchCandidate* candidate : leastEager.Values()) {
+    srm->StartPrefetch(mDocument, *candidate);
   }
 }
 

@@ -6,6 +6,7 @@
 #define mozilla_dom_SpeculationRules_h
 
 #include "mozilla/UniquePtr.h"
+#include "mozilla/dom/speculationrules_ffi_generated.h"
 #include "nsClassHashtable.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsHashKeys.h"
@@ -13,6 +14,7 @@
 #include "nsTHashSet.h"
 
 class nsIScriptElement;
+class nsIURI;
 
 namespace mozilla::dom {
 
@@ -42,6 +44,14 @@ class SpeculationRules final {
  private:
   virtual ~SpeculationRules() = default;
 
+  // https://html.spec.whatwg.org/#inner-consider-speculative-loads-steps
+  // Step 7, for those candidate groups that the user's behaviour has shown to
+  // be eager enough. A group is enacted if it is at least as eager as
+  // aTriggerLevel and, when aURL is non-null, is for that URL. Only the least
+  // eager qualifying group per URL is enacted, as it is the one whose tags were
+  // collected from every candidate the user's behaviour justifies.
+  void EnactCandidates(nsIURI* aURL, Eagerness aTriggerLevel);
+
   RefPtr<Document> mDocument;
 
   // https://html.spec.whatwg.org/#document-sr-sets
@@ -57,6 +67,12 @@ class SpeculationRules final {
   // These are non-owning pointers; the elements should remove themselves when
   // they are unbound from the document or lose their href attribute.
   nsTHashSet<Element*> mLinks;
+
+  // https://html.spec.whatwg.org/#speculative-load-candidate-group
+  // The representative candidate of each group produced by the last run of
+  // InnerConsiderLoads. Immediate groups have already been enacted; the rest
+  // are kept so a later signal of user interest can enact them.
+  nsTArray<PrefetchCandidate> mCandidateGroups;
 };
 
 }  // namespace mozilla::dom
