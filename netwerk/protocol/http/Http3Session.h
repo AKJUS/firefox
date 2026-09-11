@@ -8,6 +8,7 @@
 #include "HttpTrafficAnalyzer.h"
 #include "mozilla/Array.h"
 #include "mozilla/WeakPtr.h"
+#include "mozilla/dom/PWebTransport.h"
 #include "mozilla/net/NeqoHttp3Conn.h"
 #include "nsAHttpConnection.h"
 #include "nsDeque.h"
@@ -148,8 +149,9 @@ class Http3SessionBase {
   // For WebTransport
   virtual void CloseWebTransportConn() = 0;
   virtual void StreamHasDataToWrite(Http3StreamBase* aStream) = 0;
-  virtual nsresult CloseWebTransport(uint64_t aSessionId, uint32_t aError,
-                                     const nsACString& aMessage) = 0;
+  virtual bool CloseWebTransport(
+      uint64_t aSessionId, uint32_t aError, const nsACString& aMessage,
+      mozilla::dom::WebTransportStatsData& aStats) = 0;
   virtual void SendDatagram(Http3WebTransportSession* aSession,
                             nsTArray<uint8_t>& aData, uint64_t aTrackingId,
                             uint64_t aSendGroupId, int64_t aSendOrder) = 0;
@@ -250,8 +252,9 @@ class Http3Session final : public Http3SessionBase,
                             uint32_t* aCountWritten, bool* aFin) override;
 
   // The folowing functions are used by Http3WebTransportSession:
-  nsresult CloseWebTransport(uint64_t aSessionId, uint32_t aError,
-                             const nsACString& aMessage) override;
+  bool CloseWebTransport(uint64_t aSessionId, uint32_t aError,
+                         const nsACString& aMessage,
+                         mozilla::dom::WebTransportStatsData& aStats) override;
   nsresult CreateWebTransportStream(uint64_t aSessionId,
                                     WebTransportStreamType aStreamType,
                                     uint64_t* aStreamId);

@@ -42,7 +42,8 @@ class WebTransportParent : public PWebTransportParent,
               std::function<void(std::tuple<const nsresult&, const uint8_t&>)>&&
                   aResolver);
 
-  IPCResult RecvClose(const uint32_t& aCode, const nsACString& aReason);
+  IPCResult RecvClose(const uint32_t& aCode, const nsACString& aReason,
+                      CloseResolver&& aResolver);
 
   IPCResult RecvSetSendOrder(uint64_t aStreamId, int64_t aSendOrder);
 
@@ -94,7 +95,8 @@ class WebTransportParent : public PWebTransportParent,
 
  private:
   void NotifyRemoteClosed(bool aCleanly, uint32_t aErrorCode,
-                          const nsACString& aReason);
+                          const nsACString& aReason,
+                          const WebTransportStatsData& aStats);
 
   // Settles and clears every resolver waiting on the in-flight gather. Must be
   // called on the socket thread.

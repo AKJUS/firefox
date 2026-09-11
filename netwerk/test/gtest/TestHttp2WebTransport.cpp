@@ -250,7 +250,8 @@ MockWebTransportSessionEventListener::OnSessionReady(uint64_t ready) {
 
 NS_IMETHODIMP
 MockWebTransportSessionEventListener::OnSessionClosed(
-    bool aCleanly, uint32_t aStatus, const nsACString& aReason) {
+    bool aCleanly, uint32_t aStatus, const nsACString& aReason,
+    mozilla::dom::WebTransportStatsData* aStats) {
   return NS_OK;
 }
 

@@ -953,8 +953,16 @@ nsresult Http3Session::ProcessEvents() {
             LOG(("reason.tag=%u err=%u data=%s\n",
                  static_cast<uint32_t>(reasonExternal.tag), status,
                  reason.get()));
-            wt->OnSessionClosed(cleanly, status, reason);
-
+            // Get stats before the session is closed (spec requirement). If
+            // this fails (e.g. right as the session is torn down), fall back
+            // to whatever stats are already cached rather than overwriting
+            // them with zeros.
+            mozilla::dom::WebTransportStatsData stats;
+            if (mHttp3Connection->GetWebTransportSessionStats(id, stats)) {
+              wt->OnSessionClosedWithStats(cleanly, status, reason, stats);
+            } else {
+              wt->OnSessionClosed(cleanly, status, reason);
+            }
           } break;
           case WebTransportEventExternal::Tag::NewStream: {
             LOG(
@@ -3126,9 +3134,11 @@ PRIntervalTime Http3Session::LastWriteTime() { return mLastWriteTime; }
 // WebTransport
 //=========================================================================
 
-nsresult Http3Session::CloseWebTransport(uint64_t aSessionId, uint32_t aError,
-                                         const nsACString& aMessage) {
-  return mHttp3Connection->CloseWebTransport(aSessionId, aError, aMessage);
+bool Http3Session::CloseWebTransport(
+    uint64_t aSessionId, uint32_t aError, const nsACString& aMessage,
+    mozilla::dom::WebTransportStatsData& aStats) {
+  return mHttp3Connection->CloseWebTransport(aSessionId, aError, aMessage,
+                                             aStats);
 }
 
 nsresult Http3Session::CreateWebTransportStream(

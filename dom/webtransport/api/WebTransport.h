@@ -6,6 +6,7 @@
 #define DOM_WEBTRANSPORT_API_WEBTRANSPORT_H_
 
 #include "mozilla/dom/BufferSourceBindingFwd.h"
+#include "mozilla/dom/PWebTransport.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/WebTransportBinding.h"
 #include "mozilla/dom/WebTransportChild.h"
@@ -91,7 +92,8 @@ class WebTransport final : public nsISupports, public nsWrapperCache {
                            const mozilla::TimeStamp& aTimeStamp);
 
   void RemoteClosed(bool aCleanly, const uint32_t& aCode,
-                    const nsACString& aReason);
+                    const nsACString& aReason,
+                    const Maybe<WebTransportStatsData>& aStats);
 
   void SetNegotiatedProtocol(const nsACString& aProtocol);
 
@@ -204,6 +206,14 @@ class WebTransport final : public nsISupports, public nsWrapperCache {
   RefPtr<ReadableStream> mIncomingBidirectionalStreams;
   RefPtr<WebTransportDatagramDuplexStream> mDatagrams;
   RefPtr<Promise> mClosed;
+
+  Maybe<WebTransportStatsData> mCachedStats;
+  uint64_t mCachedDroppedIncoming = 0;
+  uint64_t mCachedExpiredIncoming = 0;
+
+  // Close pending state and queued GetStats requests
+  bool mClosePending = false;
+  nsTArray<RefPtr<Promise>> mPendingGetStatsPromises;
 };
 
 }  // namespace mozilla::dom

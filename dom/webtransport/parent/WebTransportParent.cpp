@@ -158,21 +158,50 @@ void WebTransportParent::ActorDestroy(ActorDestroyReason aWhy) {
 // We may not receive this response if the child side is destroyed without
 // `Close` or `Shutdown` being explicitly called.
 IPCResult WebTransportParent::RecvClose(const uint32_t& aCode,
-                                        const nsACString& aReason) {
+                                        const nsACString& aReason,
+                                        CloseResolver&& aResolver) {
   LOG(("Close for %p received, code = %u, reason = %s", this, aCode,
        PromiseFlatCString(aReason).get()));
   if (!mSessionReady) {
     return IPC_FAIL(this, "Close received before session was ready");
   }
+
+  // Close and get stats synchronously
+  Maybe<WebTransportStatsData> stats;
+  if (mWebTransport) {
+    // Cast to access internal method for synchronous close with stats
+    RefPtr<net::WebTransportSessionProxy> proxy =
+        static_cast<net::WebTransportSessionProxy*>(mWebTransport.get());
+
+    WebTransportStatsData statsData;
+    if (proxy->CloseSessionAndGetStats(aCode, aReason, statsData)) {
+      stats = Some(statsData);
+      LOG(("Retrieved stats from close: bytesSent=%llu",
+           (unsigned long long)statsData.bytesSent()));
+    } else {
+      LOG(("No stats available from close"));
+    }
+  }
+
   {
     MutexAutoLock lock(mMutex);
     MOZ_ASSERT(!mClosed);
     mClosed.Flip();
   }
+
+  // Return stats to child
+  LOG(("Returning stats to child: stats.isSome()=%d", stats.isSome()));
+  aResolver(stats);
+
   // CloseSession() drops the proxy's listener and its queued events, so an
-  // in-flight gather would never call back.
-  ResolvePendingGetStats(Nothing());
-  mWebTransport->CloseSession(aCode, aReason);
+  // in-flight gather would never call back; settle it with the stats we just
+  // took at close time.
+  ResolvePendingGetStats(stats);
+
+  // Clean up - CloseSession to trigger state cleanup
+  if (mWebTransport) {
+    mWebTransport->CloseSession(aCode, aReason);
+  }
   Close();
   return IPC_OK();
 }
@@ -637,10 +666,16 @@ WebTransportParent::OnSessionReady(uint64_t aSessionId) {
 // We receive this notification from the WebTransportSessionProxy if session
 // creation was unsuccessful at the end of
 // WebTransportSessionProxy::OnStopRequest
+// Pointer lifetime: aStats is owned by the caller
+// (WebTransportSessionProxy::OnSessionClosed or
+// WebTransportSessionProxy::CallOnSessionClosed) and remains valid for the
+// duration of this synchronous call. We copy the data when capturing it in
+// lambdas for dispatch to other threads.
 NS_IMETHODIMP
 WebTransportParent::OnSessionClosed(const bool aCleanly,
                                     const uint32_t aErrorCode,
-                                    const nsACString& aReason) {
+                                    const nsACString& aReason,
+                                    WebTransportStatsData* aStats) {
   nsresult rv = NS_OK;
 
   MOZ_ASSERT(mOwningEventTarget);
@@ -679,9 +714,9 @@ WebTransportParent::OnSessionClosed(const bool aCleanly,
         LOG(("[%p] NotifyRemoteClosed to be called later", this));
         // NotifyRemoteClosed needs to wait until mResolver is invoked.
         mExecuteAfterResolverCallback = [self = RefPtr{this}, aCleanly,
-                                         aErrorCode,
+                                         aErrorCode, statsData = *aStats,
                                          reason = nsCString{aReason}]() {
-          self->NotifyRemoteClosed(aCleanly, aErrorCode, reason);
+          self->NotifyRemoteClosed(aCleanly, aErrorCode, reason, statsData);
         };
         return NS_OK;
       }
@@ -691,7 +726,7 @@ WebTransportParent::OnSessionClosed(const bool aCleanly,
     // stream associated with the CONNECT request that initiated
     // transport.[[Session]] is in the "Data Recvd" state. [QUIC]
     // XXX not calculated yet
-    NotifyRemoteClosed(aCleanly, aErrorCode, aReason);
+    NotifyRemoteClosed(aCleanly, aErrorCode, aReason, *aStats);
   }
 
   return NS_OK;
@@ -739,17 +774,23 @@ NS_IMETHODIMP WebTransportParent::OnResetReceived(uint64_t aStreamId,
   return NS_OK;
 }
 
-void WebTransportParent::NotifyRemoteClosed(bool aCleanly, uint32_t aErrorCode,
-                                            const nsACString& aReason) {
+void WebTransportParent::NotifyRemoteClosed(
+    bool aCleanly, uint32_t aErrorCode, const nsACString& aReason,
+    const WebTransportStatsData& aStats) {
   LOG(("webtransport %p session remote closed cleanly=%d code= %u, reason= %s",
        this, aCleanly, aErrorCode, PromiseFlatCString(aReason).get()));
+
+  // Always provide stats since neqo provides valid transport stats.
+  Maybe<WebTransportStatsData> stats = Some(aStats);
+
   mSocketThread->Dispatch(NS_NewRunnableFunction(
       __func__, [self = RefPtr{this}, aErrorCode, reason = nsCString{aReason},
-                 aCleanly]() {
-        // The session is gone, so an in-flight gather will never call back.
-        self->ResolvePendingGetStats(Nothing());
+                 aCleanly, stats = std::move(stats)]() {
+        // The session is gone, so an in-flight gather will never call back;
+        // settle it with the close-time stats.
+        self->ResolvePendingGetStats(stats);
         // Tell the content side we were closed by the server
-        (void)self->SendRemoteClosed(aCleanly, aErrorCode, reason);
+        (void)self->SendRemoteClosed(aCleanly, aErrorCode, reason, stats);
         // Let the other end shut down the IPC channel after RecvClose()
       }));
 }

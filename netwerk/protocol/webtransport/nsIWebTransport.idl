@@ -112,9 +112,10 @@ interface WebTransportSessionEventListener : nsISupports {
   // This is used to let the consumer of nsIWebTransport know that the
   // underlying WebTransportSession object is ready to use.
   void onSessionReady(in uint64_t aSessionId);
-  void onSessionClosed(in boolean aCleanly,
-                       in uint32_t aErrorCode,
-                       in ACString aReason);
+  [noscript] void onSessionClosed(in boolean aCleanly,
+                                  in uint32_t aErrorCode,
+                                  in ACString aReason,
+                                  in WebTransportStatsDataPtr aStats);
   void onDraining();
 
   // When a new stream has been received.

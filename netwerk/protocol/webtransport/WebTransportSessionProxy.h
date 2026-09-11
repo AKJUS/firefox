@@ -8,6 +8,7 @@
 #include <functional>
 
 #include "mozilla/Mutex.h"
+#include "mozilla/dom/PWebTransport.h"
 #include "nsIChannelEventSink.h"
 #include "nsIInterfaceRequestor.h"
 #include "nsIRedirectResultListener.h"
@@ -145,6 +146,9 @@ class WebTransportSessionProxy final
 
   WebTransportSessionProxy();
 
+  bool CloseSessionAndGetStats(uint32_t aStatus, const nsACString& aReason,
+                               mozilla::dom::WebTransportStatsData& aStats);
+
  private:
   ~WebTransportSessionProxy();
 
@@ -208,6 +212,10 @@ class WebTransportSessionProxy final
       MOZ_GUARDED_BY(mMutex);
   bool mDedicatedConnection = false;  // for WebTranport
   nsIWebTransport::HTTPVersion mHTTPVersion = nsIWebTransport::HTTPVersion::h3;
+
+  // Cached stats for when connection is closed (spec requirement)
+  bool mHasCachedStats MOZ_GUARDED_BY(mMutex) = false;
+  mozilla::dom::WebTransportStatsData mCachedStats MOZ_GUARDED_BY(mMutex);
 };
 
 }  // namespace mozilla::net

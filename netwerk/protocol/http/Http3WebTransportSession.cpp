@@ -337,7 +337,8 @@ uint64_t Http3WebTransportSession::GetStreamId() const {
 void Http3WebTransportSession::Close(nsresult aResult) {
   LOG(("Http3WebTransportSession::Close %p", this));
   if (RefPtr<WebTransportSessionEventListener> listener = TakeListener()) {
-    listener->OnSessionClosed(NS_SUCCEEDED(aResult), 0, ""_ns);
+    mozilla::dom::WebTransportStatsData emptyStats;
+    listener->OnSessionClosed(NS_SUCCEEDED(aResult), 0, ""_ns, &emptyStats);
   }
   if (mTransaction) {
     mTransaction->Close(aResult);
@@ -353,7 +354,21 @@ void Http3WebTransportSession::Close(nsresult aResult) {
 }
 
 void Http3WebTransportSession::OnClosePending() {
-  mSession->CloseWebTransport(mStreamId, mStatus, mReason);
+  // Capture stats at the moment of close
+  mozilla::dom::WebTransportStatsData stats;
+  if (mSession->CloseWebTransport(mStreamId, mStatus, mReason, stats)) {
+    mCachedStats = stats;
+  }
+}
+
+void Http3WebTransportSession::OnSessionClosedWithStats(
+    bool aCleanly, uint32_t aStatus, const nsACString& aReason,
+    const mozilla::dom::WebTransportStatsData& aStats) {
+  // Cache stats for server-initiated close
+  mCachedStats = aStats;
+
+  // Call the existing OnSessionClosed which uses cached stats
+  OnSessionClosed(aCleanly, aStatus, aReason);
 }
 
 void Http3WebTransportSession::OnSessionClosed(bool aCleanly, uint32_t aStatus,
@@ -363,7 +378,8 @@ void Http3WebTransportSession::OnSessionClosed(bool aCleanly, uint32_t aStatus,
     mTransaction = nullptr;
   }
   if (RefPtr<WebTransportSessionEventListener> listener = TakeListener()) {
-    listener->OnSessionClosed(aCleanly, aStatus, aReason);
+    // Use cached stats captured at close time
+    listener->OnSessionClosed(aCleanly, aStatus, aReason, &mCachedStats);
   }
   mRecvState = RECV_DONE;
   mSendState = SEND_DONE;
@@ -384,12 +400,62 @@ void Http3WebTransportSession::CloseSession(uint32_t aStatus,
   if ((mRecvState != CLOSE_PENDING) && (mRecvState != RECV_DONE)) {
     mStatus = aStatus;
     mReason = aReason;
+
+    // Capture stats before clearing the listener (client-initiated close)
+    if (mSession->CloseWebTransport(mStreamId, mStatus, mReason,
+                                    mCachedStats)) {
+      // Stats captured successfully
+    }
+
+    // Notify listener with cached stats before clearing it
+    RefPtr<WebTransportSessionEventListener> listener = GetListener();
+    if (listener) {
+      listener->OnSessionClosed(true, mStatus, mReason, &mCachedStats);
+    }
+
     mSession->ConnectSlowConsumer(this);
     mRecvState = CLOSE_PENDING;
     mSendState = SEND_DONE;
   }
   RefPtr<WebTransportSessionEventListener> listener = TakeListener();
   // let it drop
+}
+
+bool Http3WebTransportSession::CloseSessionAndGetStats(
+    uint32_t aStatus, const nsACString& aReason,
+    mozilla::dom::WebTransportStatsData& aStats) {
+  LOG(("Http3WebTransportSession::CloseSessionAndGetStats stream=%llu",
+       (unsigned long long)mStreamId));
+  if ((mRecvState != CLOSE_PENDING) && (mRecvState != RECV_DONE)) {
+    // Match CloseSession()'s state-transition contract: mStatus/mReason must
+    // be set before entering CLOSE_PENDING, since OnClosePending() (invoked
+    // from WriteSegments() once ConnectSlowConsumer() schedules a revisit)
+    // uses them for its own CloseWebTransport() call that drives mRecvState
+    // to RECV_DONE. Without this, that call used stale (default) mStatus/
+    // mReason, and without ConnectSlowConsumer() the stream was never
+    // revisited at all, leaving it stuck at CLOSE_PENDING (Done() never
+    // becomes true, so Http3Session::CloseStreamInternal() never removes it).
+    mStatus = aStatus;
+    mReason = aReason;
+
+    // Get stats from neqo before closing
+    if (mSession->CloseWebTransport(mStreamId, mStatus, mReason, aStats)) {
+      LOG(("  Got stats: bytesSent=%llu, bytesReceived=%llu",
+           (unsigned long long)aStats.bytesSent(),
+           (unsigned long long)aStats.bytesReceived()));
+      mCachedStats = aStats;
+      RefPtr<WebTransportSessionEventListener> listener =
+          TakeListener();  // drop it
+      mSession->ConnectSlowConsumer(this);
+      mRecvState = CLOSE_PENDING;
+      mSendState = SEND_DONE;
+      return true;
+    }
+    LOG(("  CloseWebTransport failed"));
+  } else {
+    LOG(("  Wrong state: mRecvState=%d", mRecvState));
+  }
+  return false;
 }
 
 void Http3WebTransportSession::CreateOutgoingBidirectionalStream(

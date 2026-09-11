@@ -75,7 +75,8 @@ async protocol PWebTransport
   /**
    * TODO: documentation
    */
-  async Close(uint32_t code, nsCString reason);
+  async Close(uint32_t code, nsCString reason)
+      returns(WebTransportStatsData? stats);
   async CreateUnidirectionalStream(int64_t sendOrder, uint64_t? sendGroupId)
       returns(UnidirectionalStreamResponse response);
   async CreateBidirectionalStream(int64_t sendOrder, uint64_t? sendGroupId)
@@ -152,7 +153,8 @@ async protocol PWebTransport
 
   async Draining();
 
-  async RemoteClosed(bool cleanly, uint32_t code, nsCString reason);
+  async RemoteClosed(bool cleanly, uint32_t code, nsCString reason,
+                     WebTransportStatsData? stats);
 
   async OnStreamResetOrStopSending(uint64_t streamId,
                                    StreamResetOrStopSendingError error);
