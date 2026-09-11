@@ -16,8 +16,6 @@ wasm32-wasi-compiler-rt-19:
     treeherder:
         symbol: TL(wasi-crt-19)
     worker-type: b-linux-docker-xlarge-amd
-    worker:
-        docker-image: {in-tree: deb13-toolchain-build}
     run:
         script: build-wasi-sdk.sh
         arguments:
@@ -235,8 +233,6 @@ wasm32-wasi-compiler-rt-22:
     treeherder:
         symbol: TL(wasi-crt-22)
     worker-type: b-linux-docker-xlarge-amd
-    worker:
-        docker-image: {in-tree: deb13-toolchain-build}
     run:
         script: build-wasi-sdk.sh
         arguments:
@@ -454,8 +450,6 @@ wasm32-wasi-compiler-rt-23:
     treeherder:
         symbol: TL(wasi-crt-23)
     worker-type: b-linux-docker-xlarge-amd
-    worker:
-        docker-image: {in-tree: deb13-toolchain-build}
     run:
         script: build-wasi-sdk.sh
         arguments:
@@ -697,8 +691,6 @@ wasm32-wasi-compiler-rt-trunk:
     treeherder:
         symbol: TL(wasi-crt-trunk)
     worker-type: b-linux-docker-xlarge-amd
-    worker:
-        docker-image: {in-tree: deb13-toolchain-build}
     run:
         script: build-wasi-sdk.sh
         arguments:

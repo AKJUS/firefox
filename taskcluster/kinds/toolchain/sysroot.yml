@@ -70,8 +70,6 @@ sysroot-wasm32-wasi-clang-19:
         local-toolchain: true
     treeherder:
         symbol: TL(sysroot-wasi-19)
-    worker:
-        docker-image: {in-tree: deb13-toolchain-build}
     run:
         script: build-wasi-sdk.sh
         arguments:
@@ -95,8 +93,6 @@ sysroot-wasm32-wasi-clang-22:
         local-toolchain: true
     treeherder:
         symbol: TL(sysroot-wasi-22)
-    worker:
-        docker-image: {in-tree: deb13-toolchain-build}
     run:
         script: build-wasi-sdk.sh
         arguments:
@@ -123,8 +119,6 @@ sysroot-wasm32-wasi-clang-23:
         local-toolchain: true
     treeherder:
         symbol: TL(sysroot-wasi-23)
-    worker:
-        docker-image: {in-tree: deb13-toolchain-build}
     run:
         script: build-wasi-sdk.sh
         arguments:
@@ -145,8 +139,6 @@ sysroot-wasm32-wasi-clang-trunk:
         cached_task: false
     treeherder:
         symbol: TL(sysroot-wasi-trunk)
-    worker:
-        docker-image: {in-tree: deb13-toolchain-build}
     run:
         script: build-wasi-sdk.sh
         arguments:
