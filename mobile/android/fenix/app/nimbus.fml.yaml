@@ -692,6 +692,13 @@ features:
           Whether or not to enable homepage as a new tab
         type: Boolean
         default: false
+    defaults:
+      - channel: nightly
+        value:
+          enabled: true
+      - channel: developer
+        value:
+          enabled: true
 
   universal-edge-to-edge-wallpapers:
     description: >
