@@ -84,6 +84,7 @@
 #include "mozilla/StaticPrefs_browser.h"
 #include "mozilla/StaticPrefs_general.h"
 #include "mozilla/StaticPrefs_gfx.h"
+#include "mozilla/StaticPrefs_mozilla.h"
 #include "mozilla/StaticPrefs_ui.h"
 #include "mozilla/StaticPrefs_widget.h"
 #include "mozilla/WritingModes.h"
@@ -7106,6 +7107,14 @@ void nsCocoaWindow::SetFocus(Raise aRaise,
       [mWindow deminiaturize:nil];
     }
     [mWindow makeKeyAndOrderFront:nil];
+    // AppKit will not make a window key while its application is inactive, so
+    // the call above cannot honour Raise::Yes from the background, and the
+    // cooperative -activate is refused for a background application. Reaching
+    // here already means BrowsingContext::CanFocusCheck granted the raise.
+    if (StaticPrefs::mozilla_widget_raise_on_setfocus_AtStartup() &&
+        !NSApp.isActive) {
+      [NSApp activateIgnoringOtherApps:YES];
+    }
   }
 }
 

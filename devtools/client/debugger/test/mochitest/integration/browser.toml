@@ -28,10 +28,6 @@ fail-if = [
 ["browser_dbg-features-breakpoints.js"]
 
 ["browser_dbg-features-browser-toolbox-source-tree.js"]
-skip-if = [
-  "os == 'mac' && os_version == '14.70' && arch == 'x86_64'", # Bug 1781499
-  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'", # Bug 1781499, Bug 2028047
-]
 
 ["browser_dbg-features-edit-stylesheets.js"]
 fail-if = [
