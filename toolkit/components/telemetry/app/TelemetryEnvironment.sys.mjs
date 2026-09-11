@@ -80,7 +80,7 @@ export var Policy = {
 var gActiveExperimentStartupBuffer = new Map();
 
 // For Powering arewegleanyet.com (See bug 1944592)
-// Legacy Count: 89
+// Legacy Count: 82
 // Glean Count: 113
 
 var gGlobalEnvironment;
@@ -651,10 +651,18 @@ EnvironmentCache.prototype = {
   async delayedInit() {
     this._processData = await Services.sysinfo.processInfo;
     let processData = await Services.sysinfo.processInfo;
-    // Remove isWow64 and isWowARM64 from processData
-    // to strip it down to just CPU info
-    delete processData.isWow64;
-    delete processData.isWowARM64;
+    const allowed = [
+      "count",
+      "cores",
+      "family",
+      "model",
+      "name",
+      "stepping",
+      "vendor",
+    ];
+    processData = Object.fromEntries(
+      Object.entries(processData).filter(([k, _v]) => allowed.includes(k))
+    );
 
     let oldEnv = null;
     if (!this._initTask) {
@@ -1555,8 +1563,6 @@ EnvironmentCache.prototype = {
         availableExts.push(ext);
       }
     }
-
-    this._cpuData.extensions = availableExts;
 
     Glean.systemCpu.extensions.set(availableExts);
 

@@ -579,9 +579,6 @@ export var TelemetryEnvironmentTesting = {
           "model",
           "family",
           "stepping",
-          "l2cacheKB",
-          "l3cacheKB",
-          "speedMHz",
           "vendor",
           "name",
         ];
@@ -606,15 +603,7 @@ export var TelemetryEnvironmentTesting = {
             Glean.system.isWow64.testGetValue()
           );
 
-          for (let f of [
-            "count",
-            "model",
-            "family",
-            "stepping",
-            "l2cacheKB",
-            "l3cacheKB",
-            "speedMHz",
-          ]) {
+          for (let f of ["count", "model", "family", "stepping"]) {
             lazy.Assert.ok(
               Number.isFinite(data.system.cpu[f]),
               f + " must be a number if non null."
@@ -623,15 +612,7 @@ export var TelemetryEnvironmentTesting = {
         }
 
         // These should be numbers if they are not null
-        for (let f of [
-          "count",
-          "model",
-          "family",
-          "stepping",
-          "l2cacheKB",
-          "l3cacheKB",
-          "speedMHz",
-        ]) {
+        for (let f of ["count", "model", "family", "stepping"]) {
           lazy.Assert.ok(
             !(f in data.system.cpu) ||
               data.system.cpu[f] === null ||
@@ -649,17 +630,6 @@ export var TelemetryEnvironmentTesting = {
         }
       }
     }
-
-    let cpuData = data.system.cpu;
-
-    lazy.Assert.ok(
-      Array.isArray(cpuData.extensions),
-      "CPU extensions must be available."
-    );
-    lazy.Assert.deepEqual(
-      cpuData.extensions,
-      Glean.systemCpu.extensions.testGetValue()
-    );
 
     let osData = data.system.os;
     lazy.Assert.ok(this.checkNullOrString(osData.name));

@@ -87,17 +87,6 @@ Structure:
         family: <number>, // desktop only, null on failure
         model: <number, // desktop only, null on failure
         stepping: <number>, // desktop only, null on failure
-        l2cacheKB: <number>, // L2 cache size in KB, only on windows & mac
-        l3cacheKB: <number>, // desktop only, L3 cache size in KB
-        speedMHz: <number>, // desktop only, cpu clock speed in MHz
-        extensions: [
-          <string>,
-          ...
-          // as applicable:
-          // "hasMMX", "hasSSE", "hasSSE2", "hasSSE3", "hasSSSE3",
-          // "hasSSE4A", "hasSSE4_1", "hasSSE4_2", "hasAVX", "hasAVX2",
-          // "hasAES", "hasEDSP", "hasARMv6", "hasARMv7", "hasNEON"
-        ],
     },
     os: {
         name: <string>, // "Windows_NT" or null on failure
