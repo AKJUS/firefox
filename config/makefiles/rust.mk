@@ -81,24 +81,14 @@ endif
 # These flags are passed via `cargo rustc` and only apply to the final rustc
 # invocation (i.e., only the top-level crate, not its dependencies).
 cargo_rustc_flags = $(CARGO_RUSTCFLAGS)
-ifndef DEVELOPER_OPTIONS
-ifndef MOZ_DEBUG_RUST
+ifdef RUST_LTO_ELIGIBLE
 # Enable link-time optimization for release builds, but not when linking
-# gkrust_gtest. And not when doing cross-language LTO.
-ifndef MOZ_LTO_RUST_CROSS
-# Never enable when sancov is enabled to work around https://github.com/rust-lang/rust/issues/90300.
-ifeq (,$(RUST_SANCOV_FLAGS))
-# Never enable when coverage is enabled to work around https://github.com/rust-lang/rust/issues/90045.
-ifndef MOZ_CODE_COVERAGE
+# gkrust_gtest.
 ifeq (,$(findstring gkrust_gtest,$(RUST_LIBRARY_FILE)))
-cargo_rustc_flags += -Clto$(if $(filter full,$(MOZ_LTO_RUST_CROSS)),=fat)
+cargo_rustc_flags += -Clto
 endif
 # We need -Cembed-bitcode=yes for all crates when using -Clto.
 RUSTFLAGS += -Cembed-bitcode=yes
-endif
-endif
-endif
-endif
 endif
 
 ifdef CARGO_INCREMENTAL
@@ -243,9 +233,7 @@ endef
 $(foreach san,ASAN TSAN UBSAN,$(eval $(call sanitizer_options,$(san))))
 endif
 
-# Force the target down to all bindgen callers, even those that may not
-# read BINDGEN_SYSTEM_FLAGS some way or another.
-export BINDGEN_EXTRA_CLANG_ARGS:=$(filter --target=%,$(BINDGEN_SYSTEM_FLAGS))
+export BINDGEN_EXTRA_CLANG_ARGS
 export CARGO_TARGET_DIR
 export RUSTFLAGS
 export RUSTC
