@@ -67,6 +67,60 @@ if (globalThis.performance && !globalThis.performance.getEntriesByType) {
   });
 }
 
+// Firefox module-loader shim. System modules (lib/*.sys.mjs) resolve their
+// dependencies through ChromeUtils/XPCOMUtils at import time, before any
+// beforeEach can run, so these have to live here rather than in stubGlobals().
+// As in the karma harness, importESModule() hands back the global object and
+// the lazy-getter helpers reparent the module's `lazy` object onto it, so
+// `lazy.Foo` reads `globalThis.Foo` at access time.
+const reparentedOntoGlobal = new WeakSet();
+function updateGlobalOrObject(object) {
+  if (reparentedOntoGlobal.has(object)) {
+    return globalThis;
+  }
+  if (Object.getPrototypeOf(object).constructor.name !== "Object") {
+    return object;
+  }
+  reparentedOntoGlobal.add(object);
+  Object.setPrototypeOf(object, globalThis);
+  return globalThis;
+}
+
+globalThis.ChromeUtils = {
+  defineLazyGetter(object, name, f) {
+    updateGlobalOrObject(object)[name] = f();
+  },
+  defineESModuleGetters: updateGlobalOrObject,
+  generateQI() {
+    return {};
+  },
+  importESModule() {
+    return globalThis;
+  },
+};
+
+globalThis.XPCOMUtils = {
+  defineLazyGlobalGetters: updateGlobalOrObject,
+  defineLazyServiceGetter: updateGlobalOrObject,
+  defineLazyServiceGetters: updateGlobalOrObject,
+  defineLazyPreferenceGetter(object, name) {
+    updateGlobalOrObject(object)[name] = "";
+  },
+  generateQI() {
+    return {};
+  },
+};
+
+globalThis.AppConstants = {
+  MOZILLA_OFFICIAL: true,
+  NIGHTLY_BUILD: false,
+};
+
+globalThis.Ci = {
+  nsIProtocolProxyChannelFilter: {},
+  nsIProtocolProxyService: {},
+};
+
 // Fail any test that logs to console.error (React act() warnings, PropType
 // errors, error-boundary logging, etc.). Tests that expect an error must spy
 // on console.error themselves (their inner spy swallows the calls, and its

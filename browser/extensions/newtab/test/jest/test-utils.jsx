@@ -50,22 +50,39 @@ export function stubGlobals(overrides) {
 // same stub for a given service. Add a service here the first time a test needs
 // it, with only the members that service actually exposes.
 const SERVICE_STUBS = {
+  appinfo: () => ({
+    appBuildID: "20180710100040",
+    version: "69.0a1",
+    caretBlinkCount: 500,
+  }),
+  locale: () => ({
+    appLocaleAsBCP47: "en-US",
+    negotiateLanguages: jest.fn(),
+  }),
   obs: () => ({
     addObserver: jest.fn(),
     removeObserver: jest.fn(),
     notifyObservers: jest.fn(),
   }),
   prefs: () => ({
-    getBoolPref: jest.fn(),
-    getStringPref: jest.fn(),
-    getIntPref: jest.fn(),
-    setBoolPref: jest.fn(),
-    setStringPref: jest.fn(),
-    setIntPref: jest.fn(),
-    clearUserPref: jest.fn(),
-    prefHasUserValue: jest.fn(),
+    PREF_BOOL: 128,
+    PREF_INT: 64,
+    PREF_STRING: 32,
     addObserver: jest.fn(),
     removeObserver: jest.fn(),
+    clearUserPref: jest.fn(),
+    getBoolPref: jest.fn((_pref, defaultValue) => defaultValue),
+    getIntPref: jest.fn((_pref, defaultValue) => defaultValue),
+    getStringPref: jest.fn((_pref, defaultValue) => defaultValue),
+    getPrefType: jest.fn(() => 0),
+    prefHasUserValue: jest.fn(() => false),
+    setBoolPref: jest.fn(),
+    setIntPref: jest.fn(),
+    setStringPref: jest.fn(),
+  }),
+  urlFormatter: () => ({
+    formatURL: jest.fn(url => url),
+    formatURLPref: jest.fn(pref => pref),
   }),
   vc: () => ({ compare: jest.fn() }),
   scriptSecurityManager: () => ({
