@@ -29,17 +29,18 @@ function runTest() {
     { rule: "@font-face { ; }", d: {}, noncanonical: true },
 
     // Correct font-family.
-    { rule: _("font-family: \"Mouse\";"), d: {"font-family" : "Mouse"},
+    { rule: _("font-family: \"Mouse\";"), d: {"font-family" : "\"Mouse\""} },
+    { rule: _("font-family: \"Mouse\""),  d: {"font-family" : "\"Mouse\""},
       noncanonical: true },
-    { rule: _("font-family: \"Mouse\""),  d: {"font-family" : "Mouse"},
+    { rule: _("font-family: Mouse;"),  d: {"font-family" : "Mouse" },
       noncanonical: true },
-    { rule: _("font-family: Mouse;"),  d: {"font-family" : "Mouse" } },
     { rule: _("font-family: Mouse"),  d: {"font-family" : "Mouse" },
       noncanonical: true },
 
     // Correct but unusual font-family.
     { rule: _("font-family: Hoefler Text;"),
-      d: {"font-family" : "Hoefler Text"} },
+      d: {"font-family" : "Hoefler Text"},
+      noncanonical: true },
 
     // Incorrect font-family.
     { rule: _("font-family:"),        d: {} },
@@ -136,7 +137,7 @@ function runTest() {
       d: { "src" : "url(\"/fonts/Mouse\"), url(\"/fonts/Rat\")" } },
 
     { rule: _("src: local(Mouse), url(\"/fonts/Mouse\");"),
-      d: { "src" : "local(\"Mouse\"), url(\"/fonts/Mouse\")" },
+      d: { "src" : "local(Mouse), url(\"/fonts/Mouse\")" },
       noncanonical: true },
 
     { rule: _("src: local(\"老鼠\"), url(\"/fonts/Mouse\");"),
@@ -150,7 +151,7 @@ function runTest() {
 
     // Correct but unusual src:
     { rule: _("src: local(Hoefler Text);"),
-      d: {"src" : "local(\"Hoefler Text\")"}, noncanonical: true },
+      d: {"src" : "local(Hoefler Text)"}, noncanonical: true },
 
     // Incorrect src:
     { rule: _("src:"), d: {} },
@@ -172,15 +173,15 @@ function runTest() {
       d: { "src" : "url(\"/fonts/Mouse\")" },
       noncanonical: true },
     { rule: _("src: local(Cat); src: local(Mouse)"),
-      d: { "src" : "local(\"Mouse\")" },
+      d: { "src" : "local(Mouse)" },
       noncanonical: true },
 
     // Correct parenthesis matching for local()
     { rule: _("src: local(Mouse); src: local(Cat(); src: local(Rat); )"),
-      d: { "src" : "local(\"Mouse\")" },
+      d: { "src" : "local(Mouse)" },
       noncanonical: true },
     { rule: _("src: local(Mouse); src: local(\"Cat\"; src: local(Rat); )"),
-      d: { "src" : "local(\"Mouse\")" },
+      d: { "src" : "local(Mouse)" },
       noncanonical: true },
 
     // Correct parenthesis matching for format()
