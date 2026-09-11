@@ -1600,6 +1600,13 @@ class WorkerPrivate final
   mozilla::ipc::Endpoint<PRemoteWorkerDebuggerParent> mDebuggerParentEp;
   bool mRemoteDebuggerRegistered MOZ_GUARDED_BY(mMutex);
   bool mRemoteDebuggerReady MOZ_GUARDED_BY(mMutex);
+  // Whether the worker thread has finished trying to bind the current
+  // PRemoteWorkerDebugger child endpoint, either by binding it or by ending
+  // without one. Until then mRemoteDebugger being null is not conclusive, so
+  // this is the predicate EnableRemoteDebugger waits on. Cleared whenever
+  // CreateRemoteDebuggerEndpoints arms a new endpoint pair, so that a
+  // freeze/thaw cycle waits for the new binding rather than the old one.
+  bool mRemoteDebuggerBindingDone MOZ_GUARDED_BY(mMutex);
   // True while the parent thread is blocked in Enable/DisableRemoteDebugger
   // waiting for the register/unregister handshake reply (RecvRegisterDone /
   // RecvUnregisterDone) to run on the worker thread. That reply is delivered on

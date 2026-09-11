@@ -1762,6 +1762,7 @@ void WorkerPrivate::BindRemoteWorkerDebuggerChild() {
     MutexAutoLock lock(mMutex);
     MOZ_ASSERT_DEBUG_OR_FUZZING(!mRemoteDebugger);
     mRemoteDebugger = std::move(debugger);
+    mRemoteDebuggerBindingDone = true;
     mDebuggerBindingCondVar.Notify();
   }
 }
@@ -1777,6 +1778,11 @@ void WorkerPrivate::CreateRemoteDebuggerEndpoints() {
   MOZ_ASSERT_DEBUG_OR_FUZZING(!mRemoteDebugger &&
                               !mDebuggerParentEp.IsValid() &&
                               !mDebuggerChildEp.IsValid());
+
+  // A fresh endpoint pair means the worker thread has to bind again, so
+  // EnableRemoteDebugger must wait for it again. This runs on both the
+  // construction and the Thaw path.
+  mRemoteDebuggerBindingDone = false;
 
   (void)NS_WARN_IF(NS_FAILED(PRemoteWorkerDebugger::CreateEndpoints(
       &mDebuggerParentEp, &mDebuggerChildEp)));
@@ -1821,6 +1827,7 @@ void WorkerPrivate::SetIsRemoteDebuggerRegistered(const bool& aRegistered) {
     // here since Worker quickly shutdown or initialization fails in
     // WorkerThreadPrimaryRunnable::Run().
     mRemoteDebuggerRegistered = aRegistered;
+    mRemoteDebuggerBindingDone = true;
   }
   if (unregisteredDebugger) {
     unregisteredDebugger->Close();
@@ -1888,7 +1895,9 @@ void WorkerPrivate::EnableRemoteDebugger() {
   mozilla::ipc::Endpoint<PRemoteWorkerDebuggerParent> parentEp;
   {
     MutexAutoLock lock(mMutex);
-    if (!mRemoteDebugger) {
+    // CondVar::Wait may wake spuriously; falling through would skip the
+    // registration below and leave this worker permanently undebuggable.
+    while (!mRemoteDebuggerBindingDone) {
       mDebuggerBindingCondVar.Wait();
     }
     // If Worker Thread never run the event loop, i.e. JSContext initilaization
@@ -1948,7 +1957,9 @@ void WorkerPrivate::EnableRemoteDebugger() {
     // loop that needs this (parent) thread would deadlock, since a sync loop
     // does not otherwise drain the debugger queue (bug 2053827).
     mProcessDebuggerIPCHandshake = true;
-    if (!mRemoteDebuggerRegistered) {
+    // mRemoteDebugger is cleared and the condvar notified when the worker
+    // finishes, so this terminates whether or not registration succeeds.
+    while (!mRemoteDebuggerRegistered && mRemoteDebugger) {
       mDebuggerBindingCondVar.Wait();
     }
     mProcessDebuggerIPCHandshake = false;
@@ -2887,6 +2898,7 @@ WorkerPrivate::WorkerPrivate(
       mChildEp(std::move(aChildEp)),
       mRemoteDebuggerRegistered(false),
       mRemoteDebuggerReady(true),
+      mRemoteDebuggerBindingDone(false),
       mProcessDebuggerIPCHandshake(false),
       mIsQueued(false),
       // Route the worker through the RemoteWorkerDebugger, including top-level
