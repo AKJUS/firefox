@@ -48,6 +48,7 @@ class HomeActivityTestRule(
         initialTouchMode: Boolean = false,
         launchActivity: Boolean = true,
         skipOnboarding: Boolean = true,
+        isHomepageAsNewTabEnabled: Boolean = false,
         isPocketEnabled: Boolean = settings.showPocketRecommendationsFeature,
         isBookmarksHomeFeatureEnabled: Boolean = settings.showBookmarksHomeFeature,
         isRecentTabsFeatureEnabled: Boolean = settings.showRecentTabsFeature,
@@ -75,6 +76,7 @@ class HomeActivityTestRule(
         isHomepageTrendingRecentSearchEnabled: Boolean = false,
         showAddressBarInFocusMode: Boolean = false,
     ) : this(initialTouchMode, launchActivity, skipOnboarding) {
+        this.isHomepageAsNewTabEnabled = isHomepageAsNewTabEnabled
         this.isPocketEnabled = isPocketEnabled
         this.isBookmarksHomeFeatureEnabled = isBookmarksHomeFeatureEnabled
         this.isRecentTabsFeatureEnabled = isRecentTabsFeatureEnabled
@@ -151,6 +153,7 @@ class HomeActivityTestRule(
                 initialTouchMode = initialTouchMode,
                 launchActivity = launchActivity,
                 skipOnboarding = skipOnboarding,
+                isHomepageAsNewTabEnabled = false,
                 isWallpaperOnboardingEnabled = false,
                 isOpenInAppBannerEnabled = false,
                 isMicrosurveyEnabled = false,
@@ -191,6 +194,7 @@ internal constructor(
         initialTouchMode: Boolean = false,
         launchActivity: Boolean = true,
         skipOnboarding: Boolean = true,
+        isHomepageAsNewTabEnabled: Boolean = false,
         isPocketEnabled: Boolean = settings.showPocketRecommendationsFeature,
         isBookmarksHomeFeatureEnabled: Boolean = settings.showBookmarksHomeFeature,
         isRecentTabsFeatureEnabled: Boolean = settings.showRecentTabsFeature,
@@ -220,6 +224,7 @@ internal constructor(
         isHomepageTrendingRecentSearchEnabled: Boolean = false,
         showAddressBarInFocusMode: Boolean = false,
     ) : this(initialTouchMode, launchActivity, skipOnboarding) {
+        this.isHomepageAsNewTabEnabled = isHomepageAsNewTabEnabled
         this.isPocketEnabled = isPocketEnabled
         this.isBookmarksHomeFeatureEnabled = isBookmarksHomeFeatureEnabled
         this.isRecentTabsFeatureEnabled = isRecentTabsFeatureEnabled
@@ -301,6 +306,7 @@ internal constructor(
      * initial settings and override any changes made in the meantime.
      */
     fun updateCachedSettings() {
+        isHomepageAsNewTabEnabled = settings.enableHomepageAsNewTab
         isPocketEnabled = settings.showPocketRecommendationsFeature
         isBookmarksHomeFeatureEnabled = settings.showBookmarksHomeFeature
         isRecentTabsFeatureEnabled = settings.showRecentTabsFeature
@@ -344,6 +350,7 @@ internal constructor(
                 skipOnboarding = skipOnboarding,
                 isBookmarksHomeFeatureEnabled = true,
                 isRecentlyVisitedFeatureEnabled = true,
+                isHomepageAsNewTabEnabled = false,
                 isWallpaperOnboardingEnabled = false,
                 isOpenInAppBannerEnabled = false,
                 isMicrosurveyEnabled = false,

@@ -19,6 +19,9 @@ interface FeatureSettingsHelper {
     /** Whether the "Bookmarks" home screen section is enabled or not. It can show up to 8 bookmarks. */
     var isBookmarksHomeFeatureEnabled: Boolean
 
+    /** Whether the homepage as a new tab feature is enabled or not. */
+    var isHomepageAsNewTabEnabled: Boolean
+
     /**
      * Whether the "Continue" homescreen section is enabled or not. It shows the last visited tab on this device and on
      * other synced devices.
