@@ -119,16 +119,37 @@ add_setup(async function setup() {
   });
 });
 
-async function checkDefaultSearch() {
-  let data = TelemetryEnvironment.currentEnvironment;
+async function checkDefaultSearch(privateOn, reInitSearchService) {
+  // Start off with separate default engine for private browsing turned off.
+  Services.prefs.setBoolPref(
+    "browser.search.separatePrivateDefault.featureGate",
+    privateOn
+  );
+  Services.prefs.setBoolPref(
+    "browser.search.separatePrivateDefault.enabled",
+    privateOn
+  );
+
+  let data;
+  if (privateOn) {
+    data = await TelemetryEnvironment.testCleanRestart().onInitialized();
+  } else {
+    data = TelemetryEnvironment.currentEnvironment;
+  }
 
   TelemetryEnvironmentTesting.checkEnvironmentData(data);
   Assert.ok(!("defaultSearchEngine" in data.settings));
   Assert.ok(!("defaultSearchEngineData" in data.settings));
+  Assert.ok(!("defaultPrivateSearchEngine" in data.settings));
+  Assert.ok(!("defaultPrivateSearchEngineData" in data.settings));
 
   // Load the engines definitions from a xpcshell data: that's needed so that
   // the search provider reports an engine identifier.
 
+  // Initialize the search service.
+  if (reInitSearchService) {
+    SearchService.reset();
+  }
   await SearchService.init();
   await promiseNextTick();
 
@@ -147,10 +168,34 @@ async function checkDefaultSearch() {
     data.settings.defaultSearchEngineData,
     expectedSearchEngineData
   );
+  if (privateOn) {
+    Assert.equal(
+      data.settings.defaultPrivateSearchEngine,
+      "telemetrySearchIdentifier"
+    );
+    Assert.deepEqual(
+      data.settings.defaultPrivateSearchEngineData,
+      expectedSearchEngineData,
+      "Should have the correct data for the private search engine"
+    );
+  } else {
+    Assert.ok(
+      !("defaultPrivateSearchEngine" in data.settings),
+      "Should not have private name recorded as the pref for separate is off"
+    );
+    Assert.ok(
+      !("defaultPrivateSearchEngineData" in data.settings),
+      "Should not have private data recorded as the pref for separate is off"
+    );
+  }
 
   // Add a new search engine (this will have no engine identifier).
-  const SEARCH_ENGINE_ID = "telemetry_default";
-  const SEARCH_ENGINE_URL = "https://www.example.org/";
+  const SEARCH_ENGINE_ID = privateOn
+    ? "telemetry_private"
+    : "telemetry_default";
+  const SEARCH_ENGINE_URL = `https://www.example.org/${
+    privateOn ? "private" : ""
+  }`;
   await SearchTestUtils.installSearchExtension({
     id: `${SEARCH_ENGINE_ID}@test.engine`,
     name: SEARCH_ENGINE_ID,
@@ -163,10 +208,25 @@ async function checkDefaultSearch() {
     "testWatch_SearchDefault",
     deferred.resolve
   );
-  await SearchService.setDefault(
-    SearchService.getEngineByName(SEARCH_ENGINE_ID),
-    SearchService.CHANGE_REASON.UNKNOWN
-  );
+  if (privateOn) {
+    // As we had no default and no search engines, the normal mode engine will
+    // assume the same as the added engine. To ensure the telemetry is different
+    // we enforce a different default here.
+    const engine = await SearchService.getEngineByName(
+      "telemetrySearchIdentifier"
+    );
+    engine.hidden = false;
+    await SearchService.setDefault(engine, SearchService.CHANGE_REASON.UNKNOWN);
+    await SearchService.setDefaultPrivate(
+      SearchService.getEngineByName(SEARCH_ENGINE_ID),
+      SearchService.CHANGE_REASON.UNKNOWN
+    );
+  } else {
+    await SearchService.setDefault(
+      SearchService.getEngineByName(SEARCH_ENGINE_ID),
+      SearchService.CHANGE_REASON.UNKNOWN
+    );
+  }
   await deferred.promise;
 
   data = TelemetryEnvironment.currentEnvironment;
@@ -177,16 +237,35 @@ async function checkDefaultSearch() {
     name: SEARCH_ENGINE_ID,
     loadPath: `[addon]${SEARCH_ENGINE_ID}@test.engine`,
   };
-  Assert.equal(data.settings.defaultSearchEngine, EXPECTED_SEARCH_ENGINE);
-  Assert.deepEqual(
-    data.settings.defaultSearchEngineData,
-    EXPECTED_SEARCH_ENGINE_DATA
-  );
+  if (privateOn) {
+    Assert.equal(
+      data.settings.defaultSearchEngine,
+      "telemetrySearchIdentifier"
+    );
+    Assert.deepEqual(
+      data.settings.defaultSearchEngineData,
+      expectedSearchEngineData
+    );
+    Assert.equal(
+      data.settings.defaultPrivateSearchEngine,
+      EXPECTED_SEARCH_ENGINE
+    );
+    Assert.deepEqual(
+      data.settings.defaultPrivateSearchEngineData,
+      EXPECTED_SEARCH_ENGINE_DATA
+    );
+  } else {
+    Assert.equal(data.settings.defaultSearchEngine, EXPECTED_SEARCH_ENGINE);
+    Assert.deepEqual(
+      data.settings.defaultSearchEngineData,
+      EXPECTED_SEARCH_ENGINE_DATA
+    );
+  }
   TelemetryEnvironment.unregisterChangeListener("testWatch_SearchDefault");
 }
 
 add_task(async function test_defaultSearchEngine() {
-  await checkDefaultSearch();
+  await checkDefaultSearch(false);
   // Cleanly install an engine from an xml file.
   let promise = new Promise(resolve => {
     TelemetryEnvironment.registerChangeListener(
@@ -244,6 +323,10 @@ add_task(async function test_defaultSearchEngine() {
   data = TelemetryEnvironment.currentEnvironment;
   TelemetryEnvironmentTesting.checkEnvironmentData(data);
   Assert.equal(data.settings.defaultSearchEngine, EXPECTED_SEARCH_ENGINE);
+});
+
+add_task(async function test_defaultPrivateSearchEngine() {
+  await checkDefaultSearch(true, true);
 });
 
 add_task(async function test_defaultSearchEngine_paramsChanged() {

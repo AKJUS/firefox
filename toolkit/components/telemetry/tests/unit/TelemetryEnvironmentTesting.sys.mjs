@@ -43,6 +43,8 @@ const PROFILE_SOURCE = "telemetry-tests";
 const GFX_VENDOR_ID = "0xabcd";
 const GFX_DEVICE_ID = "0x1234";
 
+const EXPECTED_HDD_FIELDS = ["profile", "binary", "system"];
+
 // Valid attribution code to write so that settings.attribution can be tested.
 const ATTRIBUTION_CODE = [
   ["source", "%3D", "google.com"],
@@ -110,6 +112,8 @@ var SysInfo = {
  * reporting.
  */
 export var TelemetryEnvironmentTesting = {
+  EXPECTED_HDD_FIELDS,
+
   init(appInfo) {
     this.appInfo = appInfo;
   },
@@ -264,6 +268,11 @@ export var TelemetryEnvironmentTesting = {
 
   checkSettingsSection(data) {
     const EXPECTED_FIELDS_TYPES = {
+      blocklistEnabled: "boolean",
+      e10sEnabled: "boolean",
+      e10sMultiProcesses: "number",
+      fissionEnabled: "boolean",
+      intl: "object",
       locale: "string",
       update: "object",
       userPrefs: "object",
@@ -293,7 +302,20 @@ export var TelemetryEnvironmentTesting = {
       "object"
     );
 
+    // This property is not always present, but when it is, it must be a number.
+    if ("launcherProcessState" in data.settings) {
+      lazy.Assert.equal(typeof data.settings.launcherProcessState, "number");
+      lazy.Assert.equal(
+        typeof Glean.launcherProcess.state.testGetValue(),
+        "number"
+      );
+    }
+
     // Check "addonCompatibilityCheckEnabled" separately.
+    lazy.Assert.equal(
+      data.settings.addonCompatibilityCheckEnabled,
+      lazy.AddonManager.checkCompatibility
+    );
     lazy.Assert.equal(
       Glean.addonsManager.compatibilityCheckEnabled.testGetValue(),
       lazy.AddonManager.checkCompatibility
@@ -320,6 +342,8 @@ export var TelemetryEnvironmentTesting = {
     let update = data.settings.update;
     lazy.Assert.ok(this.checkNullOrString(update.channel));
     lazy.Assert.equal(typeof update.enabled, "boolean");
+    lazy.Assert.equal(typeof update.autoDownload, "boolean");
+    lazy.Assert.equal(typeof update.background, "boolean");
     lazy.Assert.equal(
       update.channel,
       Glean.updateSettings.channel.testGetValue()
@@ -329,13 +353,56 @@ export var TelemetryEnvironmentTesting = {
       Glean.updateSettings.enabled.testGetValue()
     );
     lazy.Assert.equal(
-      "boolean",
-      typeof Glean.updateSettings.autoDownload.testGetValue()
+      update.autoDownload,
+      Glean.updateSettings.autoDownload.testGetValue()
     );
     lazy.Assert.equal(
-      "boolean",
-      typeof Glean.updateSettings.background.testGetValue()
+      update.background,
+      Glean.updateSettings.background.testGetValue()
     );
+
+    // Check sandbox settings exist and make sense
+    if (data.settings.sandbox.effectiveContentProcessLevel !== null) {
+      lazy.Assert.equal(
+        typeof data.settings.sandbox.effectiveContentProcessLevel,
+        "number",
+        "sandbox.effectiveContentProcessLevel must have the correct type"
+      );
+      lazy.Assert.equal(
+        data.settings.sandbox.effectiveContentProcessLevel,
+        Glean.sandbox.effectiveContentProcessLevel.testGetValue()
+      );
+    }
+
+    if (data.settings.sandbox.contentWin32kLockdownState !== null) {
+      lazy.Assert.equal(
+        typeof data.settings.sandbox.contentWin32kLockdownState,
+        "number",
+        "sandbox.contentWin32kLockdownState must have the correct type"
+      );
+
+      let win32kLockdownState =
+        data.settings.sandbox.contentWin32kLockdownState;
+      lazy.Assert.ok(win32kLockdownState >= 1 && win32kLockdownState <= 17);
+
+      lazy.Assert.equal(
+        win32kLockdownState,
+        Glean.sandbox.contentWin32kLockdownState.testGetValue()
+      );
+    }
+
+    // Check "defaultSearchEngine" separately, as it can either be undefined or string.
+    if ("defaultSearchEngine" in data.settings) {
+      this.checkString(data.settings.defaultSearchEngine);
+      lazy.Assert.equal(typeof data.settings.defaultSearchEngineData, "object");
+    }
+
+    if ("defaultPrivateSearchEngineData" in data.settings) {
+      lazy.Assert.equal(
+        typeof data.settings.defaultPrivateSearchEngineData,
+        "object"
+      );
+    }
 
     if ((gIsWindows || gIsMac) && AppConstants.MOZ_BUILD_APP == "browser") {
       lazy.Assert.equal(typeof data.settings.attribution, "object");
@@ -381,41 +448,32 @@ export var TelemetryEnvironmentTesting = {
       );
     }
 
-    this.checkIntlSettings();
+    this.checkIntlSettings(data.settings);
   },
 
-  checkIntlSettings() {
-    lazy.Assert.deepEqual(
-      Services.locale.requestedLocales,
-      Glean.intl.requestedLocales.testGetValue()
-    );
-    lazy.Assert.deepEqual(
-      Services.locale.availableLocales,
-      Glean.intl.availableLocales.testGetValue()
-    );
-    lazy.Assert.deepEqual(
-      Services.locale.appLocalesAsBCP47,
-      Glean.intl.appLocales.testGetValue()
-    );
-    try {
-      let osprefs = Cc["@mozilla.org/intl/ospreferences;1"].getService(
-        Ci.mozIOSPreferences
-      );
-      lazy.Assert.deepEqual(
-        osprefs.systemLocales,
-        Glean.intl.systemLocales.testGetValue()
-      );
-      lazy.Assert.deepEqual(
-        osprefs.regionalPrefsLocales,
-        Glean.intl.regionalPrefsLocales.testGetValue()
-      );
-    } catch (e) {
-      // Ignore.
+  checkIntlSettings({ intl }) {
+    let fields = [
+      "requestedLocales",
+      "availableLocales",
+      "appLocales",
+      "acceptLanguages",
+    ];
+
+    for (let field of fields) {
+      lazy.Assert.ok(Array.isArray(intl[field]), `${field} is an array`);
+      lazy.Assert.deepEqual(intl[field], Glean.intl[field].testGetValue());
     }
-    lazy.Assert.deepEqual(
-      Services.locale.acceptLanguages.split(/\s*,\s*/g),
-      Glean.intl.acceptLanguages.testGetValue()
-    );
+
+    // These fields may be null if they aren't ready yet. This is mostly to deal
+    // with test failures on Android, but they aren't guaranteed to exist.
+    let optionalFields = ["systemLocales", "regionalPrefsLocales"];
+
+    for (let field of optionalFields) {
+      let isArray = Array.isArray(intl[field]);
+      let isNull = intl[field] === null;
+      lazy.Assert.ok(isArray || isNull, `${field} is an array or null`);
+      lazy.Assert.deepEqual(intl[field], Glean.intl[field].testGetValue());
+    }
   },
 
   checkProfileSection(data) {
@@ -428,6 +486,14 @@ export var TelemetryEnvironmentTesting = {
       truncateToDays(PROFILE_CREATION_DATE_MS)
     );
     lazy.Assert.equal(
+      data.profile.resetDate,
+      truncateToDays(PROFILE_RESET_DATE_MS)
+    );
+    lazy.Assert.equal(
+      data.profile.firstUseDate,
+      truncateToDays(PROFILE_FIRST_USE_MS)
+    );
+    lazy.Assert.equal(
       data.profile.recoveredFromBackup,
       truncateToDays(PROFILE_RECOVERED_FROM_BACKUP)
     );
@@ -436,11 +502,11 @@ export var TelemetryEnvironmentTesting = {
       Glean.profiles.creationDate.testGetValue()
     );
     lazy.Assert.equal(
-      truncateToDays(PROFILE_RESET_DATE_MS),
+      data.profile.resetDate,
       Glean.profiles.resetDate.testGetValue()
     );
     lazy.Assert.equal(
-      truncateToDays(PROFILE_FIRST_USE_MS),
+      data.profile.firstUseDate,
       Glean.profiles.firstUseDate.testGetValue()
     );
     lazy.Assert.equal(
@@ -542,7 +608,14 @@ export var TelemetryEnvironmentTesting = {
   },
 
   checkSystemSection(data, assertProcessData) {
-    const EXPECTED_FIELDS = ["memoryMB", "cpu", "os", "gfx"];
+    const EXPECTED_FIELDS = [
+      "memoryMB",
+      "cpu",
+      "os",
+      "hdd",
+      "gfx",
+      "appleModelId",
+    ];
 
     lazy.Assert.ok(
       "system" in data,
@@ -567,6 +640,9 @@ export var TelemetryEnvironmentTesting = {
           "model",
           "family",
           "stepping",
+          "l2cacheKB",
+          "l3cacheKB",
+          "speedMHz",
           "vendor",
           "name",
         ];
@@ -587,11 +663,62 @@ export var TelemetryEnvironmentTesting = {
             "isWow64 must be available on Windows and have the correct type."
           );
           lazy.Assert.equal(
+            typeof data.system.isWowARM64,
+            "boolean",
+            "isWowARM64 must be available on Windows and have the correct type."
+          );
+          lazy.Assert.equal(
+            typeof data.system.hasWinPackageId,
+            "boolean",
+            "hasWinPackageId must be available on Windows and have the correct type."
+          );
+          // This is only sent for Mozilla produced MSIX packages
+          lazy.Assert.ok(
+            !("winPackageFamilyName" in data.system) ||
+              data.system.winPackageFamilyName === null ||
+              typeof data.system.winPackageFamilyName === "string",
+            "winPackageFamilyName must be a string if non null"
+          );
+          lazy.Assert.ok(
+            "virtualMaxMB" in data.system,
+            "virtualMaxMB must be available."
+          );
+          lazy.Assert.ok(
+            Number.isFinite(data.system.virtualMaxMB),
+            "virtualMaxMB must be a number."
+          );
+          lazy.Assert.equal(
             data.system.isWow64,
             Glean.system.isWow64.testGetValue()
           );
+          lazy.Assert.equal(
+            data.system.isWowARM64,
+            Glean.system.isWowArm64.testGetValue()
+          );
+          lazy.Assert.equal(
+            data.system.hasWinPackageId,
+            Glean.system.hasWinPackageId.testGetValue()
+          );
+          if (data.system.winPackageFamilyName) {
+            lazy.Assert.equal(
+              data.system.winPackageFamilyName,
+              Glean.system.winPackageFamilyName.testGetValue()
+            );
+          }
+          lazy.Assert.equal(
+            data.system.virtualMaxMB,
+            Glean.system.virtualMemory.testGetValue()
+          );
 
-          for (let f of ["count", "model", "family", "stepping"]) {
+          for (let f of [
+            "count",
+            "model",
+            "family",
+            "stepping",
+            "l2cacheKB",
+            "l3cacheKB",
+            "speedMHz",
+          ]) {
             lazy.Assert.ok(
               Number.isFinite(data.system.cpu[f]),
               f + " must be a number if non null."
@@ -600,7 +727,15 @@ export var TelemetryEnvironmentTesting = {
         }
 
         // These should be numbers if they are not null
-        for (let f of ["count", "model", "family", "stepping"]) {
+        for (let f of [
+          "count",
+          "model",
+          "family",
+          "stepping",
+          "l2cacheKB",
+          "l3cacheKB",
+          "speedMHz",
+        ]) {
           lazy.Assert.ok(
             !(f in data.system.cpu) ||
               data.system.cpu[f] === null ||
@@ -619,14 +754,29 @@ export var TelemetryEnvironmentTesting = {
       }
     }
 
+    let cpuData = data.system.cpu;
+
+    lazy.Assert.ok(
+      Array.isArray(cpuData.extensions),
+      "CPU extensions must be available."
+    );
+    lazy.Assert.deepEqual(
+      cpuData.extensions,
+      Glean.systemCpu.extensions.testGetValue()
+    );
+
     let osData = data.system.os;
     lazy.Assert.ok(this.checkNullOrString(osData.name));
     lazy.Assert.ok(this.checkNullOrString(osData.version));
+    lazy.Assert.ok(this.checkNullOrString(osData.locale));
     if (osData.name !== null) {
       lazy.Assert.equal(osData.name, Glean.systemOs.name.testGetValue());
     }
     if (osData.version !== null) {
       lazy.Assert.equal(osData.version, Glean.systemOs.version.testGetValue());
+    }
+    if (osData.locale !== null) {
+      lazy.Assert.equal(osData.locale, Glean.systemOs.locale.testGetValue());
     }
 
     // Service pack is only available on Windows.
@@ -642,6 +792,17 @@ export var TelemetryEnvironmentTesting = {
           Glean.systemOs.windowsBuildNumber.testGetValue()
         );
       }
+      if ("windowsUBR" in osData) {
+        // This might not be available on all Windows platforms.
+        lazy.Assert.ok(
+          osData.windowsUBR === null || Number.isFinite(osData.windowsUBR),
+          "windowsUBR must be null or a number."
+        );
+        lazy.Assert.equal(
+          osData.windowsUBR,
+          Glean.systemOs.windowsUbr.testGetValue()
+        );
+      }
     } else if (gIsLinux) {
       lazy.Assert.ok(this.checkNullOrString(osData.distro));
       lazy.Assert.ok(this.checkNullOrString(osData.distroVersion));
@@ -652,12 +813,70 @@ export var TelemetryEnvironmentTesting = {
       );
     }
 
+    for (let disk of EXPECTED_HDD_FIELDS) {
+      let diskData = Glean.hdd[disk].testGetValue();
+      lazy.Assert.ok(this.checkNullOrString(data.system.hdd[disk].model));
+      lazy.Assert.ok(this.checkNullOrString(data.system.hdd[disk].revision));
+      lazy.Assert.ok(this.checkNullOrString(data.system.hdd[disk].type));
+      if (data.system.hdd[disk].model !== null) {
+        lazy.Assert.equal(data.system.hdd[disk].model, diskData.model);
+      }
+      if (data.system.hdd[disk].revision !== null) {
+        lazy.Assert.equal(data.system.hdd[disk].revision, diskData.revision);
+      }
+      if (data.system.hdd[disk].type !== null) {
+        lazy.Assert.equal(data.system.hdd[disk].type, diskData.diskType);
+      }
+    }
+
     this.checkGfx(data.system.gfx);
 
     if (gIsMac) {
-      lazy.Assert.ok(!!Glean.system.appleModelId.testGetValue());
+      lazy.Assert.ok(this.checkString(data.system.appleModelId));
+      lazy.Assert.equal(
+        data.system.appleModelId,
+        Glean.system.appleModelId.testGetValue()
+      );
     } else {
+      lazy.Assert.ok(this.checkNullOrString(data.system.appleModelId));
       lazy.Assert.equal(null, Glean.system.appleModelId.testGetValue());
+    }
+
+    // This feature is only available on Windows
+    if (AppConstants.platform == "win") {
+      lazy.Assert.ok(
+        "sec" in data.system,
+        "sec must be available under data.system"
+      );
+
+      let SEC_FIELDS = ["antivirus", "antispyware", "firewall"];
+      for (let f of SEC_FIELDS) {
+        let products = Glean.windowsSecurity[f].testGetValue();
+        lazy.Assert.ok(
+          f in data.system.sec,
+          f + " must be available under data.system.sec"
+        );
+
+        let value = data.system.sec[f];
+        // value is null on Windows Server
+        lazy.Assert.ok(
+          value === null || Array.isArray(value),
+          f + " must be either null or an array"
+        );
+        if (Array.isArray(value)) {
+          for (let product of value) {
+            // It is posssible that this will fail if either the Legacy or
+            // Glean string limits are hit. If the Glean string_list limits are
+            // hit, `testGetValue` above will throw, though.
+            lazy.Assert.ok(products.includes(product), `${f} data must match.`);
+            lazy.Assert.equal(
+              typeof product,
+              "string",
+              "Each element of " + f + " must be a string"
+            );
+          }
+        }
+      }
     }
   },
 
