@@ -11,6 +11,7 @@
 #include "gfxRect.h"
 #include "harfbuzz/hb.h"
 #include "mozilla/EndianUtils.h"
+#include "mozilla/FileUtils.h"
 #include "mozilla/FontPropertyTypes.h"
 #include "mozilla/LookAndFeel.h"
 #include "mozilla/MemoryReporting.h"
@@ -681,6 +682,61 @@ void gfxDWriteFontEntry::GetVariationInstancesInternal(
     nsTArray<gfxFontVariationInstance>& aInstances) {
   gfxFontUtils::GetVariationData(this, nullptr, &aInstances);
 }
+
+#if MOZ_FONTATIONS
+void gfxDWriteFontEntry::InitSkrifaFontFace() {
+  RefPtr<IDWriteFontFace> face = mFontFace;
+  if (!face) {
+    if (!mFont || FAILED(mFont->CreateFontFace(getter_AddRefs(face)))) {
+      return;
+    }
+  }
+  uint32_t count = 0;
+  if (FAILED(face->GetFiles(&count, nullptr)) || count != 1) {
+    return;
+  }
+  RefPtr<IDWriteFontFile> file;
+  if (FAILED(face->GetFiles(&count, getter_AddRefs(file))) || count != 1) {
+    return;
+  }
+  const void* key = nullptr;
+  uint32_t keySize = 0;
+  if (FAILED(file->GetReferenceKey(&key, &keySize))) {
+    return;
+  }
+  RefPtr<IDWriteFontFileLoader> loader;
+  if (FAILED(file->GetLoader(getter_AddRefs(loader)))) {
+    return;
+  }
+  RefPtr<IDWriteLocalFontFileLoader> local;
+  loader->QueryInterface(__uuidof(IDWriteLocalFontFileLoader),
+                         (void**)getter_AddRefs(local));
+  if (local) {
+    // We have a local file path; memmap it.
+    uint32_t length = 0;
+    if (FAILED(local->GetFilePathLengthFromKey(key, keySize, &length))) {
+      return;
+    }
+    nsAutoString path;
+    path.SetLength(length);
+    if (FAILED(local->GetFilePathFromKey(
+            key, keySize, (WCHAR*)path.BeginWriting(), length + 1))) {
+      return;
+    }
+    AutoFDClose fd(PR_Open(NS_ConvertUTF16toUTF8(path).get(), PR_RDONLY, 0));
+    MemoryMappedFile mappedFile = MemoryMappedFile::Open(fd.get());
+    if (!mappedFile.IsValid()) {
+      return;
+    }
+    const uint8_t* const data = static_cast<const uint8_t*>(mappedFile.Data());
+    const size_t size = mappedFile.Size();
+    if (auto* skf = skrifa_font_new_from_index(data, size, face->GetIndex())) {
+      SetSkrifaFont(skf, std::move(mappedFile));
+    }
+  }
+  // TODO: What about fonts not using IDWriteLocalFontFileLoader?
+}
+#endif
 
 gfxFont* gfxDWriteFontEntry::CreateFontInstance(
     const gfxFontStyle* aFontStyle) {
