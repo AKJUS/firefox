@@ -12,15 +12,6 @@ findbar-previous =
 findbar-find-button-close =
     .tooltiptext = Close find bar
 
-# Used instead of findbar-find-button-close while the find bar has keyboard
-# focus, which is the only time Escape closes it.
-findbar-find-button-close-with-shortcut =
-    .tooltiptext =
-        { PLATFORM() ->
-            [macos] Close find bar (esc)
-           *[other] Close find bar (Esc)
-        }
-
 findbar-highlight-all2 =
     .label = Highlight All
     .accesskey = { PLATFORM() ->

@@ -312,65 +312,6 @@ add_task(async function test_open_and_close_keys() {
 });
 
 /**
- * Escape only closes the findbar while focus is inside it, so the close
- * button's tooltip should only advertise the shortcut while that holds.
- */
-add_task(async function test_close_button_tooltip_shortcut() {
-  let tab = await BrowserTestUtils.openNewForegroundTab(
-    gBrowser,
-    "data:text/html,<body>Hello There</body>"
-  );
-
-  await gFindBarPromise;
-  let findBar = gFindBar;
-  let closeButton = findBar.getElement("find-closebutton");
-
-  is(
-    closeButton.getAttribute("data-l10n-id"),
-    "findbar-find-button-close",
-    "Findbar is closed, so the shortcut is not advertised."
-  );
-
-  let openedPromise = BrowserTestUtils.waitForEvent(findBar, "findbaropen");
-  await EventUtils.synthesizeKey("f", { accelKey: true });
-  await openedPromise;
-
-  is(
-    document.activeElement,
-    findBar._findField,
-    "Opening the findbar focuses the find field."
-  );
-  is(
-    closeButton.getAttribute("data-l10n-id"),
-    "findbar-find-button-close-with-shortcut",
-    "Focus is inside the findbar, so the shortcut is advertised."
-  );
-
-  let focusOutPromise = BrowserTestUtils.waitForEvent(findBar, "focusout");
-  tab.linkedBrowser.focus();
-  await focusOutPromise;
-
-  is(
-    closeButton.getAttribute("data-l10n-id"),
-    "findbar-find-button-close",
-    "Focus moved to the page, so the shortcut is no longer advertised."
-  );
-
-  let focusInPromise = BrowserTestUtils.waitForEvent(findBar, "focusin");
-  findBar._findField.focus();
-  await focusInPromise;
-
-  is(
-    closeButton.getAttribute("data-l10n-id"),
-    "findbar-find-button-close-with-shortcut",
-    "Focus returned to the findbar, so the shortcut is advertised again."
-  );
-
-  await closeFindbarAndWait(findBar);
-  BrowserTestUtils.removeTab(tab);
-});
-
-/**
  * This test makes sure that keyboard navigation (for example arrow up/down,
  * accel+arrow up/down) still works while the findbar is open.
  */
