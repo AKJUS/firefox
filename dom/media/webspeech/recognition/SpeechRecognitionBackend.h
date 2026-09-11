@@ -22,7 +22,6 @@
 #include "mozilla/ThreadSafety.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/WeakPtr.h"
-#include "mozilla/dom/SpeechRecognitionBinding.h"
 #include "mozilla/hwinference/HWInferenceTypes.h"
 #include "mozilla/ipc/Endpoint.h"
 #include "nsIThread.h"
@@ -139,12 +138,6 @@ class SpeechRecognitionBackend {
 
   static already_AddRefed<Promise> Available(
       nsIGlobalObject* aGlobal, const nsTArray<nsCString>& aLanguages);
-  // Resolves an available() promise, recording
-  // media.speech_recognition.availability. Every path that answers available()
-  // goes through here, including the early-outs in SpeechRecognition, so the
-  // metric and the resolved value cannot drift apart.
-  static void ResolveAvailability(Promise* aPromise,
-                                  AvailabilityStatus aStatus);
   // Requests installation of the on-device model(s) for aLanguages. The
   // request is relayed by the utility to the trusted parent, which obtains the
   // user's consent and performs the download (see nsIMLModelResolver);

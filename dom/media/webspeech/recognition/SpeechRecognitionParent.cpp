@@ -8,7 +8,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <cmath>
 #include <thread>
 
 #include "SpeechRecognitionModelMapping.h"
@@ -22,7 +21,6 @@
 #include "mozilla/StaticPrefs_media.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/TimeStamp.h"
-#include "mozilla/glean/DomMediaWebspeechMetrics.h"
 #include "mozilla/hwinference/HWInferenceChild.h"
 #include "mozilla/ipc/FileDescriptorUtils.h"
 #include "mozilla/ipc/ProtocolUtils.h"
@@ -181,8 +179,6 @@ struct ParakeetResultMarker {
 };
 
 }  // namespace
-
-using InitFailure = glean::media_speech_recognition::InitFailureLabel;
 
 void SpeechRecognitionParent::ResolveOrRejectInitOnIPCThread(
     InitResolver&& aResolver, bool aSuccess) {
@@ -427,9 +423,6 @@ void SpeechRecognitionParent::RetrieveModel(InitResolver&& aResolver) {
       mozilla::ipc::UtilityProcessChild::GetSingleton();
   if (!utilityChild) {
     LOGE("{} ERROR: No UtilityProcessChild available", __func__);
-    glean::media_speech_recognition::init_failure
-        .EnumGet(InitFailure::eNoUtilityProcess)
-        .Add();
     ResolveOrRejectInitOnIPCThread(std::move(aResolver), false);
     return;
   }
@@ -437,9 +430,6 @@ void SpeechRecognitionParent::RetrieveModel(InitResolver&& aResolver) {
       utilityChild->GetHWInferenceChild();
   if (!hwInferenceChild) {
     LOGE("{} No HWInferenceChild available for model retrieval", __func__);
-    glean::media_speech_recognition::init_failure
-        .EnumGet(InitFailure::eNoUtilityProcess)
-        .Add();
     ResolveOrRejectInitOnIPCThread(std::move(aResolver), false);
     return;
   }
@@ -467,9 +457,6 @@ void SpeechRecognitionParent::RetrieveModel(InitResolver&& aResolver) {
                      "{} model {} is not installed; call "
                      "SpeechRecognition.install() first",
                      __func__, modelId.get());
-                 glean::media_speech_recognition::init_failure
-                     .EnumGet(InitFailure::eModelNotInstalled)
-                     .Add();
                  self->ResolveOrRejectInitOnIPCThread(std::move(aResolver),
                                                       false);
                  return;
@@ -488,9 +475,6 @@ void SpeechRecognitionParent::FetchModelFile(const nsCString& aModelId,
       utilityChild ? utilityChild->GetHWInferenceChild() : nullptr;
   if (!hwInferenceChild) {
     LOGE("{} No HWInferenceChild available for model retrieval", __func__);
-    glean::media_speech_recognition::init_failure
-        .EnumGet(InitFailure::eNoUtilityProcess)
-        .Add();
     ResolveOrRejectInitOnIPCThread(std::move(aResolver), false);
     return;
   }
@@ -507,9 +491,6 @@ void SpeechRecognitionParent::FetchModelFile(const nsCString& aModelId,
             if (aValue.IsReject()) {
               LOGE("{} Promise rejected with reason {}", __func__,
                    static_cast<int>(aValue.RejectValue()));
-              glean::media_speech_recognition::init_failure
-                  .EnumGet(InitFailure::eModelFetchFailed)
-                  .Add();
               self->ResolveOrRejectInitOnIPCThread(std::move(aResolver), false);
               return;
             }
@@ -521,9 +502,6 @@ void SpeechRecognitionParent::FetchModelFile(const nsCString& aModelId,
               LOGE("{} GetModelError with nsresult={:x}", __func__,
                    static_cast<uint32_t>(
                        result.get_GetModelError().errorCode()));
-              glean::media_speech_recognition::init_failure
-                  .EnumGet(InitFailure::eModelFetchFailed)
-                  .Add();
               self->ResolveOrRejectInitOnIPCThread(std::move(aResolver), false);
               return;
             }
@@ -535,9 +513,6 @@ void SpeechRecognitionParent::FetchModelFile(const nsCString& aModelId,
             FILE* file = FileDescriptorToFILE(fd, "rb");
             if (!file) {
               LOGE("{} Failed to convert FileDescriptor to FILE*", __func__);
-              glean::media_speech_recognition::init_failure
-                  .EnumGet(InitFailure::eModelFdFailed)
-                  .Add();
               self->ResolveOrRejectInitOnIPCThread(std::move(aResolver), false);
               return;
             }
@@ -554,9 +529,6 @@ void SpeechRecognitionParent::FetchModelFile(const nsCString& aModelId,
             if (NS_FAILED(rv)) {
               LOGE("Failed to create recognition thread: {:x}",
                    static_cast<uint32_t>(rv));
-              glean::media_speech_recognition::init_failure
-                  .EnumGet(InitFailure::eThreadCreationFailed)
-                  .Add();
               self->ResolveOrRejectInitOnIPCThread(std::move(aResolver), false);
               return;
             }
@@ -578,9 +550,6 @@ void SpeechRecognitionParent::InitializeParakeetContext(
       mozilla::llama::LlamaRuntimeLinker::Get();
   if (!lib) {
     LOGE("{} Failed to get runtime linker", __func__);
-    glean::media_speech_recognition::init_failure
-        .EnumGet(InitFailure::eEngineLibraryLoadFailed)
-        .Add();
     ResolveOrRejectInitOnIPCThread(std::move(aResolver), false);
     return;
   }
@@ -650,14 +619,9 @@ void SpeechRecognitionParent::InitializeParakeetContext(
       MarkerOptions(MarkerTiming::IntervalUntilNowFrom(loadStart)), language);
   if (!mCapiCtx) {
     LOGE("{} parakeet_capi_load_fd failed", __func__);
-    glean::media_speech_recognition::init_failure
-        .EnumGet(InitFailure::eModelLoadFailed)
-        .Add();
     ResolveOrRejectInitOnIPCThread(std::move(aResolver), false);
     return;
   }
-  glean::media_speech_recognition::model_load_time.AccumulateRawDuration(
-      TimeStamp::Now() - loadStart);
   const char* langArg = language.IsEmpty() ? nullptr : language.get();
   TimeStamp streamBeginStart = TimeStamp::Now();
   mCapiStream = lib->parakeet_capi_stream_begin_lang(mCapiCtx, langArg);
@@ -674,9 +638,6 @@ void SpeechRecognitionParent::InitializeParakeetContext(
       language);
   if (!mCapiStream) {
     LOGE("{} parakeet_capi_stream_begin_lang failed", __func__);
-    glean::media_speech_recognition::init_failure
-        .EnumGet(InitFailure::eStreamBeginFailed)
-        .Add();
     DestroyParakeetContext(lib);
     ResolveOrRejectInitOnIPCThread(std::move(aResolver), false);
     return;
@@ -690,7 +651,6 @@ void SpeechRecognitionParent::InitializeParakeetContext(
     state = mState;
   }
   if (state != State::Running) {
-    // A deliberate teardown, not an init failure, so nothing is recorded here.
     LOGD("{} Session torn down during load, abandoning init", __func__);
     DestroyParakeetContext(lib);
     ResolveOrRejectInitOnIPCThread(std::move(aResolver), false);
@@ -779,9 +739,6 @@ mozilla::ipc::IPCResult SpeechRecognitionParent::RecvInit(
     StaticMutexAutoLock lock(sSessionMutex);
     if (sActiveSession) {
       LOGE("Rejecting Init - another recognition session is already active");
-      glean::media_speech_recognition::init_failure
-          .EnumGet(InitFailure::eConcurrentSession)
-          .Add();
       aResolver("concurrent-session"_ns);
       return IPC_OK();
     }
@@ -1034,8 +991,6 @@ void SpeechRecognitionParent::ProcessAudioStreaming() {
   };
 
   nsTArray<float> chunk;
-  uint64_t realtimeFactorSum = 0;
-  uint32_t realtimeFactorCount = 0;
 
   while (IsRunning()) {
     size_t available = mAudioQueue.AvailableRead();
@@ -1071,12 +1026,6 @@ void SpeechRecognitionParent::ProcessAudioStreaming() {
           uint64_t((feedEnd - feedStart).ToMicroseconds());
       totalFedMs = 1000.0 * double(mFedAudioFrames) / PARAKEET_SAMPLE_RATE;
     }
-    TimeDuration computeTime = feedEnd - feedStart;
-    if (computeTime.ToSeconds() > 0.0) {
-      realtimeFactorSum += static_cast<uint32_t>(std::lround(
-          100.0 * got / (PARAKEET_SAMPLE_RATE * computeTime.ToSeconds())));
-      ++realtimeFactorCount;
-    }
     int32_t committed = emitFinalizedWords();
     profiler_add_marker(
         "parakeet_capi_stream_feed", geckoprofiler::category::MEDIA_PLAYBACK,
@@ -1097,11 +1046,6 @@ void SpeechRecognitionParent::ProcessAudioStreaming() {
       "parakeet_capi_stream_finalize", MEDIA_PLAYBACK,
       MarkerOptions(MarkerTiming::IntervalUntilNowFrom(finalizeStart)),
       nsFmtCString("{} tail word(s)", tailWords));
-  if (realtimeFactorCount) {
-    glean::media_speech_recognition::inference_realtime_factor
-        .AccumulateSingleSample(static_cast<uint32_t>(
-            std::lround(double(realtimeFactorSum) / realtimeFactorCount)));
-  }
   LOGD("Streaming loop exiting");
 
   // Freed here, on the thread that alone uses them, rather than from

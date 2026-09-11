@@ -266,10 +266,6 @@ class SpeechRecognition final : public DOMEventTargetHelper,
   // session is initialized and a live track is attached (mTrack).
   void MaybeDispatchStart();
   SpeechRecognitionPerfStats BuildPerfStats() const;
-  // Records media.speech_recognition.session_ended, classifying the outcome
-  // from the session state. Called from Reset() for a session that reached
-  // [[started]], so it covers every termination path.
-  void RecordSessionEnded();
 
   RefPtr<DOMMediaStream> mStream;
   RefPtr<AudioStreamTrack> mTrack;
@@ -328,20 +324,6 @@ class SpeechRecognition final : public DOMEventTargetHelper,
     EnginePerfStats mEngine;
   };
   PerfTimeline mPerf;
-
-  // Per-session telemetry state, all set when the session reaches [[started]]
-  // and consumed by RecordSessionEnded().
-  TimeStamp mSessionStartTime;
-  // Ties session_started to session_ended. Only ever used as that key: not
-  // persisted, not sent anywhere else, and regenerated per session.
-  nsCString mSessionId;
-  TimeDuration mResultLatencyTotal;
-  uint32_t mResultLatencySampleCount = 0;
-  // The code of the "error" event fired for this session, if any. Also set for
-  // errors raised before [[started]], which never reach RecordSessionEnded();
-  // StartImpl() clears it so it cannot leak into the next session.
-  Maybe<SpeechRecognitionErrorCode> mSessionError;
-
   RefPtr<TrackListener> mListener;
   // Backend instance for handling audio processing
   RefPtr<SpeechRecognitionBackend> mBackend;
