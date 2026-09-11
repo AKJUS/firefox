@@ -79,6 +79,12 @@ class Http3SessionStub final : public Http3SessionBase {
     return NS_OK;
   }
 
+  bool GetWebTransportSessionStats(
+      uint64_t aSessionId,
+      mozilla::dom::WebTransportStatsData& aStats) override {
+    return false;
+  }
+
   void SendDatagram(Http3WebTransportSession* aSession,
                     nsTArray<uint8_t>& aData, uint64_t aTrackingId,
                     uint64_t aSendGroupId, int64_t aSendOrder) override {}

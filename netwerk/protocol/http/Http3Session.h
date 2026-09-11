@@ -158,6 +158,8 @@ class Http3SessionBase {
       uint64_t aSessionId, const nsTArray<uint8_t>& aLabel,
       const nsTArray<uint8_t>& aContext,
       nsTArray<uint8_t>& aKeyingMaterial) = 0;
+  virtual bool GetWebTransportSessionStats(
+      uint64_t aSessionId, mozilla::dom::WebTransportStatsData& aStats) = 0;
   virtual nsresult RegisterWebTransportSendGroup(uint64_t aSessionId,
                                                  uint64_t aGroupId) = 0;
   virtual nsresult GetWebTransportSessionProtocol(uint64_t aSessionId,
@@ -312,6 +314,9 @@ class Http3Session final : public Http3SessionBase,
       nsTArray<uint8_t>& aKeyingMaterial) override;
   nsresult RegisterWebTransportSendGroup(uint64_t aSessionId,
                                          uint64_t aGroupId) override;
+  bool GetWebTransportSessionStats(
+      uint64_t aSessionId,
+      mozilla::dom::WebTransportStatsData& aStats) override;
   nsresult GetWebTransportSessionProtocol(uint64_t aSessionId,
                                           nsACString& aProtocol) override;
   void SetSendOrder(Http3StreamBase* aStream, int64_t aSendOrder) override;

@@ -154,6 +154,11 @@ class WebTransport final : public nsISupports, public nsWrapperCache {
       const WebTransportSendStreamOptions& aOptions,
       WebTransportSendGroup* aSendGroup, int64_t aSendOrder, ErrorResult& aRv);
 
+  // Issues the IPC GetStats request and wires the response to aPromise. Used
+  // both immediately (when connected) and deferred until [[Ready]] settles
+  // (when called during "connecting").
+  void SendGetStatsRequest(Promise* aPromise);
+
   nsCOMPtr<nsIGlobalObject> mGlobal;
   // We are the owner of WebTransportChild.  We must call Shutdown() on it
   // before we're destroyed.

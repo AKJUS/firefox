@@ -7,6 +7,7 @@
 
 #include <cstdint>
 
+#include "mozilla/dom/PWebTransport.h"
 #include "mozilla/net/neqo_glue_ffi_generated.h"
 
 namespace mozilla {
@@ -164,8 +165,9 @@ class NeqoHttp3Conn final {
 
   nsresult CloseWebTransport(uint64_t aSessionId, uint32_t aError,
                              const nsACString& aMessage) {
+    // Nothing consumes close-time stats yet, so skip gathering them.
     return neqo_http3conn_webtransport_close_session(this, aSessionId, aError,
-                                                     &aMessage);
+                                                     &aMessage, nullptr);
   }
 
   nsresult CloseConnectUdp(uint64_t aSessionId, uint32_t aError,
@@ -199,6 +201,40 @@ class NeqoHttp3Conn final {
   nsresult WebTransportMaxDatagramSize(uint64_t aSessionId, uint64_t* aResult) {
     return neqo_http3conn_webtransport_max_datagram_size(this, aSessionId,
                                                          aResult);
+  }
+
+  bool GetWebTransportSessionStats(
+      uint64_t aSessionId, mozilla::dom::WebTransportStatsData& aStats) {
+    WebTransportSessionStats stats{};
+    nsresult rv =
+        neqo_http3conn_webtransport_session_stats(this, aSessionId, &stats);
+    if (NS_FAILED(rv)) {
+      return false;
+    }
+    // Use transport-level totals for spec compliance
+    aStats.bytesSent() = stats.bytes_sent_total;
+    // bytesSentOverhead is omitted: we don't separate application vs
+    // protocol overhead. See bug 2051624.
+    aStats.bytesAcknowledged() = stats.bytes_acked;
+    aStats.packetsSent() = stats.packets_sent;
+    aStats.bytesLost() = stats.bytes_lost;
+    aStats.packetsLost() = stats.packets_lost;
+    aStats.bytesReceived() = stats.bytes_received_total;
+    aStats.packetsReceived() = stats.packets_received;
+    aStats.smoothedRtt() = stats.smoothed_rtt;
+    aStats.rttVariation() = stats.rtt_variation;
+    aStats.minRtt() = stats.min_rtt;
+    aStats.estimatedSendRate() = stats.estimated_send_rate;
+    aStats.atSendCapacity() = stats.at_send_capacity;
+    // neqo doesn't track droppedIncoming/expiredIncoming per-session yet;
+    // report 0 until it does. lostOutgoing uses the connection-level counter
+    // as a stand-in, since Firefox doesn't support WebTransport connection
+    // pooling.
+    aStats.datagrams().droppedIncoming() = 0;
+    aStats.datagrams().expiredIncoming() = 0;
+    aStats.datagrams().expiredOutgoing() = stats.datagrams_expired_outgoing;
+    aStats.datagrams().lostOutgoing() = stats.datagrams_lost_outgoing;
+    return true;
   }
 
   nsresult WebTransportSetSendOrder(uint64_t aSessionId, int64_t aSendOrder) {

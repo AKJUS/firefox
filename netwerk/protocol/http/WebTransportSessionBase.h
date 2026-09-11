@@ -16,6 +16,7 @@ class WebTransportSessionEventListener;
 namespace mozilla::net {
 
 class WebTransportStreamBase;
+class Http3WebTransportSession;
 
 class WebTransportSessionBase {
  public:
@@ -33,6 +34,7 @@ class WebTransportSessionBase {
                                         const nsTArray<uint8_t>& aContext,
                                         nsTArray<uint8_t>& aKeyingMaterial) = 0;
   virtual void GetNegotiatedProtocol(nsACString& aProtocol) = 0;
+  virtual void GetStats() = 0;
   virtual void SendDatagram(nsTArray<uint8_t>&& aData, uint64_t aTrackingId,
                             uint64_t aSendGroupId, int64_t aSendOrder) = 0;
   virtual nsresult RegisterSendGroup(uint64_t aGroupId) = 0;
@@ -43,6 +45,10 @@ class WebTransportSessionBase {
       std::function<void(Result<RefPtr<WebTransportStreamBase>, nsresult>&&)>&&
           aCallback) = 0;
   virtual void StartReading() {}
+
+  virtual Http3WebTransportSession* GetHttp3WebTransportSession() {
+    return nullptr;
+  }
 
  protected:
   virtual ~WebTransportSessionBase() = default;

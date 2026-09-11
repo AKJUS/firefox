@@ -10,6 +10,7 @@
 #include "mozilla/dom/DOMExceptionBinding.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/PWebTransport.h"
+#include "mozilla/dom/Promise-inl.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/ReadableStream.h"
 #include "mozilla/dom/ReadableStreamDefaultController.h"
@@ -575,9 +576,142 @@ bool WebTransport::ParseURL(const nsAString& aURL) const {
   return true;
 }
 
+static void PopulateConnectionStats(WebTransportConnectionStats& aStats,
+                                    const WebTransportStatsData& aSource) {
+  aStats.mBytesSent.Construct(aSource.bytesSent());
+  // bytesSentOverhead is omitted: neqo does not separate application bytes
+  // from QUIC framing/header overhead in its public stats API, and the spec
+  // requires unavailable stats to be absent rather than reported as 0. See
+  // bug 2051624.
+  aStats.mBytesAcknowledged.Construct(aSource.bytesAcknowledged());
+  aStats.mPacketsSent.Construct(aSource.packetsSent());
+  aStats.mBytesLost.Construct(aSource.bytesLost());
+  aStats.mPacketsLost.Construct(aSource.packetsLost());
+  aStats.mBytesReceived.Construct(aSource.bytesReceived());
+  aStats.mPacketsReceived.Construct(aSource.packetsReceived());
+  aStats.mSmoothedRtt.Construct(aSource.smoothedRtt());
+  aStats.mRttVariation.Construct(aSource.rttVariation());
+  aStats.mMinRtt.Construct(aSource.minRtt());
+  // estimatedSendRate is nullable; aSource.estimatedSendRate() == -1
+  // signals "unknown".
+  if (aSource.estimatedSendRate() >= 0) {
+    aStats.mEstimatedSendRate.SetValue(
+        static_cast<uint64_t>(aSource.estimatedSendRate()));
+  }
+  aStats.mAtSendCapacity = aSource.atSendCapacity();
+  aStats.mDatagrams.mDroppedIncoming.Construct(
+      aSource.datagrams().droppedIncoming());
+  aStats.mDatagrams.mExpiredOutgoing.Construct(
+      aSource.datagrams().expiredOutgoing());
+  aStats.mDatagrams.mLostOutgoing.Construct(aSource.datagrams().lostOutgoing());
+}
+
 already_AddRefed<Promise> WebTransport::GetStats(ErrorResult& aError) {
-  aError.Throw(NS_ERROR_NOT_IMPLEMENTED);
-  return nullptr;
+  // https://w3c.github.io/webtransport/#dom-webtransport-getstats
+  LOG(("GetStats() called"));
+
+  // Step 1: Let transport be this. (implicit)
+
+  // Step 2: Let p be a new promise.
+  RefPtr<Promise> promise = Promise::CreateInfallible(GetParentObject());
+
+  // Step 3: If transport.[[State]] is "failed", reject p with an
+  // InvalidStateError and abort these steps.
+  if (mState == WebTransportState::FAILED) {
+    promise->MaybeRejectWithInvalidStateError("WebTransport failed");
+    return promise.forget();
+  }
+
+  // Step 4: Run the following steps in parallel.
+  //
+  // Step 4.1 is handled below, before dispatching to SendGetStatsRequest().
+  // Step 4.2 (reject if "failed" after waiting) is handled in
+  // SendGetStatsRequest()'s IPC success callback, once the parent reports no
+  // stats.
+  //
+  // Step 4.3 (if "closed", resolve with the most recent stats available for
+  // the connection) is not yet implemented: this patch does not cache stats
+  // at close time, so getStats() falls through to the normal request path
+  // below, which fails once the underlying session/actor is gone. A later
+  // patch in this bug adds the close-time cache required for step 4.3.
+
+  // mChild is null only if we entered an unexpected state, or close() has
+  // already torn the actor down; all other states (CONNECTING, CONNECTED)
+  // have mChild set.
+  if (!mChild) {
+    promise->MaybeRejectWithInvalidStateError("WebTransport not connected");
+    return promise.forget();
+  }
+
+  // Step 4.1: If transport.[[State]] is "connecting", wait for the state to
+  // change before gathering stats, so that getStats() resolves only after
+  // [[Ready]] settles (and rejects if connecting fails). The resolve step is a
+  // network task queued after the connecting state change (spec step 4.1/4.6),
+  // so racing it against [[Ready]] must observe ready first.
+  if (mState == WebTransportState::CONNECTING) {
+    mReady->AddCallbacksWithCycleCollectedArgs(
+        [](JSContext*, JS::Handle<JS::Value>, ErrorResult&, WebTransport* aSelf,
+           Promise* aPromise) { aSelf->SendGetStatsRequest(aPromise); },
+        [](JSContext*, JS::Handle<JS::Value>, ErrorResult&, WebTransport*,
+           Promise* aPromise) {
+          aPromise->MaybeRejectWithInvalidStateError("WebTransport failed");
+        },
+        RefPtr{this}, promise);
+    return promise.forget();
+  }
+
+  // Steps 4.4-4.6: state is "connected"; gather stats now (see
+  // SendGetStatsRequest()).
+  SendGetStatsRequest(promise);
+
+  // Step 5: Return p.
+  return promise.forget();
+}
+
+void WebTransport::SendGetStatsRequest(Promise* aPromise) {
+  // Step 4.4: Let gatheredStats be the list of stats specific to the
+  // underlying connection needed to populate WebTransportConnectionStats and
+  // WebTransportDatagramStats accurately. This is done in parallel via IPC.
+  //
+  // Step 4.5 (removing non-pooled-connection stats when [[NewConnection]] is
+  // "no") does not apply: Firefox does not yet support WebTransport
+  // connection pooling, so gatheredStats is never filtered.
+  //
+  // Step 4.6: Queue a network task with transport to run the following steps.
+  if (!mChild) {
+    aPromise->MaybeRejectWithInvalidStateError("WebTransport not connected");
+    return;
+  }
+  mChild->SendGetStats(
+      [promise = RefPtr(aPromise)](Maybe<WebTransportStatsData>&& aStats) {
+        LOG(("GetStats callback: aStats.isSome() = %d", aStats.isSome()));
+        if (!aStats) {
+          // Step 4.2: transport.[[State]] became "failed" while waiting.
+          LOG(("GetStats: No stats available\n"));
+          promise->MaybeRejectWithInvalidStateError("Failed to get stats");
+          return;
+        }
+
+        LOG(
+            ("GetStats: bytesSent=%llu, bytesReceived=%llu, "
+             "minRtt=%f, smoothedRtt=%f\n",
+             (unsigned long long)aStats->bytesSent(),
+             (unsigned long long)aStats->bytesReceived(), aStats->minRtt(),
+             aStats->smoothedRtt()));
+
+        // Step 4.6.1-4: Create a WebTransportConnectionStats object, create a
+        // WebTransportDatagramStats object, set datagrams, and populate each
+        // member from gatheredStats.
+        WebTransportConnectionStats stats;
+        PopulateConnectionStats(stats, *aStats);
+
+        // Step 4.6.5: Resolve p with stats.
+        promise->MaybeResolve(stats);
+      },
+      [promise = RefPtr(aPromise)](mozilla::ipc::ResponseRejectReason) {
+        // IPC failure: treat as if the transport failed.
+        promise->MaybeRejectWithInvalidStateError("Failed to get stats");
+      });
 }
 
 already_AddRefed<Promise> WebTransport::ExportKeyingMaterial(
@@ -824,7 +958,7 @@ void WebTransport::Close(const WebTransportCloseInfo& aOptions,
   // Step 5: Let code be closeInfo.closeCode.
   // Step 6: "Let reasonString be the maximal code unit prefix of
   // closeInfo.reason where the length of the UTF-8 encoded prefix
-  // doesn’t exceed 1024."
+  // doesn't exceed 1024."
   // Take the maximal "code unit prefix" of mReason and limit to 1024 bytes
   // Step 7: Let reason be reasonString, UTF-8 encoded.
   // Step 8: In parallel, terminate session with code and reason.

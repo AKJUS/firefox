@@ -286,26 +286,13 @@ WebTransportSessionProxy::RetargetTo(nsIEventTarget* aTarget) {
   return NS_OK;
 }
 
-NS_IMETHODIMP
-WebTransportSessionProxy::RegisterSendGroup(uint64_t aGroupId) {
-  MOZ_ASSERT(OnSocketThread(), "not on socket thread");
+void WebTransportSessionProxy::GetStatsInternal(
+    const RefPtr<WebTransportSessionBase>& aSession) {
+  MOZ_ASSERT(OnSocketThread());
 
-  RefPtr<WebTransportSessionBase> session;
-  {
-    MutexAutoLock lock(mMutex);
-    session = mWebTransportSession;
-  }
-
-  if (!session) {
-    return NS_ERROR_NOT_AVAILABLE;
-  }
-
-  LOG(("RegisterSendGroup with ID: %" PRIu64, aGroupId));
-  return session->RegisterSendGroup(aGroupId);
+  aSession->GetStats();
 }
 
-NS_IMETHODIMP
-WebTransportSessionProxy::GetStats() { return NS_ERROR_NOT_IMPLEMENTED; }
 NS_IMETHODIMP
 WebTransportSessionProxy::ExportKeyingMaterial(
     const nsTArray<uint8_t>& aLabel, const nsTArray<uint8_t>& aContext,
@@ -327,11 +314,68 @@ WebTransportSessionProxy::ExportKeyingMaterial(
 }
 
 NS_IMETHODIMP
+WebTransportSessionProxy::GetStats() {
+  RefPtr<WebTransportSessionBase> session;
+  {
+    MutexAutoLock lock(mMutex);
+
+    if (!mStopRequestCalled) {
+      LOG(("WebTransportSessionProxy::GetStats queuing - not ready yet"));
+      // Pending events run on the socket thread once the session is ready. If
+      // the session went away in the meantime, report the failure rather than
+      // dropping it on the floor: the return value of this retry has nowhere
+      // to go, and the caller is waiting for exactly one OnStatsAvailable().
+      mPendingEvents.AppendElement([self = RefPtr{this}]() {
+        if (NS_FAILED(self->GetStats())) {
+          (void)self->OnStatsAvailable(nullptr);
+        }
+      });
+      return NS_OK;
+    }
+
+    if (mState != WebTransportSessionProxyState::ACTIVE ||
+        !mWebTransportSession) {
+      return NS_ERROR_NOT_AVAILABLE;
+    }
+    session = mWebTransportSession;
+  }
+
+  if (!OnSocketThread()) {
+    return gSocketTransportService->Dispatch(NS_NewRunnableFunction(
+        "WebTransportSessionProxy::GetStatsInternal",
+        [self = RefPtr{this}, session{std::move(session)}]() {
+          self->GetStatsInternal(session);
+        }));
+  }
+
+  GetStatsInternal(session);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 WebTransportSessionProxy::GetNegotiatedProtocol(nsACString& aProtocol) {
   MutexAutoLock lock(mMutex);
   aProtocol = mProtocol;
   return NS_OK;
 }
+NS_IMETHODIMP
+WebTransportSessionProxy::RegisterSendGroup(uint64_t aGroupId) {
+  MOZ_ASSERT(OnSocketThread(), "not on socket thread");
+
+  RefPtr<WebTransportSessionBase> session;
+  {
+    MutexAutoLock lock(mMutex);
+    session = mWebTransportSession;
+  }
+
+  if (!session) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+
+  LOG(("RegisterSendGroup with ID: %" PRIu64, aGroupId));
+  return session->RegisterSendGroup(aGroupId);
+}
+
 NS_IMETHODIMP
 WebTransportSessionProxy::CloseSession(uint32_t status,
                                        const nsACString& reason) {
@@ -1177,6 +1221,67 @@ WebTransportSessionProxy::OnDraining() {
   if (mListener) {
     mListener->OnDraining();
   }
+  return NS_OK;
+}
+
+// Pointer lifetime: aStats is owned by the caller (Http3WebTransportSession::
+// GetStats) and remains valid for the duration of this synchronous call, or
+// null if the caller was unable to gather stats. We copy the data (if any)
+// before dispatching to another thread or calling into mListener.
+void WebTransportSessionProxy::OnStatsAvailableInternal(
+    const Maybe<mozilla::dom::WebTransportStatsData>& aStats) {
+  // The listener must be called without mMutex held: it may re-enter this
+  // object (e.g. via GetStats()).
+  nsCOMPtr<WebTransportSessionEventListener> listener;
+  {
+    MutexAutoLock lock(mMutex);
+    MOZ_ASSERT(mTarget->IsOnCurrentThread());
+    listener = mListener;
+  }
+  if (!listener) {
+    return;
+  }
+  if (aStats) {
+    mozilla::dom::WebTransportStatsData stats = *aStats;
+    listener->OnStatsAvailable(&stats);
+  } else {
+    listener->OnStatsAvailable(nullptr);
+  }
+}
+
+NS_IMETHODIMP
+WebTransportSessionProxy::OnStatsAvailable(
+    mozilla::dom::WebTransportStatsData* aStats) {
+  MOZ_ASSERT(OnSocketThread(), "not on socket thread");
+  if (aStats) {
+    LOG(("WebTransportSessionProxy::OnStatsAvailable %p - bytesSent=%" PRIu64
+         ", bytesReceived=%" PRIu64 ", minRtt=%f, smoothedRtt=%f",
+         this, aStats->bytesSent(), aStats->bytesReceived(), aStats->minRtt(),
+         aStats->smoothedRtt()));
+  } else {
+    LOG(("WebTransportSessionProxy::OnStatsAvailable %p - stats unavailable",
+         this));
+  }
+
+  Maybe<mozilla::dom::WebTransportStatsData> stats =
+      aStats ? Some(*aStats) : Nothing();
+
+  {
+    MutexAutoLock lock(mMutex);
+    // RetargetTo() runs synchronously before content can ever reach this
+    // point (its promise chain depends on it), so mTarget should already be
+    // the socket thread here.
+    MOZ_ASSERT(mTarget->IsOnCurrentThread());
+    if (!mTarget->IsOnCurrentThread()) {
+      return mTarget->Dispatch(
+          NS_NewRunnableFunction("WebTransportSessionProxy::OnStatsAvailable",
+                                 [self = RefPtr{this}, stats]() {
+                                   self->OnStatsAvailableInternal(stats);
+                                 }));
+    }
+  }
+
+  OnStatsAvailableInternal(stats);
   return NS_OK;
 }
 

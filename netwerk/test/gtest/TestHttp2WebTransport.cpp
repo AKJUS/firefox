@@ -291,6 +291,11 @@ NS_IMETHODIMP MockWebTransportSessionEventListener::OnResetReceived(
   return NS_OK;
 }
 
+NS_IMETHODIMP MockWebTransportSessionEventListener::OnStatsAvailable(
+    mozilla::dom::WebTransportStatsData* aStats) {
+  return NS_OK;
+}
+
 static void ServerProcessCapsules(MockWebTransportServer* aServer,
                                   MockWebTransportClient* aClient) {
   aClient->ProcessOutput();

@@ -541,6 +541,26 @@ nsresult Http3WebTransportSession::ExportKeyingMaterial(
                                                     aKeyingMaterial);
 }
 
+void Http3WebTransportSession::GetStats() {
+  MOZ_ASSERT(OnSocketThread(), "not on socket thread");
+  RefPtr<WebTransportSessionEventListener> listener = GetListener();
+  if (!listener) {
+    // No one to report to either way.
+    return;
+  }
+
+  mozilla::dom::WebTransportStatsData stats;
+  if (mRecvState != ACTIVE ||
+      !mSession->GetWebTransportSessionStats(mStreamId, stats)) {
+    // Report the failure explicitly, so a pending getStats() request doesn't
+    // hang forever waiting for a callback that will never come.
+    listener->OnStatsAvailable(nullptr);
+    return;
+  }
+
+  listener->OnStatsAvailable(&stats);
+}
+
 void Http3WebTransportSession::GetNegotiatedProtocol(nsACString& aProtocol) {
   MOZ_ASSERT(OnSocketThread(), "not on socket thread");
   aProtocol.Truncate();

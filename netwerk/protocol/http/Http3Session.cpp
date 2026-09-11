@@ -3180,6 +3180,11 @@ nsresult Http3Session::ExportWebTransportKeyingMaterial(
       aSessionId, aLabel, aContext, aKeyingMaterial);
 }
 
+bool Http3Session::GetWebTransportSessionStats(
+    uint64_t aSessionId, mozilla::dom::WebTransportStatsData& aStats) {
+  return mHttp3Connection->GetWebTransportSessionStats(aSessionId, aStats);
+}
+
 nsresult Http3Session::RegisterWebTransportSendGroup(uint64_t aSessionId,
                                                      uint64_t aGroupId) {
   return mHttp3Connection->RegisterWebTransportSendGroup(aSessionId, aGroupId);

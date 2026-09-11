@@ -12,6 +12,7 @@
 #include "mozilla/dom/WebTransportLog.h"
 #include "mozilla/ipc/BackgroundParent.h"
 #include "mozilla/net/WebTransportHash.h"
+#include "mozilla/net/WebTransportSessionProxy.h"
 #include "nsIEventTarget.h"
 #include "nsIOService.h"
 #include "nsIPrincipal.h"
@@ -168,6 +169,9 @@ IPCResult WebTransportParent::RecvClose(const uint32_t& aCode,
     MOZ_ASSERT(!mClosed);
     mClosed.Flip();
   }
+  // CloseSession() drops the proxy's listener and its queued events, so an
+  // in-flight gather would never call back.
+  ResolvePendingGetStats(Nothing());
   mWebTransport->CloseSession(aCode, aReason);
   Close();
   return IPC_OK();
@@ -476,6 +480,34 @@ IPCResult WebTransportParent::RecvCreateSendGroup(uint64_t aGroupId) {
   return IPC_OK();
 }
 
+IPCResult WebTransportParent::RecvGetStats(GetStatsResolver&& aResolver) {
+  LOG(("GetStats for %p", this));
+  MOZ_ASSERT(mSocketThread->IsOnCurrentThread());
+
+  if (!mWebTransport) {
+    aResolver(Nothing());
+    return IPC_OK();
+  }
+
+  bool gatherAlreadyInFlight = !mGetStatsResolvers.IsEmpty();
+  mGetStatsResolvers.AppendElement(std::move(aResolver));
+  if (gatherAlreadyInFlight) {
+    // A gather is already pending; it will resolve this resolver too once it
+    // completes (see OnStatsAvailable()).
+    return IPC_OK();
+  }
+
+  // This should trigger a callback to OnStatsAvailable; if the request can't
+  // even be dispatched, resolve now instead of leaving mGetStatsResolvers set
+  // (and the child's promise(s) pending) forever.
+  nsresult rv = mWebTransport->GetStats();
+  if (NS_FAILED(rv)) {
+    LOG(("GetStats: dispatch failed: %x", static_cast<uint32_t>(rv)));
+    ResolvePendingGetStats(Nothing());
+  }
+  return IPC_OK();
+}
+
 IPCResult WebTransportParent::RecvCreateUnidirectionalStream(
     int64_t aSendOrder, Maybe<uint64_t> aSendGroupId,
     CreateUnidirectionalStreamResolver&& aResolver) {
@@ -624,6 +656,11 @@ WebTransportParent::OnSessionClosed(const bool aCleanly,
          aErrorCode, PromiseFlatCString(aReason).get()));
     // we know we haven't gone Ready yet
     rv = NS_ERROR_FAILURE;
+    // A queued GetStats() would otherwise hang forever. We're on the main
+    // thread here, not yet the socket thread, so dispatch.
+    mSocketThread->Dispatch(NS_NewRunnableFunction(
+        "WebTransportParent::OnSessionClosed",
+        [self = RefPtr{this}] { self->ResolvePendingGetStats(Nothing()); }));
     mOwningEventTarget->Dispatch(NS_NewRunnableFunction(
         "WebTransportParent::OnSessionClosed",
         [self = RefPtr{this}, result = rv] {
@@ -709,6 +746,8 @@ void WebTransportParent::NotifyRemoteClosed(bool aCleanly, uint32_t aErrorCode,
   mSocketThread->Dispatch(NS_NewRunnableFunction(
       __func__, [self = RefPtr{this}, aErrorCode, reason = nsCString{aReason},
                  aCleanly]() {
+        // The session is gone, so an in-flight gather will never call back.
+        self->ResolvePendingGetStats(Nothing());
         // Tell the content side we were closed by the server
         (void)self->SendRemoteClosed(aCleanly, aErrorCode, reason);
         // Let the other end shut down the IPC channel after RecvClose()
@@ -911,5 +950,43 @@ NS_IMETHODIMP WebTransportParent::OnMaxDatagramSize(uint64_t aSize) {
   mMaxDatagramSizeResolver(aSize);
   mMaxDatagramSizeResolver = nullptr;
   return NS_OK;
+}
+
+// Pointer lifetime: aStats is owned by the caller
+// (WebTransportSessionProxy::OnStatsAvailable) and remains valid for the
+// duration of this synchronous call, or null if stats could not be gathered.
+// We copy the data into the resolver before returning.
+NS_IMETHODIMP WebTransportParent::OnStatsAvailable(
+    WebTransportStatsData* aStats) {
+  MOZ_ASSERT(mSocketThread->IsOnCurrentThread());
+  if (aStats) {
+    LOG(
+        ("Stats available: bytesSent=%llu, bytesReceived=%llu, minRtt=%f, "
+         "smoothedRtt=%f",
+         (unsigned long long)aStats->bytesSent(),
+         (unsigned long long)aStats->bytesReceived(), aStats->minRtt(),
+         aStats->smoothedRtt()));
+  } else {
+    LOG(("Stats unavailable"));
+  }
+
+  // The gather can outlive the requests it was started for if the session went
+  // away first (see ResolvePendingGetStats() callers); there is nothing left to
+  // report to.
+  if (mGetStatsResolvers.IsEmpty()) {
+    return NS_OK;
+  }
+
+  ResolvePendingGetStats(aStats ? Some(*aStats) : Nothing());
+  return NS_OK;
+}
+
+void WebTransportParent::ResolvePendingGetStats(
+    const Maybe<WebTransportStatsData>& aStats) {
+  MOZ_ASSERT(mSocketThread->IsOnCurrentThread());
+  nsTArray<GetStatsResolver> resolvers = std::move(mGetStatsResolvers);
+  for (auto& resolver : resolvers) {
+    resolver(aStats);
+  }
 }
 }  // namespace mozilla::dom

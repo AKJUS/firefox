@@ -16,12 +16,15 @@ interface nsIWebTransportHash;
 %{C++
 namespace mozilla::dom {
 class ClientInfo;
+class WebTransportStatsData;
 }
 namespace mozilla::net {
 class WebTransportSessionBase;
 class WebTransportStreamBase;
 }
 %}
+
+[ptr] native WebTransportStatsDataPtr(mozilla::dom::WebTransportStatsData);
 
 [ptr] native WebTransportSessionPtr(mozilla::net::WebTransportSessionBase);
 [ptr] native WebTransportStreamPtr(mozilla::net::WebTransportStreamBase);
@@ -61,7 +64,12 @@ interface nsIWebTransport : nsISupports {
                     in Array<AString> aProtocols,
                     in nsIWebTransport_HTTPVersion aVersion);
 
-  // Asynchronously get stats.
+  // Asynchronously get stats. On success (NS_OK), results in exactly one
+  // call to onStatsAvailable(), even if stats could not be gathered (in
+  // which case aStats is null) -- unless the session is torn down before the
+  // gather completes, since there is then no listener left to call back. On
+  // failure, no callback follows; the caller must treat that the same as a
+  // null aStats.
   void getStats();
 
   // Export keying material using TLS exporter (RFC 5705).
@@ -131,7 +139,8 @@ interface WebTransportSessionEventListener : nsISupports {
     in uint64_t aId,
     in WebTransportSessionEventListener_DatagramOutcome aOutCome);
 
-  // void onStatsAvailable(in WebTransportStats aStats);
+  // aStats is null if stats could not be gathered for this session.
+  [noscript] void onStatsAvailable(in WebTransportStatsDataPtr aStats);
 };
 
 [uuid(8fb30aa9-5163-4eb3-81f3-371e1ccb5b0e)]
