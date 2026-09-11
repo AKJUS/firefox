@@ -93,6 +93,7 @@ struct CompatCheckResult {
   bool isCompatible = false;
   bool cachesOK = false;
   bool isDowngrade = false;
+  bool isDifferentInstall = false;
   bool hasEncryptedDatabases = false;
   nsCString lastAppVersion{VoidCString()};
   nsCString lastAppBuildID{VoidCString()};
@@ -108,7 +109,9 @@ CompatCheckResult CheckCompatibility(nsIFile* aProfileDir,
 #ifdef MOZ_BLOCK_PROFILE_DOWNGRADE
 mozilla::Maybe<mozilla::PathString> GenerateDowngradeTelemetry(
     const nsACString& aPingId, const nsCString& aLastVersion, bool aHasSync,
-    int32_t aButton, const nsACString& aChannel);
+    int32_t aButton, const nsACString& aChannel,
+    const nsACString& aProfileSelectionReason,
+    mozilla::Maybe<PRTime> aReplacedLockTime, bool aIsDifferentInstall);
 
 bool BuildDowngradePingUrl(const nsACString& aPingId,
                            const nsACString& aChannel, nsACString& aUrlOut);

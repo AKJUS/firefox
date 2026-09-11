@@ -95,6 +95,7 @@ class nsToolkitProfileService final : public nsIToolkitProfileService {
   bool HasShowProfileSelector();
   void UpdateCurrentProfile();
   void CompleteStartup();
+  const nsACString& ProfileSelectionReason();
 
   using AsyncFlushPromise =
       mozilla::MozPromise<bool /* ignored */, nsresult, false>;

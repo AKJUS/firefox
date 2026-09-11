@@ -26,6 +26,7 @@
 #include "mozilla/ProcessType.h"
 #include "mozilla/ResultExtensions.h"
 #include "mozilla/RuntimeExceptionModule.h"
+#include "mozilla/FileUtils.h"
 #include "mozilla/ScopeExit.h"
 #include "mozilla/StaticPrefs_browser.h"
 #include "mozilla/StaticPrefs_fission.h"
@@ -155,6 +156,7 @@
 #  endif
 #endif
 
+#include "json/json.h"
 #include "nsCRT.h"
 #include "nsCOMPtr.h"
 #include "nsDirectoryServiceDefs.h"
@@ -179,6 +181,7 @@
 #include "mozilla/LateWriteChecks.h"
 
 #include <stdlib.h>
+#include <string_view>
 
 #ifdef XP_UNIX
 #  include <errno.h>
@@ -3322,10 +3325,66 @@ struct FileWriteFunc final : public JSONWriteFunc {
   }
 };
 
-Maybe<PathString> GenerateDowngradeTelemetry(const nsACString& aPingId,
-                                             const nsCString& aLastVersion,
-                                             bool aHasSync, int32_t aButton,
-                                             const nsACString& aChannel) {
+// Reads aJsonFile and returns the raw install_timestamp value, or Nothing() if
+// the file is absent, unreadable, or lacks the property.
+static mozilla::Maybe<uint64_t> ReadInstallTimestamp(nsIFile* aJsonFile,
+                                                     bool aIsUTF16LE) {
+  FILE* raw = nullptr;
+  if (NS_FAILED(aJsonFile->OpenANSIFileDesc("rb", &raw)) || !raw) {
+    return mozilla::Nothing();
+  }
+  ScopedCloseFile f(raw);
+
+  fseek(f.get(), 0, SEEK_END);
+  auto len = ftell(f.get());
+  if (len <= 0) {
+    return mozilla::Nothing();
+  }
+  rewind(f.get());
+
+  auto buf = MakeUnique<uint8_t[]>(len);
+  if (fread(buf.get(), 1, len, f.get()) != (size_t)len) {
+    return mozilla::Nothing();
+  }
+
+  nsAutoCString converted;
+  std::string_view utf8View;
+  if (aIsUTF16LE) {
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+    const char16_t* chars = reinterpret_cast<const char16_t*>(buf.get());
+    uint32_t charLen = len / 2;
+    CopyUTF16toUTF8(Span(chars, charLen), converted);
+    utf8View = std::string_view(converted.get(), converted.Length());
+#else
+    MOZ_ASSERT_UNREACHABLE(
+        "UTF-16LE reading not supported on big-endian architectures");
+    return mozilla::Nothing();
+#endif
+  } else {
+    utf8View = std::string_view(reinterpret_cast<const char*>(buf.get()), len);
+  }
+
+  Json::Value root;
+  Json::Reader reader;
+  if (!reader.parse(utf8View.data(), utf8View.data() + utf8View.size(), root) ||
+      !root.isMember("install_timestamp")) {
+    return mozilla::Nothing();
+  }
+
+  std::string tsStr = root["install_timestamp"].asString();
+  char* end = nullptr;
+  uint64_t val = strtoull(tsStr.c_str(), &end, 10);
+  if (*end != '\0') {
+    return mozilla::Nothing();
+  }
+  return mozilla::Some(val);
+}
+
+Maybe<mozilla::PathString> GenerateDowngradeTelemetry(
+    const nsACString& aPingId, const nsCString& aLastVersion, bool aHasSync,
+    int32_t aButton, const nsACString& aChannel,
+    const nsACString& aProfileSelectionReason,
+    mozilla::Maybe<PRTime> aReplacedLockTime, bool aIsDifferentInstall) {
   nsCOMPtr<nsIPrefService> prefSvc =
       do_GetService("@mozilla.org/preferences-service;1");
   NS_ENSURE_TRUE(prefSvc, Nothing());
@@ -3358,10 +3417,47 @@ Maybe<PathString> GenerateDowngradeTelemetry(const nsACString& aPingId,
   }
 #  endif
 
-  time_t now;
-  time(&now);
+  mozilla::Maybe<PRTime> maybeInstallTime;
+  mozilla::Maybe<PRTime> maybeUpdateTime;
+  nsCOMPtr<nsIFile> greDir;
+  if (NS_SUCCEEDED(
+          NS_GetSpecialDirectory(NS_GRE_DIR, getter_AddRefs(greDir)))) {
+#  ifdef XP_WIN
+    // installation_telemetry.json uses a Windows FILETIME (100ns intervals
+    // since Jan 1, 1601 UTC).
+    nsCOMPtr<nsIFile> installTelemetry;
+    if (NS_SUCCEEDED(greDir->Clone(getter_AddRefs(installTelemetry))) &&
+        NS_SUCCEEDED(
+            installTelemetry->Append(u"installation_telemetry.json"_ns))) {
+      if (auto filetime =
+              ReadInstallTimestamp(installTelemetry, /* aIsUTF16LE */ true)) {
+        constexpr uint64_t kEpochOffset = 116444736000000000ULL;
+        if (*filetime > kEpochOffset) {
+          // The offset converts to an epoch of 1970, divide by 10 to convert
+          // from 100ns to usec
+          maybeInstallTime =
+              mozilla::Some(PRTime((*filetime - kEpochOffset) / 10));
+        }
+      }
+    }
+#  endif
+
+    // update_telemetry.json uses a Unix timestamp in milliseconds.
+    nsCOMPtr<nsIFile> updateTelemetry;
+    if (NS_SUCCEEDED(greDir->Clone(getter_AddRefs(updateTelemetry))) &&
+        NS_SUCCEEDED(updateTelemetry->Append(u"update_telemetry.json"_ns))) {
+      if (auto msTime =
+              ReadInstallTimestamp(updateTelemetry, /* aIsUTF16LE */ false)) {
+        maybeUpdateTime =
+            mozilla::Some(PRTime(int64_t(*msTime) * PR_USEC_PER_MSEC));
+      }
+    }
+  }
+
+  PRTime nowUsec = PR_Now();
+  time_t nowTime = time_t(nowUsec / PR_USEC_PER_SEC);
   char date[sizeof "YYYY-MM-DDThh:mm:ss.000Z"];
-  strftime(date, sizeof date, "%FT%T.000Z", gmtime(&now));
+  strftime(date, sizeof date, "%FT%T.000Z", gmtime(&nowTime));
 
   constexpr auto pingType = "downgrade"_ns;
 
@@ -3431,6 +3527,27 @@ Maybe<PathString> GenerateDowngradeTelemetry(const nsACString& aPingId,
       w.BoolProperty("hasSync", aHasSync);
       w.IntProperty("button", aButton);
       w.BoolProperty("isMSIX", isMSIX);
+      w.StringProperty("profileSelectionReason",
+                       PromiseFlatCString(aProfileSelectionReason));
+
+      w.BoolProperty("isDifferentInstall", aIsDifferentInstall);
+
+      if (aReplacedLockTime) {
+        // aReplacedLockTime is in milliseconds.
+        PRTime lockTimeUsec = *aReplacedLockTime * PR_USEC_PER_MSEC;
+        constexpr int64_t kUsecsPerDay =
+            int64_t(PR_USEC_PER_SEC) * 60 * 60 * 24;
+        int64_t elapsedUsec = nowUsec - lockTimeUsec;
+        if (elapsedUsec >= 0) {
+          w.IntProperty("daysSinceLock", elapsedUsec / kUsecsPerDay);
+        }
+        if (maybeInstallTime) {
+          w.BoolProperty("isNewInstall", *maybeInstallTime > lockTimeUsec);
+        }
+        if (maybeUpdateTime) {
+          w.BoolProperty("isNewUpdate", *maybeUpdateTime > lockTimeUsec);
+        }
+      }
     }
     w.EndObject();
   }
@@ -3462,8 +3579,11 @@ bool BuildDowngradePingUrl(const nsACString& aPingId,
   return true;
 }
 
-static void SubmitDowngradeTelemetry(const nsCString& aLastVersion,
-                                     bool aHasSync, int32_t aButton) {
+static void SubmitDowngradeTelemetry(const nsACString& aProfileSelectionReason,
+                                     mozilla::Maybe<PRTime> aReplacedLockTime,
+                                     const nsCString& aLastVersion,
+                                     bool aHasSync, int32_t aButton,
+                                     bool aIsDifferentInstall) {
   nsCOMPtr<nsIPrefService> prefSvc =
       do_GetService("@mozilla.org/preferences-service;1");
   NS_ENSURE_TRUE_VOID(prefSvc);
@@ -3513,7 +3633,8 @@ static void SubmitDowngradeTelemetry(const nsCString& aLastVersion,
   }
 
   Maybe<PathString> filePath = GenerateDowngradeTelemetry(
-      pingId, aLastVersion, aHasSync, aButton, channel);
+      pingId, aLastVersion, aHasSync, aButton, channel, aProfileSelectionReason,
+      aReplacedLockTime, aIsDifferentInstall);
   if (!filePath) {
     return;
   }
@@ -3546,7 +3667,8 @@ static const char kProfileDowngradeURL[] =
 
 static ReturnAbortOnError HandleDetectedDowngrade(
     nsIFile* aProfileDir, nsINativeAppSupport* aNative,
-    nsIToolkitProfileService* aProfileSvc, const nsCString& aLastVersion) {
+    nsToolkitProfileService* aProfileSvc, nsIProfileLock* aProfileLock,
+    const nsCString& aLastVersion, bool aIsDifferentInstall) {
   int32_t result = 0;
   nsresult rv;
 
@@ -3625,7 +3747,15 @@ static ReturnAbortOnError HandleDetectedDowngrade(
 
       paramBlock->GetInt(1, &result);
 
-      SubmitDowngradeTelemetry(aLastVersion, hasSync, result);
+      PRTime replacedLockTime = 0;
+      mozilla::Maybe<PRTime> maybeReplacedLockTime;
+      if (NS_SUCCEEDED(aProfileLock->GetReplacedLockTime(&replacedLockTime)) &&
+          replacedLockTime != 0) {
+        maybeReplacedLockTime = mozilla::Some(replacedLockTime);
+      }
+      SubmitDowngradeTelemetry(aProfileSvc->ProfileSelectionReason(),
+                               maybeReplacedLockTime, aLastVersion, hasSync,
+                               result, aIsDifferentInstall);
     }
   }
 
@@ -3757,6 +3887,36 @@ CompatCheckResult CheckCompatibility(nsIFile* aProfileDir,
     return result;
   }
 
+  // Check whether this is the same install by comparing the platform and app
+  // directories. Done before the version comparison so it is set even for
+  // downgrades.
+  result.isDifferentInstall = ![&]() {
+    nsAutoCString dirBuf;
+    nsCOMPtr<nsIFile> lf;
+    bool eq = false;
+
+    if (NS_FAILED(
+            parser.GetString("Compatibility", "LastPlatformDir", dirBuf)) ||
+        NS_FAILED(NS_NewLocalFileWithPersistentDescriptor(
+            dirBuf, getter_AddRefs(lf))) ||
+        NS_FAILED(lf->Equals(aXULRunnerDir, &eq)) || !eq) {
+      return false;
+    }
+
+    if (!aAppDir) {
+      return true;
+    }
+
+    if (NS_FAILED(parser.GetString("Compatibility", "LastAppDir", dirBuf)) ||
+        NS_FAILED(NS_NewLocalFileWithPersistentDescriptor(
+            dirBuf, getter_AddRefs(lf))) ||
+        NS_FAILED(lf->Equals(aAppDir, &eq)) || !eq) {
+      return false;
+    }
+
+    return true;
+  }();
+
   if (!result.lastVersion.Equals(aVersion)) {
     // The version is not the same. Whether it's a downgrade depends on an
     // actual comparison:
@@ -3777,27 +3937,7 @@ CompatCheckResult CheckCompatibility(nsIFile* aProfileDir,
   rv = parser.GetString("Compatibility", "LastOSABI", buf);
   if (NS_FAILED(rv) || !aOSABI.Equals(buf)) return result;
 
-  rv = parser.GetString("Compatibility", "LastPlatformDir", buf);
-  if (NS_FAILED(rv)) return result;
-
-  nsCOMPtr<nsIFile> lf;
-  rv = NS_NewLocalFileWithPersistentDescriptor(buf, getter_AddRefs(lf));
-  if (NS_FAILED(rv)) return result;
-
-  bool eq;
-  rv = lf->Equals(aXULRunnerDir, &eq);
-  if (NS_FAILED(rv) || !eq) return result;
-
-  if (aAppDir) {
-    rv = parser.GetString("Compatibility", "LastAppDir", buf);
-    if (NS_FAILED(rv)) return result;
-
-    rv = NS_NewLocalFileWithPersistentDescriptor(buf, getter_AddRefs(lf));
-    if (NS_FAILED(rv)) return result;
-
-    rv = lf->Equals(aAppDir, &eq);
-    if (NS_FAILED(rv) || !eq) return result;
-  }
+  if (result.isDifferentInstall) return result;
 
   // If we see this flag, caches are invalid.
   rv = parser.GetString("Compatibility", "InvalidateCaches", buf);
@@ -5707,8 +5847,9 @@ int XREMain::XRE_mainStartup(bool* aExitFlag) {
 #  ifdef XP_MACOSX
     InitializeMacApp();
 #  endif
-    rv = HandleDetectedDowngrade(mProfD, mNativeApp, mProfileSvc,
-                                 compatResult.lastVersion);
+    rv = HandleDetectedDowngrade(mProfD, mNativeApp, mProfileSvc, mProfileLock,
+                                 compatResult.lastVersion,
+                                 compatResult.isDifferentInstall);
     if (rv == NS_ERROR_LAUNCHED_CHILD_PROCESS || rv == NS_ERROR_ABORT) {
       *aExitFlag = true;
       return 0;

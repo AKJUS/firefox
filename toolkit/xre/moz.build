@@ -256,6 +256,7 @@ LOCAL_INCLUDES += [
     "/js/xpconnect/loader",
     "/testing/gtest/mozilla",
     "/third_party/sqlite3/ext/",
+    "/toolkit/components/jsoncpp/include",
     "/toolkit/crashreporter",
     "/xpcom/build",
 ]

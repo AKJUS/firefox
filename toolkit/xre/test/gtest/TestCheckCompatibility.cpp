@@ -137,6 +137,7 @@ TEST_F(CheckCompatibilityTest, VersionMatchesEverythingIdentical) {
   EXPECT_TRUE(result.isCompatible);
   EXPECT_TRUE(result.cachesOK);
   EXPECT_FALSE(result.isDowngrade);
+  EXPECT_FALSE(result.isDifferentInstall);
   EXPECT_FALSE(result.hasEncryptedDatabases);
   EXPECT_STREQ(result.lastAppVersion.get(), "130.0");
   EXPECT_STREQ(result.lastAppBuildID.get(), "20250101000000");
@@ -153,6 +154,7 @@ TEST_F(CheckCompatibilityTest, VersionMatchesOSABIDiffers) {
   EXPECT_FALSE(result.isCompatible);
   EXPECT_FALSE(result.cachesOK);
   EXPECT_FALSE(result.isDowngrade);
+  EXPECT_FALSE(result.isDifferentInstall);
   EXPECT_FALSE(result.hasEncryptedDatabases);
   EXPECT_STREQ(result.lastAppVersion.get(), "130.0");
   EXPECT_STREQ(result.lastAppBuildID.get(), "20250101000000");
@@ -170,6 +172,7 @@ TEST_F(CheckCompatibilityTest, VersionMatchesInvalidateCaches) {
   EXPECT_TRUE(result.isCompatible);
   EXPECT_FALSE(result.cachesOK);
   EXPECT_FALSE(result.isDowngrade);
+  EXPECT_FALSE(result.isDifferentInstall);
   EXPECT_FALSE(result.hasEncryptedDatabases);
   EXPECT_STREQ(result.lastAppVersion.get(), "130.0");
   EXPECT_STREQ(result.lastAppBuildID.get(), "20250101000000");
@@ -189,6 +192,78 @@ TEST_F(CheckCompatibilityTest, VersionMatchesPurgeCachesFileExists) {
   EXPECT_TRUE(result.isCompatible);
   EXPECT_FALSE(result.cachesOK);
   EXPECT_FALSE(result.isDowngrade);
+  EXPECT_FALSE(result.isDifferentInstall);
+  EXPECT_FALSE(result.hasEncryptedDatabases);
+  EXPECT_STREQ(result.lastAppVersion.get(), "130.0");
+  EXPECT_STREQ(result.lastAppBuildID.get(), "20250101000000");
+}
+
+TEST_F(CheckCompatibilityTest, VersionMatchesDifferentPlatformDir) {
+  nsCString version("130.0_20250101000000/20250101000000");
+
+  nsCOMPtr<nsIFile> tmpDir;
+  NS_GetSpecialDirectory(NS_OS_TEMP_DIR, getter_AddRefs(tmpDir));
+  nsCOMPtr<nsIFile> otherDir;
+  tmpDir->Clone(getter_AddRefs(otherDir));
+  otherDir->Append(u"test_compat_other_platform"_ns);
+  otherDir->Remove(true);
+  (void)otherDir->Create(nsIFile::DIRECTORY_TYPE, 0755);
+
+  nsAutoCString otherDesc;
+  (void)otherDir->GetPersistentDescriptor(otherDesc);
+
+  nsAutoCString appDesc;
+  (void)mAppDir->GetPersistentDescriptor(appDesc);
+
+  nsAutoCString content;
+  content.AppendPrintf(
+      "[Compatibility]\n"
+      "LastVersion=%s\n"
+      "LastOSABI=Darwin_aarch64-gcc3\n"
+      "LastPlatformDir=%s\n"
+      "LastAppDir=%s\n",
+      version.get(), otherDesc.get(), appDesc.get());
+  WriteCompatIni(content);
+
+  CompatCheckResult result =
+      CheckCompatibility(mProfileDir, version, "Darwin_aarch64-gcc3"_ns,
+                         mPlatformDir, mAppDir, nullptr);
+
+  EXPECT_FALSE(result.isCompatible);
+  EXPECT_FALSE(result.cachesOK);
+  EXPECT_FALSE(result.isDowngrade);
+  EXPECT_TRUE(result.isDifferentInstall);
+  EXPECT_FALSE(result.hasEncryptedDatabases);
+  EXPECT_STREQ(result.lastAppVersion.get(), "130.0");
+  EXPECT_STREQ(result.lastAppBuildID.get(), "20250101000000");
+
+  otherDir->Remove(true);
+}
+
+TEST_F(CheckCompatibilityTest, VersionMatchesDifferentAppDir) {
+  nsCString version("130.0_20250101000000/20250101000000");
+
+  nsAutoCString platformDesc;
+  (void)mPlatformDir->GetPersistentDescriptor(platformDesc);
+
+  nsAutoCString content;
+  content.AppendPrintf(
+      "[Compatibility]\n"
+      "LastVersion=%s\n"
+      "LastOSABI=Darwin_aarch64-gcc3\n"
+      "LastPlatformDir=%s\n"
+      "LastAppDir=/nonexistent/path\n",
+      version.get(), platformDesc.get());
+  WriteCompatIni(content);
+
+  CompatCheckResult result =
+      CheckCompatibility(mProfileDir, version, "Darwin_aarch64-gcc3"_ns,
+                         mPlatformDir, mAppDir, nullptr);
+
+  EXPECT_FALSE(result.isCompatible);
+  EXPECT_FALSE(result.cachesOK);
+  EXPECT_FALSE(result.isDowngrade);
+  EXPECT_TRUE(result.isDifferentInstall);
   EXPECT_FALSE(result.hasEncryptedDatabases);
   EXPECT_STREQ(result.lastAppVersion.get(), "130.0");
   EXPECT_STREQ(result.lastAppBuildID.get(), "20250101000000");
@@ -206,6 +281,7 @@ TEST_F(CheckCompatibilityTest, VersionUpgrade) {
   EXPECT_FALSE(result.isCompatible);
   EXPECT_FALSE(result.cachesOK);
   EXPECT_FALSE(result.isDowngrade);
+  EXPECT_FALSE(result.isDifferentInstall);
   EXPECT_FALSE(result.hasEncryptedDatabases);
   EXPECT_STREQ(result.lastAppVersion.get(), "129.0");
   EXPECT_STREQ(result.lastAppBuildID.get(), "20240901000000");
@@ -223,6 +299,7 @@ TEST_F(CheckCompatibilityTest, VersionDowngrade) {
   EXPECT_FALSE(result.isCompatible);
   EXPECT_FALSE(result.cachesOK);
   EXPECT_TRUE(result.isDowngrade);
+  EXPECT_FALSE(result.isDifferentInstall);
   EXPECT_FALSE(result.hasEncryptedDatabases);
   EXPECT_STREQ(result.lastAppVersion.get(), "131.0");
   EXPECT_STREQ(result.lastAppBuildID.get(), "20250201000000");
@@ -244,6 +321,7 @@ TEST_F(CheckCompatibilityTest, MinorVersionChangeNotDowngrade) {
   EXPECT_FALSE(result.isCompatible);
   EXPECT_FALSE(result.cachesOK);
   EXPECT_FALSE(result.isDowngrade);
+  EXPECT_FALSE(result.isDifferentInstall);
   EXPECT_FALSE(result.hasEncryptedDatabases);
   EXPECT_STREQ(result.lastAppVersion.get(), "130.1");
   EXPECT_STREQ(result.lastAppBuildID.get(), "20250201000000");
@@ -261,6 +339,7 @@ TEST_F(CheckCompatibilityTest, PatchVersionChangeNotDowngrade) {
   EXPECT_FALSE(result.isCompatible);
   EXPECT_FALSE(result.cachesOK);
   EXPECT_FALSE(result.isDowngrade);
+  EXPECT_FALSE(result.isDifferentInstall);
   EXPECT_FALSE(result.hasEncryptedDatabases);
   EXPECT_STREQ(result.lastAppVersion.get(), "130.0.1");
   EXPECT_STREQ(result.lastAppBuildID.get(), "20250201000000");
@@ -278,6 +357,7 @@ TEST_F(CheckCompatibilityTest, EncryptedDatabases) {
   EXPECT_TRUE(result.isCompatible);
   EXPECT_TRUE(result.cachesOK);
   EXPECT_FALSE(result.isDowngrade);
+  EXPECT_FALSE(result.isDifferentInstall);
   EXPECT_TRUE(result.hasEncryptedDatabases);
   EXPECT_STREQ(result.lastAppVersion.get(), "130.0");
   EXPECT_STREQ(result.lastAppBuildID.get(), "20250101000000");
@@ -294,6 +374,7 @@ TEST_F(CheckCompatibilityTest, EncryptedDatabasesAbsent) {
   EXPECT_TRUE(result.isCompatible);
   EXPECT_TRUE(result.cachesOK);
   EXPECT_FALSE(result.isDowngrade);
+  EXPECT_FALSE(result.isDifferentInstall);
   EXPECT_FALSE(result.hasEncryptedDatabases);
   EXPECT_STREQ(result.lastAppVersion.get(), "130.0");
   EXPECT_STREQ(result.lastAppBuildID.get(), "20250101000000");
@@ -309,6 +390,7 @@ TEST_F(CheckCompatibilityTest, NoCompatIni) {
   EXPECT_FALSE(result.isCompatible);
   EXPECT_FALSE(result.cachesOK);
   EXPECT_FALSE(result.isDowngrade);
+  EXPECT_FALSE(result.isDifferentInstall);
   EXPECT_FALSE(result.hasEncryptedDatabases);
   EXPECT_TRUE(result.lastAppVersion.IsVoid());
   EXPECT_TRUE(result.lastAppBuildID.IsVoid());
@@ -325,6 +407,7 @@ TEST_F(CheckCompatibilityTest, SafeMode) {
   EXPECT_FALSE(result.isCompatible);
   EXPECT_FALSE(result.cachesOK);
   EXPECT_FALSE(result.isDowngrade);
+  EXPECT_FALSE(result.isDifferentInstall);
   EXPECT_FALSE(result.hasEncryptedDatabases);
   EXPECT_STREQ(result.lastAppVersion.get(), "Safe Mode");
   EXPECT_TRUE(result.lastAppBuildID.IsEmpty());
@@ -351,6 +434,7 @@ TEST_F(CheckCompatibilityTest, VersionMatchesNoAppDir) {
   EXPECT_TRUE(result.isCompatible);
   EXPECT_TRUE(result.cachesOK);
   EXPECT_FALSE(result.isDowngrade);
+  EXPECT_FALSE(result.isDifferentInstall);
   EXPECT_FALSE(result.hasEncryptedDatabases);
   EXPECT_STREQ(result.lastAppVersion.get(), "130.0");
   EXPECT_STREQ(result.lastAppBuildID.get(), "20250101000000");

@@ -756,6 +756,10 @@ void nsToolkitProfileService::CompleteStartup() {
   }
 }
 
+const nsACString& nsToolkitProfileService::ProfileSelectionReason() {
+  return mStartupReason;
+}
+
 // Tests whether the passed profile was last used by this install.
 bool nsToolkitProfileService::IsProfileForCurrentInstall(
     nsToolkitProfile* aProfile) {
