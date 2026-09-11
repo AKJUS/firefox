@@ -76,6 +76,7 @@ import org.mozilla.fenix.ext.requireComponents
 import org.mozilla.fenix.ext.runIfFragmentIsAttached
 import org.mozilla.fenix.home.HomeFragment
 import org.mozilla.fenix.ipprotection.store.Surface as IPProtectionSurface
+import org.mozilla.fenix.listentopage.ListenSheetIntegration
 import org.mozilla.fenix.nimbus.FxNimbus
 import org.mozilla.fenix.onboarding.OnboardingFragmentDirections
 import org.mozilla.fenix.onboarding.OnboardingReason
@@ -95,6 +96,7 @@ class BrowserFragment : BaseBrowserFragment(), UserInteractionHandler, SystemIns
     private val translationsBinding = ViewBoundFeatureWrapper<TranslationsBinding>()
     private val translationsBannerIntegration = ViewBoundFeatureWrapper<TranslationsBannerIntegration>()
     private val pdfToolsIntegration = ViewBoundFeatureWrapper<PdfToolsIntegration>()
+    private val listenSheetIntegration = ViewBoundFeatureWrapper<ListenSheetIntegration>()
     private val continuousOnboardingFeature = ViewBoundFeatureWrapper<ContinuousOnboardingFeature>()
     private var qrScanFenixFeature: ViewBoundFeatureWrapper<QrScanFenixFeature>? =
         ViewBoundFeatureWrapper<QrScanFenixFeature>()
@@ -165,6 +167,7 @@ class BrowserFragment : BaseBrowserFragment(), UserInteractionHandler, SystemIns
         initBrowserToolbarComposableUpdates(view)
         initTranslationsUpdates(context = context, rootView = view)
         initPdfTools(context = context, rootView = view)
+        initListenSheet(context = context, rootView = view)
         initContinuousOnboardingFeature()
 
         thumbnailsFeature.set(
@@ -348,6 +351,24 @@ class BrowserFragment : BaseBrowserFragment(), UserInteractionHandler, SystemIns
                 PdfToolsIntegration(
                     container = binding.browserLayout,
                     browserStore = context.components.core.store,
+                    isAddressBarAtBottom = settings.toolbarPosition == ToolbarPosition.BOTTOM,
+                ),
+            owner = this,
+            view = rootView,
+        )
+    }
+
+    private fun initListenSheet(context: Context, rootView: View) {
+        val settings = context.components.settings
+        if (!settings.listenToPageFeatureFlagEnabled) {
+            return
+        }
+
+        listenSheetIntegration.set(
+            feature =
+                ListenSheetIntegration(
+                    container = binding.browserLayout,
+                    listenStore = context.components.listenToPage.store,
                     isAddressBarAtBottom = settings.toolbarPosition == ToolbarPosition.BOTTOM,
                 ),
             owner = this,
