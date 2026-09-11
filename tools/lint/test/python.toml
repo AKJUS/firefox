@@ -76,6 +76,8 @@ skip-if = ["os == 'win'"]
 
 ["test_shellcheck.py"]
 
+["test_spidermonkey.py"]
+
 ["test_stylelint.py"]
 skip-if = ["os == 'win'"]  # busts the tree for subsequent tasks on the same worker (bug 1708591)
 # Setup conflicts with eslint setup so this should run sequentially.

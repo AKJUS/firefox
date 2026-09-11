@@ -457,6 +457,26 @@ python-sites:
             - 'python/sites/**'
 
 
+spidermonkey:
+    description: "SpiderMonkey #include style, MacroAssembler and bytecode doc checks"
+    treeherder:
+        symbol: js(SM)
+    run:
+        mach: lint -v -l spidermonkey -f treeherder -f json:/builds/worker/mozlint.json .
+    when:
+        files-changed:
+            - 'config/check_js_opcode.py'
+            - 'config/check_macroassembler_style.py'
+            - 'config/check_spidermonkey_style.py'
+            - 'intl/components/**/*.h'
+            - 'js/public/**'
+            - 'js/src/**'
+            - 'memory/mozalloc/**/*.h'
+            - 'mfbt/**/*.h'
+            - 'mozglue/**/*.h'
+            - 'tools/lint/spidermonkey.yml'
+            - 'tools/lint/spidermonkey/**'
+
 test-manifest:
     description: lint test manifests
     treeherder:
