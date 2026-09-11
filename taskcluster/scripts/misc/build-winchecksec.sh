@@ -25,14 +25,15 @@ x86_64-pc-windows-msvc)
 
     . $GECKO_PATH/taskcluster/scripts/misc/vs-setup.sh
 
-    # Patch pe-parse because clang-cl doesn't support /analyze.
+    # Patch pe-parse because clang-cl doesn't support /analyze, and clang 23
+    # warns about its unused to_string template under /W4 /WX.
     patch -p1 <<'EOF'
 --- a/pe-parse/cmake/compilation_flags.cmake
 +++ b/pe-parse/cmake/compilation_flags.cmake
 @@ -1,5 +1,5 @@
  if (MSVC)
 -  list(APPEND DEFAULT_CXX_FLAGS /W4 /analyze)
-+  list(APPEND DEFAULT_CXX_FLAGS /W4)
++  list(APPEND DEFAULT_CXX_FLAGS /W4 -Wno-unused-template)
 
    if (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
      list(APPEND DEFAULT_CXX_FLAGS /Zi)
