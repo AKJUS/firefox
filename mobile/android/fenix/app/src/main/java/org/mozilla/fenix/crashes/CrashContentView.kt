@@ -43,6 +43,9 @@ constructor(
     fun show(controller: CrashReporterController) {
         this.controller = controller
         inflateViewIfNecessary()
+        // Update the checkbox state on every show(), so that the preference does not
+        // go stale for multiple crashes in the same session.
+        bindCheckboxState()
         visibility = VISIBLE
     }
 
@@ -85,6 +88,13 @@ constructor(
             setOnClickListener {
                 controller.handleCloseAndRemove(binding.sendCrashCheckbox.isChecked)
             }
+        }
+    }
+
+    private fun bindCheckboxState() {
+        binding.sendCrashCheckbox.apply {
+            visibility = if (controller.isCrashReportCheckboxVisible()) VISIBLE else GONE
+            isChecked = controller.isCrashReportCheckboxInitiallyChecked()
         }
     }
 

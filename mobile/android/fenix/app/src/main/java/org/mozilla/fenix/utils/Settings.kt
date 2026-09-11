@@ -52,6 +52,7 @@ import org.mozilla.fenix.components.settings.counterPreference
 import org.mozilla.fenix.components.settings.featureFlagBooleanPreference
 import org.mozilla.fenix.components.settings.lazyFeatureFlagBooleanPreference
 import org.mozilla.fenix.components.toolbar.ToolbarPosition
+import org.mozilla.fenix.crashes.crashReportOption
 import org.mozilla.fenix.debugsettings.addresses.EmptyAddressesDebugRegionRepository
 import org.mozilla.fenix.debugsettings.addresses.SharedPrefsAddressesDebugRegionRepository
 import org.mozilla.fenix.ext.TALL_SCREEN_HEIGHT_DP
@@ -86,6 +87,7 @@ private const val MAX_ANIMATION_FOREGROUND = 5
  * @param packageManagerCompatHelper Helper for accessing [android.content.pm.PackageManager] methods.
  * @param isBenchmarkBuild Boolean that will be true only when the app is built for Baseline Profile or Macrobenchmark.
  * @param currentTimeMillis provider for the current time in milliseconds, injectable for testing.
+ * @param isCrashReportEnabledInBuild Whether the build itself permits crash reporting at all. Injected for testing.
  */
 @Suppress("LargeClass", "TooManyFunctions")
 class Settings(
@@ -94,6 +96,7 @@ class Settings(
     private val packageManagerCompatHelper: PackageManagerCompatHelper = appContext.packageManagerCompatHelper,
     private val isBenchmarkBuild: Boolean = BuildConfig.IS_BENCHMARK_BUILD,
     private val currentTimeMillis: () -> Long = { System.currentTimeMillis() },
+    private val isCrashReportEnabledInBuild: Boolean = BuildConfig.CRASH_REPORTING && Config.channel.isReleased,
 ) : PreferencesHolder {
     companion object {
         const val FENIX_PREFERENCES = "fenix_preferences"
@@ -171,8 +174,8 @@ class Settings(
 
     private val logger = Logger("Settings")
 
-    @VisibleForTesting
-    internal val isCrashReportEnabledInBuild: Boolean = BuildConfig.CRASH_REPORTING && Config.channel.isReleased
+    val isCrashReportingEnabled: Boolean
+        get() = isCrashReportEnabledInBuild && crashReportOption() != CrashReportOption.Never
 
     override val preferences: SharedPreferences = appContext.getSharedPreferences(FENIX_PREFERENCES, MODE_PRIVATE)
 
@@ -693,14 +696,6 @@ class Settings(
             appContext.getPreferenceKey(R.string.pref_key_install_pwa_opened),
             default = false,
         )
-
-    val isCrashReportingEnabled: Boolean
-        get() =
-            isCrashReportEnabledInBuild &&
-                preferences.getBoolean(
-                    appContext.getPreferenceKey(R.string.pref_key_crash_reporter),
-                    true,
-                )
 
     var crashReportChoice by
         stringPreference(

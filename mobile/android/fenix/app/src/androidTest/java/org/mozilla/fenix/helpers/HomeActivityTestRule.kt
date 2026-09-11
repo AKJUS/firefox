@@ -15,9 +15,11 @@ import android.view.ViewConfiguration.getLongPressTimeout
 import androidx.test.espresso.intent.rule.IntentsTestRule
 import androidx.test.rule.ActivityTestRule
 import mozilla.components.feature.sitepermissions.SitePermissionsRules
+import mozilla.components.lib.crash.store.CrashReportOption
 import mozilla.components.support.base.log.logger.Logger
 import org.mozilla.fenix.HomeActivity
 import org.mozilla.fenix.components.initializeGlean
+import org.mozilla.fenix.crashes.crashReportOption
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.helpers.Constants.TAG
 import org.mozilla.fenix.helpers.FeatureSettingsHelper.Companion.settings
@@ -75,6 +77,7 @@ class HomeActivityTestRule(
         showVoiceSearchInDisplayToolbar: Boolean = false,
         isHomepageTrendingRecentSearchEnabled: Boolean = false,
         showAddressBarInFocusMode: Boolean = false,
+        crashReportOption: CrashReportOption = settings.crashReportOption(),
     ) : this(initialTouchMode, launchActivity, skipOnboarding) {
         this.isHomepageAsNewTabEnabled = isHomepageAsNewTabEnabled
         this.isPocketEnabled = isPocketEnabled
@@ -102,6 +105,7 @@ class HomeActivityTestRule(
         this.showVoiceSearchInDisplayToolbar = showVoiceSearchInDisplayToolbar
         this.isHomepageTrendingRecentSearchEnabled = isHomepageTrendingRecentSearchEnabled
         this.showAddressBarInFocusMode = showAddressBarInFocusMode
+        this.crashReportOption = crashReportOption
     }
 
     /** Update settings after the activity was created. */
@@ -223,6 +227,7 @@ internal constructor(
         showVoiceSearchInDisplayToolbar: Boolean = false,
         isHomepageTrendingRecentSearchEnabled: Boolean = false,
         showAddressBarInFocusMode: Boolean = false,
+        crashReportOption: CrashReportOption = settings.crashReportOption(),
     ) : this(initialTouchMode, launchActivity, skipOnboarding) {
         this.isHomepageAsNewTabEnabled = isHomepageAsNewTabEnabled
         this.isPocketEnabled = isPocketEnabled
@@ -252,6 +257,7 @@ internal constructor(
         this.showVoiceSearchInDisplayToolbar = showVoiceSearchInDisplayToolbar
         this.isHomepageTrendingRecentSearchEnabled = isHomepageTrendingRecentSearchEnabled
         this.showAddressBarInFocusMode = showAddressBarInFocusMode
+        this.crashReportOption = crashReportOption
     }
 
     private val longTapUserPreference = getLongPressTimeout()
@@ -328,6 +334,7 @@ internal constructor(
         isHomepageTrendingRecentSearchEnabled = settings.enableHomepageTrendingRecentSearch
         isTabStripEnabled = settings.isTabStripEnabled
         showAddressBarInFocusMode = settings.showAddressBarInFocusMode
+        crashReportOption = settings.crashReportOption()
     }
 
     companion object {

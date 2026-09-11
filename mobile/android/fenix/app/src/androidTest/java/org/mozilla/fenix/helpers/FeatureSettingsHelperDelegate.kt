@@ -7,7 +7,9 @@ package org.mozilla.fenix.helpers
 import android.util.Log
 import kotlinx.coroutines.runBlocking
 import mozilla.components.feature.sitepermissions.SitePermissionsRules
+import mozilla.components.lib.crash.store.CrashReportOption
 import org.mozilla.fenix.R
+import org.mozilla.fenix.crashes.crashReportOption
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.getPreferenceKey
 import org.mozilla.fenix.helpers.Constants.TAG
@@ -52,6 +54,7 @@ class FeatureSettingsHelperDelegate : FeatureSettingsHelper {
             showVoiceSearchInDisplayToolbar = settings.showVoiceSearchInDisplayToolbar,
             isHomepageTrendingRecentSearchEnabled = settings.enableHomepageTrendingRecentSearch,
             showAddressBarInFocusMode = settings.showAddressBarInFocusMode,
+            crashReportOption = settings.crashReportOption(),
         )
 
     /** The current feature flags updated in tests. */
@@ -85,6 +88,7 @@ class FeatureSettingsHelperDelegate : FeatureSettingsHelper {
     override var isHomepageTrendingRecentSearchEnabled: Boolean by
         updatedFeatureFlags::isHomepageTrendingRecentSearchEnabled
     override var showAddressBarInFocusMode: Boolean by updatedFeatureFlags::showAddressBarInFocusMode
+    override var crashReportOption: CrashReportOption by updatedFeatureFlags::crashReportOption
 
     override fun applyFlagUpdates() {
         Log.i(TAG, "applyFlagUpdates: Trying to apply the updated feature flags: $updatedFeatureFlags")
@@ -127,6 +131,7 @@ class FeatureSettingsHelperDelegate : FeatureSettingsHelper {
         settings.showVoiceSearchInDisplayToolbar = featureFlags.showVoiceSearchInDisplayToolbar
         settings.enableHomepageTrendingRecentSearch = featureFlags.isHomepageTrendingRecentSearchEnabled
         settings.showAddressBarInFocusMode = featureFlags.showAddressBarInFocusMode
+        settings.crashReportChoice = featureFlags.crashReportOption.label
     }
 }
 
@@ -157,6 +162,7 @@ private data class FeatureFlags(
     var showVoiceSearchInDisplayToolbar: Boolean,
     var isHomepageTrendingRecentSearchEnabled: Boolean,
     var showAddressBarInFocusMode: Boolean,
+    var crashReportOption: CrashReportOption,
 )
 
 internal fun getETPPolicy(settings: Settings): ETPPolicy {

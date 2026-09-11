@@ -143,7 +143,6 @@
     <string name="pref_key_marketing_telemetry_selection_made" translatable="false">pref_key_marketing_telemetry_selection_made</string>
     <string name="pref_key_learn_about_marketing_telemetry" translatable="false">pref_key_learn_about_marketing_telemetry</string>
     <string name="pref_key_daily_usage_ping" translatable="false">pref_key_daily_usage_ping</string>
-    <string name="pref_key_crash_reporter" translatable="false">pref_key_crash_reporter</string>
 
     <!-- Account Settings -->
     <string name="pref_key_account_category" translatable="false">pref_key_account_category</string>
