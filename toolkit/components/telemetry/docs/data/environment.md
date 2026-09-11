@@ -11,8 +11,6 @@ Some parts of the environment must be fetched asynchronously at startup. We don'
 This currently affects the following sections:
 
 - profile
-- add-ons
-- services
 
 Structure:
 
@@ -60,13 +58,6 @@ Structure:
       msstoresignedin: <boolean>, // optional, only present if the installation was done through the Microsoft Store, and was able to retrieve the "campaign ID" it was first installed with. this value is "true" if the user was signed into the Microsoft Store when they first installed, and false otherwise
       dlsource: <string>, // identifier that indicate where installations of Firefox originate
     },
-  },
-  // Optional, missing if fetching the information failed or had not yet completed.
-  services: {
-    // True if the user has a firefox account
-    accountEnabled: <bool>,
-    // True if the user has sync enabled.
-    syncEnabled: <bool>
   },
   profile: {
     creationDate: <integer>, // integer days since UNIX epoch, e.g. 16446

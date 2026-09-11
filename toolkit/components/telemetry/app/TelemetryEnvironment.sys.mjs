@@ -80,7 +80,7 @@ export var Policy = {
 var gActiveExperimentStartupBuffer = new Map();
 
 // For Powering arewegleanyet.com (See bug 1944592)
-// Legacy Count: 96
+// Legacy Count: 94
 // Glean Count: 113
 
 var gGlobalEnvironment;
@@ -1473,19 +1473,10 @@ EnvironmentCache.prototype = {
           accountEnabled = true;
         }
       } catch (e) {
-        // We don't know. This might be a transient issue which will clear
-        // itself up later, but the information in telemetry is quite possibly stale
-        // (this is called from a change listener), so clear it out to avoid
-        // reporting data which might be wrong until we can figure it out.
-        delete this._currentEnvironment.services;
         this._log.error("_updateServicesInfo() caught error", e);
         return;
       }
     }
-    this._currentEnvironment.services = {
-      accountEnabled,
-      syncEnabled,
-    };
     Glean.fxa.syncEnabled.set(syncEnabled);
     Glean.fxa.accountEnabled.set(accountEnabled);
   },
