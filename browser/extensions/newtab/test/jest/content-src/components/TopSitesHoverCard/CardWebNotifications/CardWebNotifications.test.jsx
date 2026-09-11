@@ -1,7 +1,6 @@
-import React from "react";
-import { combineReducers, createStore } from "redux";
+import { render, fireEvent } from "@testing-library/react";
 import { Provider } from "react-redux";
-import { mount } from "enzyme";
+import { combineReducers, createStore } from "redux";
 import { INITIAL_STATE, reducers } from "common/Reducers.sys.mjs";
 import { actionTypes as at } from "common/Actions.mjs";
 import { CardWebNotifications } from "content-src/components/TopSitesHoverCard/CardWebNotifications/CardWebNotifications";
@@ -50,44 +49,48 @@ function mockState({ notifications = {}, byOrigin = {} } = {}) {
 
 function renderCard(link, stateOpts) {
   const store = createStore(combineReducers(reducers), mockState(stateOpts));
-  const dispatch = sinon.spy(store, "dispatch");
-  const wrapper = mount(
+  const dispatch = jest.spyOn(store, "dispatch");
+  const { container } = render(
     <Provider store={store}>
       <CardWebNotifications link={link} />
     </Provider>
   );
-  return { wrapper, dispatch };
+  return { container, dispatch };
+}
+
+function dispatchedActions(dispatch) {
+  return dispatch.mock.calls.map(([action]) => action);
 }
 
 describe("<CardWebNotifications>", () => {
   const link = { url: `${ORIGIN}/path`, label: "Example" };
 
   it("renders nothing when the site has no notifications", () => {
-    const { wrapper } = renderCard(link, {});
-    assert.lengthOf(wrapper.find(".top-sites-hover-card"), 0);
+    const { container } = renderCard(link, {});
+    expect(container.querySelectorAll(".top-sites-hover-card")).toHaveLength(0);
   });
 
   it("renders nothing for a non-http(s) link", () => {
-    const { wrapper } = renderCard(
+    const { container } = renderCard(
       { url: "about:blank" },
       { notifications: NOTIFICATIONS, byOrigin: BY_ORIGIN }
     );
-    assert.lengthOf(wrapper.find(".top-sites-hover-card"), 0);
+    expect(container.querySelectorAll(".top-sites-hover-card")).toHaveLength(0);
   });
 
   it("lists every notification, most recent first", () => {
-    const { wrapper } = renderCard(link, {
+    const { container } = renderCard(link, {
       notifications: NOTIFICATIONS,
       byOrigin: BY_ORIGIN,
     });
-    const titles = wrapper
-      .find(".top-sites-hover-card-notification-title")
-      .map(node => node.text());
-    assert.deepEqual(titles, ["Fourth", "Second", "Third", "First"]);
+    const titles = Array.from(
+      container.querySelectorAll(".top-sites-hover-card-notification-title")
+    ).map(node => node.textContent);
+    expect(titles).toEqual(["Fourth", "Second", "Third", "First"]);
   });
 
   it("renders every notification as an activatable button", () => {
-    const { wrapper } = renderCard(link, {
+    const { container } = renderCard(link, {
       notifications: {
         a: {
           id: "a",
@@ -104,15 +107,16 @@ describe("<CardWebNotifications>", () => {
       },
       byOrigin: { [ORIGIN]: ["a", "b"] },
     });
-    const activators = wrapper.find(
+    const activators = container.querySelectorAll(
       ".top-sites-hover-card-notification-activate"
     );
-    assert.equal(activators.at(0).type(), "button");
-    assert.equal(activators.at(1).type(), "button");
+    expect(activators).toHaveLength(2);
+    expect(activators[0].tagName).toBe("BUTTON");
+    expect(activators[1].tagName).toBe("BUTTON");
   });
 
   it("dispatches WEB_NOTIFICATIONS_CLICK when a notification is activated", () => {
-    const { wrapper, dispatch } = renderCard(link, {
+    const { container, dispatch } = renderCard(link, {
       notifications: {
         a: {
           id: "a",
@@ -123,18 +127,20 @@ describe("<CardWebNotifications>", () => {
       },
       byOrigin: { [ORIGIN]: ["a"] },
     });
-    wrapper
-      .find("button.top-sites-hover-card-notification-activate")
-      .simulate("click");
-    assert.isTrue(
-      dispatch
-        .getCalls()
-        .some(c => c.args[0].type === at.WEB_NOTIFICATIONS_CLICK)
+    fireEvent.click(
+      container.querySelector(
+        "button.top-sites-hover-card-notification-activate"
+      )
     );
+    expect(
+      dispatchedActions(dispatch).some(
+        action => action.type === at.WEB_NOTIFICATIONS_CLICK
+      )
+    ).toBe(true);
   });
 
   it("dispatches WEB_NOTIFICATIONS_DISMISS from the per-row dismiss", () => {
-    const { wrapper, dispatch } = renderCard(link, {
+    const { container, dispatch } = renderCard(link, {
       notifications: {
         a: {
           id: "a",
@@ -145,28 +151,31 @@ describe("<CardWebNotifications>", () => {
       },
       byOrigin: { [ORIGIN]: ["a"] },
     });
-    wrapper
-      .find("button.top-sites-hover-card-notification-dismiss")
-      .simulate("click");
-    const action = dispatch
-      .getCalls()
-      .map(c => c.args[0])
-      .find(a => a.type === at.WEB_NOTIFICATIONS_DISMISS);
-    assert.ok(action);
-    assert.deepEqual(action.data, { origin: ORIGIN, id: "a" });
+    fireEvent.click(
+      container.querySelector(
+        "button.top-sites-hover-card-notification-dismiss"
+      )
+    );
+    const action = dispatchedActions(dispatch).find(
+      a => a.type === at.WEB_NOTIFICATIONS_DISMISS
+    );
+    expect(action).toBeTruthy();
+    expect(action.data).toEqual({ origin: ORIGIN, id: "a" });
   });
 
   it("dispatches WEB_NOTIFICATIONS_DISMISS_ALL from mark-all-read", () => {
-    const { wrapper, dispatch } = renderCard(link, {
+    const { container, dispatch } = renderCard(link, {
       notifications: NOTIFICATIONS,
       byOrigin: BY_ORIGIN,
     });
-    wrapper.find("button.top-sites-hover-card-mark-read").simulate("click");
-    assert.isTrue(
-      dispatch
-        .getCalls()
-        .some(c => c.args[0].type === at.WEB_NOTIFICATIONS_DISMISS_ALL)
+    fireEvent.click(
+      container.querySelector("button.top-sites-hover-card-mark-read")
     );
+    expect(
+      dispatchedActions(dispatch).some(
+        action => action.type === at.WEB_NOTIFICATIONS_DISMISS_ALL
+      )
+    ).toBe(true);
   });
 
   describe("notification icons", () => {
@@ -182,42 +191,40 @@ describe("<CardWebNotifications>", () => {
     }
 
     it("loads an icon through the image proxy, never from the origin", () => {
-      const { wrapper } = renderWithIcon("https://example.com/icon.png");
-      const src = wrapper
-        .find("img.top-sites-hover-card-notification-icon")
-        .prop("src");
-      assert.include(src, "https://img-getpocket.cdn.mozilla.net/");
-      assert.notEqual(src, "https://example.com/icon.png");
+      const { container } = renderWithIcon("https://example.com/icon.png");
+      const src = container
+        .querySelector("img.top-sites-hover-card-notification-icon")
+        .getAttribute("src");
+      expect(src).toContain("https://img-getpocket.cdn.mozilla.net/");
+      expect(src).not.toBe("https://example.com/icon.png");
     });
 
     it("renders no icon when the icon cannot be proxied", () => {
-      const { wrapper } = renderWithIcon("http://example.com/icon.png");
-      assert.lengthOf(
-        wrapper.find("img.top-sites-hover-card-notification-icon"),
-        0
-      );
+      // eslint-disable-next-line sdl/no-insecure-url
+      const { container } = renderWithIcon("http://example.com/icon.png");
+      expect(
+        container.querySelectorAll("img.top-sites-hover-card-notification-icon")
+      ).toHaveLength(0);
     });
 
     it("renders no icon for a suppressed origin", () => {
-      const { wrapper } = renderWithIcon(
+      const { container } = renderWithIcon(
         "https://apnews.com/icon.png",
         "https://apnews.com"
       );
-      assert.lengthOf(
-        wrapper.find("img.top-sites-hover-card-notification-icon"),
-        0
-      );
+      expect(
+        container.querySelectorAll("img.top-sites-hover-card-notification-icon")
+      ).toHaveLength(0);
     });
 
     it("drops the icon on a proxy error rather than retrying the origin", () => {
-      const { wrapper } = renderWithIcon("https://example.com/icon.png");
-      wrapper
-        .find("img.top-sites-hover-card-notification-icon")
-        .simulate("error");
-      assert.lengthOf(
-        wrapper.find("img.top-sites-hover-card-notification-icon"),
-        0
+      const { container } = renderWithIcon("https://example.com/icon.png");
+      fireEvent.error(
+        container.querySelector("img.top-sites-hover-card-notification-icon")
       );
+      expect(
+        container.querySelectorAll("img.top-sites-hover-card-notification-icon")
+      ).toHaveLength(0);
     });
   });
 });

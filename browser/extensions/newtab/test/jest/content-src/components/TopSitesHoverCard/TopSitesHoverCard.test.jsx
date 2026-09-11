@@ -1,8 +1,6 @@
-import React from "react";
-import { combineReducers, createStore } from "redux";
-import { Provider } from "react-redux";
-import { mount } from "enzyme";
-import { INITIAL_STATE, reducers } from "common/Reducers.sys.mjs";
+import { render } from "@testing-library/react";
+import { WrapWithProvider } from "test/jest/test-utils";
+import { INITIAL_STATE } from "common/Reducers.sys.mjs";
 import { TopSitesHoverCard } from "content-src/components/TopSitesHoverCard/TopSitesHoverCard";
 
 const ORIGIN = "https://example.com";
@@ -30,15 +28,11 @@ function mockState(enabled, { gate = true } = {}) {
   };
 }
 
-function render(link, enabled, opts) {
-  const store = createStore(
-    combineReducers(reducers),
-    mockState(enabled, opts)
-  );
-  return mount(
-    <Provider store={store}>
+function renderCard(link, enabled, opts) {
+  return render(
+    <WrapWithProvider state={mockState(enabled, opts)}>
       <TopSitesHoverCard link={link} />
-    </Provider>
+    </WrapWithProvider>
   );
 }
 
@@ -46,25 +40,25 @@ describe("<TopSitesHoverCard>", () => {
   const link = { url: `${ORIGIN}/path`, label: "Example" };
 
   it("renders nothing when the user pref is off", () => {
-    const wrapper = render(link, false);
-    assert.lengthOf(wrapper.find(".top-sites-hover-card"), 0);
+    const { container } = renderCard(link, false);
+    expect(container.querySelectorAll(".top-sites-hover-card")).toHaveLength(0);
   });
 
   it("renders nothing when the feature gate is off", () => {
-    const wrapper = render(link, true, { gate: false });
-    assert.lengthOf(wrapper.find(".top-sites-hover-card"), 0);
+    const { container } = renderCard(link, true, { gate: false });
+    expect(container.querySelectorAll(".top-sites-hover-card")).toHaveLength(0);
   });
 
   it("routes an ordinary tile to the notifications card", () => {
-    const wrapper = render(link, true);
-    assert.lengthOf(wrapper.find(".top-sites-hover-card"), 1);
+    const { container } = renderCard(link, true);
+    expect(container.querySelectorAll(".top-sites-hover-card")).toHaveLength(1);
   });
 
   it("routes a sponsored tile to the ad variant (no notifications card)", () => {
-    const wrapper = render(
+    const { container } = renderCard(
       { url: `${ORIGIN}/path`, label: "Ad", sponsored_tile_id: 42 },
       true
     );
-    assert.lengthOf(wrapper.find(".top-sites-hover-card"), 0);
+    expect(container.querySelectorAll(".top-sites-hover-card")).toHaveLength(0);
   });
 });

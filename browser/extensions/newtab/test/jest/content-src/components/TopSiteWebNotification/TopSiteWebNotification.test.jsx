@@ -1,8 +1,6 @@
-import React from "react";
-import { combineReducers, createStore } from "redux";
-import { Provider } from "react-redux";
-import { mount } from "enzyme";
-import { INITIAL_STATE, reducers } from "common/Reducers.sys.mjs";
+import { render } from "@testing-library/react";
+import { WrapWithProvider } from "test/jest/test-utils";
+import { INITIAL_STATE } from "common/Reducers.sys.mjs";
 import { TopSiteWebNotification } from "content-src/components/TopSiteWebNotification/TopSiteWebNotification";
 
 const ORIGIN = "https://example.com";
@@ -31,12 +29,11 @@ function mockState({
   };
 }
 
-function render(link, stateOpts) {
-  const store = createStore(combineReducers(reducers), mockState(stateOpts));
-  return mount(
-    <Provider store={store}>
+function renderBadge(link, stateOpts) {
+  return render(
+    <WrapWithProvider state={mockState(stateOpts)}>
       <TopSiteWebNotification link={link} />
-    </Provider>
+    </WrapWithProvider>
   );
 }
 
@@ -48,29 +45,35 @@ describe("<TopSiteWebNotification>", () => {
   };
 
   it("renders the count when enabled and the site has notifications", () => {
-    const wrapper = render(link, { enabled: true, ...populated });
-    const badge = wrapper.find(".top-site-web-notification");
-    assert.lengthOf(badge, 1);
-    assert.equal(badge.text(), "2");
+    const { container } = renderBadge(link, { enabled: true, ...populated });
+    const badges = container.querySelectorAll(".top-site-web-notification");
+    expect(badges).toHaveLength(1);
+    expect(badges[0].textContent).toBe("2");
   });
 
   it("renders nothing when the user pref is off", () => {
-    const wrapper = render(link, { enabled: false, ...populated });
-    assert.lengthOf(wrapper.find(".top-site-web-notification"), 0);
+    const { container } = renderBadge(link, { enabled: false, ...populated });
+    expect(
+      container.querySelectorAll(".top-site-web-notification")
+    ).toHaveLength(0);
   });
 
   it("renders nothing when the feature gate is off", () => {
-    const wrapper = render(link, { gate: false, ...populated });
-    assert.lengthOf(wrapper.find(".top-site-web-notification"), 0);
+    const { container } = renderBadge(link, { gate: false, ...populated });
+    expect(
+      container.querySelectorAll(".top-site-web-notification")
+    ).toHaveLength(0);
   });
 
   it("renders nothing when the site has no notifications", () => {
-    const wrapper = render(link, { enabled: true });
-    assert.lengthOf(wrapper.find(".top-site-web-notification"), 0);
+    const { container } = renderBadge(link, { enabled: true });
+    expect(
+      container.querySelectorAll(".top-site-web-notification")
+    ).toHaveLength(0);
   });
 
   it("resolves the count through the apex alias", () => {
-    const wrapper = render(
+    const { container } = renderBadge(
       { url: "https://gmail.com" },
       {
         enabled: true,
@@ -78,6 +81,8 @@ describe("<TopSiteWebNotification>", () => {
         notifications: { x: { id: "x" } },
       }
     );
-    assert.equal(wrapper.find(".top-site-web-notification").text(), "1");
+    expect(
+      container.querySelector(".top-site-web-notification").textContent
+    ).toBe("1");
   });
 });
