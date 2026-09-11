@@ -2276,17 +2276,10 @@ function toggleObjectInspectorNode(node) {
   );
 }
 
+// Only opens the context menu; callers wait for it with waitForContextMenu.
 function rightClickObjectInspectorNode(dbg, node) {
-  const objectInspector = node.closest(".object-inspector");
-  const properties = objectInspector.querySelectorAll(".node").length;
-
   info(`Right clicking node ${node.innerText}`);
   rightClickEl(dbg, node);
-
-  info(`Waiting for object inspector properties update`);
-  return waitUntil(
-    () => objectInspector.querySelectorAll(".node").length !== properties
-  );
 }
 
 /*******************************************

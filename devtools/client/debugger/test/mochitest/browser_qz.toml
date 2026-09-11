@@ -122,12 +122,8 @@ fail-if = [
 ["browser_dbg-unselected-pause.js"]
 
 ["browser_dbg-watchpoints.js"]
-skip-if = [
-  "os == 'linux' && os_version == '24.04' && arch == 'x86_64' && display == 'x11'", # Bug 1814093
-  "os == 'mac' && os_version == '14.70' && arch == 'x86_64'", # Bug 1814093
-  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'", # Bug 1814093, Bug 2028047
-  "os == 'win' && os_version == '11.26100' && arch == 'x86_64'", # Bug 1814093
-  "os == 'win' && os_version == '11.26200' && arch == 'x86_64'", # Bug 1814093
+fail-if = [
+  "a11y_checks", # Bug 2070909 the tree does not name an active descendant
 ]
 
 ["browser_dbg-windowless-service-workers-reload.js"]
