@@ -202,6 +202,11 @@ var allowlist = [
   // SpiderMonkey parser API, currently unused in browser/ and toolkit/
   { file: "moz-src:///toolkit/components/reflect/reflect.sys.mjs" },
 
+  // TODO Bug 2064553: Integrate ConversationStore into the Conversation model
+  {
+    file: "moz-src:///browser/components/aiwindow/ui/modules/ConversationStore.sys.mjs",
+  },
+
   // extensions/pref/autoconfig/src/nsReadConfig.cpp
   { file: "resource://gre/defaults/autoconfig/prefcalls.js" },
 

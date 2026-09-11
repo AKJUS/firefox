@@ -350,38 +350,3 @@ ai-smart-form-fill-error-description = Something went wrong. To try again, selec
 
 ai-smart-form-fill-try-again =
     .label = Try again
-
-## AI Tab generated pages
-
-# Shown above the title of a generated page that was created today.
-aitab-created-today = Created today
-
-# Shown above the title of a generated page created on an earlier date.
-# Variables:
-#   $date (number) - Timestamp of when the page was generated.
-aitab-created-on = Created { DATETIME($date, month: "short", day: "numeric") }
-
-# Button that re-fetches the sources a generated page was built from.
-aitab-page-refresh-sources =
-    .label = Refresh sources
-
-# Replaces the refresh label while the sources are being re-fetched.
-aitab-page-refreshing-sources =
-    .label = Refreshing sources
-
-# Icon-only button that deletes the generated page.
-aitab-page-delete =
-    .aria-label = Delete page
-    .title = Delete page
-
-# TODO: D321710 (bug 2061040) adds `-ai-tab-brand-name`; swap the literal
-# placeholder for that term once it has landed on central.
-# "[AI Tab]" is a placeholder for the final product name.
-aitab-page-delete-dialog-title = Delete this [AI Tab]?
-aitab-page-delete-dialog-message = This generated page will be removed. The sources it was built from aren’t affected.
-
-aitab-page-delete-dialog-cancel =
-    .label = Cancel
-
-aitab-page-delete-dialog-confirm =
-    .label = Delete
