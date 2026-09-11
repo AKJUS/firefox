@@ -1503,7 +1503,7 @@ void PerformanceCounterState::RunnableDidRun(const nsCString& aName,
 struct LongTaskMarker : public BaseMarkerType<LongTaskMarker> {
   static constexpr const char* Name = "MainThreadLongTask";
 
-  static constexpr bool StoreName = true;
+  static constexpr bool ETWStoreName = true;
 
   using MS = MarkerSchema;
   static constexpr MS::Location Locations[] = {MS::Location::MarkerChart,

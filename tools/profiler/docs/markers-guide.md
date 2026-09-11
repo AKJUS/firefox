@@ -438,13 +438,20 @@ In addition you must add a description of your marker in a special static data m
   static constexpr const char* Description = "This is my marker!";
 ```
 
-If you expect users to be passing unique names for individual instances of the marker,
-you may want to add the following to ensure those names get stored when using ETW:
+The name passed to an individual marker call is always recorded by the profiler
+itself, but it is only written to ETW if the marker type asks for it with
+`ETWStoreName`:
 
 ```cpp
 // …
-  static constexpr bool StoreName = true;
+  static constexpr bool ETWStoreName = true;
 ```
+
+`ETWStoreName` is false by default, so opt out by leaving it unset when the name
+is always the same for every marker of the type, since the ETW event is already
+identified by the marker type's `Name`, or when the cost of storing the names, a
+copy of the string in every ETW event recorded for this marker type, would not
+bring more value to an ETW trace.
 
 ### Marker Type Data
 

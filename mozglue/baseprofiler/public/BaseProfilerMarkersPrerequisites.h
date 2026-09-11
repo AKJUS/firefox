@@ -1253,9 +1253,12 @@ struct BaseMarkerType {
   // other stack based markers on the same thread.
   static constexpr bool IsStackBased = false;
 
-  // This indicates whether this marker type wants the names passed to the
-  // individual marker calls stores along with the marker.
-  static constexpr bool StoreName = false;
+  // Whether the name passed to each individual marker call is emitted as an
+  // extra `MarkerName` field on the ETW event; the profiler's own storage
+  // always records it. Only set this when callers pass a distinct name per
+  // marker and that distinction matters when analyzing ETW traces, as the
+  // string is then copied into every ETW event.
+  static constexpr bool ETWStoreName = false;
 
   static constexpr MarkerSchema::ETWMarkerGroup Group =
       MarkerSchema::ETWMarkerGroup::Generic;
