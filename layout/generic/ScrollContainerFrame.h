@@ -1200,7 +1200,7 @@ class ScrollContainerFrame : public nsContainerFrame,
                            const nsDisplayListSet& aLists, bool aCreateLayer,
                            bool aPositioned);
 
-  void PostScrollEvent();
+  void PostScrollEvent(const nsPoint& aOldScrollPosition);
   MOZ_CAN_RUN_SCRIPT void FireScrollEvent();
   void PostScrolledAreaEvent();
   MOZ_CAN_RUN_SCRIPT void FireScrolledAreaEvent();
@@ -1399,13 +1399,11 @@ class ScrollContainerFrame : public nsContainerFrame,
   nsCOMPtr<Element> mScrollCornerContent;
   nsCOMPtr<Element> mResizerContent;
 
-  class ScrollEvent;
-  class ScrollEndEvent;
   class AsyncScrollPortEvent;
   class ScrolledAreaEvent;
 
-  RefPtr<ScrollEvent> mScrollEvent;
-  RefPtr<ScrollEndEvent> mScrollEndEvent;
+  uint32_t mScrollEventGeneration = 0;
+  uint32_t mScrollEndEventGeneration = 0;
   nsRevocableEventPtr<AsyncScrollPortEvent> mAsyncScrollPortEvent;
   nsRevocableEventPtr<ScrolledAreaEvent> mScrolledAreaEvent;
   nsScrollbarFrame* mHScrollbarBox;

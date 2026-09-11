@@ -165,25 +165,21 @@ static ScrollDirections GetOverflowChange(const nsRect& aCurScrolledRect,
  * ScrollEvents are one-shot runnables; the refresh driver drops them after
  * running them.
  */
-class ScrollContainerFrame::ScrollEvent : public Runnable {
+class ScrollEvent : public Runnable {
  public:
   NS_DECL_NSIRUNNABLE
-  explicit ScrollEvent(ScrollContainerFrame* aHelper);
-  void Revoke() { mHelper = nullptr; }
-  UniquePtr<ProfileChunkedBuffer> mBacktrace;
+  explicit ScrollEvent(RefPtr<nsINode> aTarget)
+      : Runnable("ScrollEvent"), mTarget(std::move(aTarget)) {}
 
- private:
-  ScrollContainerFrame* mHelper;
+ protected:
+  const RefPtr<nsINode> mTarget;
+  UniquePtr<ProfileChunkedBuffer> mBacktrace = profiler_capture_backtrace();
 };
 
-class ScrollContainerFrame::ScrollEndEvent : public Runnable {
+class ScrollEndEvent : public ScrollEvent {
  public:
   NS_DECL_NSIRUNNABLE
-  explicit ScrollEndEvent(ScrollContainerFrame* aHelper);
-  void Revoke() { mHelper = nullptr; }
-
- private:
-  ScrollContainerFrame* mHelper;
+  using ScrollEvent::ScrollEvent;
 };
 
 class ScrollContainerFrame::AsyncScrollPortEvent : public Runnable {
@@ -380,12 +376,6 @@ void ScrollContainerFrame::Destroy(DestroyContext& aContext) {
     mScrollActivityTimer = nullptr;
   }
   RemoveObservers();
-  if (mScrollEvent) {
-    mScrollEvent->Revoke();
-  }
-  if (mScrollEndEvent) {
-    mScrollEndEvent->Revoke();
-  }
   nsContainerFrame::Destroy(aContext);
 }
 
@@ -3364,17 +3354,7 @@ void ScrollContainerFrame::ScrollToImpl(
   presContext->RecordInteractionTime(
       nsPresContext::InteractionType::ScrollInteraction, TimeStamp::Now());
 
-  PostScrollEvent();
-  // If this is a viewport scroll, this could affect the relative offset
-  // between layout and visual viewport, so we might have to fire a visual
-  // viewport scroll event as well.
-  if (mIsRoot) {
-    if (auto* window = nsGlobalWindowInner::Cast(
-            PresContext()->Document()->GetInnerWindow())) {
-      window->VisualViewport()->PostScrollEvent(
-          presContext->PresShell()->GetVisualViewportOffset(), curPos);
-    }
-  }
+  PostScrollEvent(curPos);
 
   // Schedule the scroll-timelines linked to its scrollable frame.
   // if `pt == curPos`, we early return, so the position must be changed at
@@ -5562,22 +5542,24 @@ void ScrollContainerFrame::PostOrDeferScrollEndEvent() {
 }
 
 void ScrollContainerFrame::PostScrollEndEvent() {
-  if (mScrollEndEvent) {
+  auto* ps = PresShell();
+  if (mScrollEndEventGeneration == ps->GetScrollEventGeneration()) {
     return;
   }
 
   // If this is the rood document and is not an iframe, we may need to post
   // a scrollend event to the VisualViewport.
   if (mIsRoot && PresContext()->IsRootContentDocumentCrossProcess() &&
-      PresShell()->IsVisualViewportOffsetSet()) {
+      ps->IsVisualViewportOffsetSet()) {
     if (auto* window = nsGlobalWindowInner::Cast(
             PresContext()->Document()->GetInnerWindow())) {
       window->VisualViewport()->PostScrollEndEvent();
     }
   }
 
-  // The ScrollEndEvent constructor registers itself.
-  mScrollEndEvent = MakeRefPtr<ScrollEndEvent>(this);
+  RefPtr event = MakeRefPtr<ScrollEndEvent>(
+      ScrollEventTargetNode(RootTargetsDocument::Yes));
+  mScrollEndEventGeneration = ps->PostScrollEvent(event);
 }
 
 RefPtr<nsINode> ScrollContainerFrame::ScrollEventTargetNode(
@@ -5586,20 +5568,6 @@ RefPtr<nsINode> ScrollContainerFrame::ScrollEventTargetNode(
     return PresContext()->Document();
   }
   return mContent.get();
-}
-
-void ScrollContainerFrame::FireScrollEndEvent() {
-  MOZ_ASSERT(mScrollEndEvent);
-  mScrollEndEvent->Revoke();
-  mScrollEndEvent = nullptr;
-
-  RefPtr<nsPresContext> presContext = PresContext();
-  nsEventStatus status = nsEventStatus_eIgnore;
-  WidgetGUIEvent event(true, eScrollend, nullptr);
-  event.mFlags.mBubbles = mIsRoot;
-  event.mFlags.mCancelable = false;
-  RefPtr<nsINode> target = ScrollEventTargetNode(RootTargetsDocument::Yes);
-  EventDispatcher::Dispatch(target, presContext, &event, nullptr, &status);
 }
 
 void ScrollContainerFrame::ReloadChildFrames() {
@@ -6088,72 +6056,66 @@ void ScrollContainerFrame::EnableOverlayScrollbars() {
 
 /* ============= Scroll events ========== */
 
-ScrollContainerFrame::ScrollEvent::ScrollEvent(ScrollContainerFrame* aHelper)
-    : Runnable("ScrollContainerFrame::ScrollEvent"), mHelper(aHelper) {
-  mHelper->PresShell()->PostScrollEvent(this);
-}
-
 // TODO: Convert this to MOZ_CAN_RUN_SCRIPT (bug 1415230, bug 1535398)
-MOZ_CAN_RUN_SCRIPT_BOUNDARY NS_IMETHODIMP
-ScrollContainerFrame::ScrollEvent::Run() {
-  if (mHelper) {
-    mHelper->FireScrollEvent();
-  }
-  return NS_OK;
-}
-
-ScrollContainerFrame::ScrollEndEvent::ScrollEndEvent(
-    ScrollContainerFrame* aHelper)
-    : Runnable("ScrollContainerFrame::ScrollEndEvent"), mHelper(aHelper) {
-  mHelper->PresShell()->PostScrollEvent(this);
-}
-
-MOZ_CAN_RUN_SCRIPT_BOUNDARY NS_IMETHODIMP
-ScrollContainerFrame::ScrollEndEvent::Run() {
-  if (mHelper) {
-    mHelper->FireScrollEndEvent();
-  }
-  return NS_OK;
-}
-
-void ScrollContainerFrame::FireScrollEvent() {
-  RefPtr<nsIContent> content = GetContent();
-  RefPtr<nsPresContext> presContext = PresContext();
-  MOZ_ASSERT(mScrollEvent);
-  UniquePtr<ProfileChunkedBuffer> backtrace =
-      std::move(mScrollEvent->mBacktrace);
+MOZ_CAN_RUN_SCRIPT_BOUNDARY NS_IMETHODIMP ScrollEvent::Run() {
+  RefPtr<nsPresContext> presContext = mTarget->OwnerDoc()->GetPresContext();
   AutoProfilerTracing scrollEventMarker(
-      "FireScrollEvent", geckoprofiler::category::GRAPHICS,
-      std::move(backtrace),
+      "ScrollEvent::Run", geckoprofiler::category::GRAPHICS,
+      std::move(mBacktrace),
       geckoprofiler::markers::detail::
           profiler_get_inner_window_id_from_docshell(
-              presContext->GetDocShell()));
-  mScrollEvent->Revoke();
-  mScrollEvent = nullptr;
+              presContext ? presContext->GetDocShell() : nullptr));
 
   WidgetGUIEvent event(true, eScroll, nullptr);
   nsEventStatus status = nsEventStatus_eIgnore;
   // Fire viewport scroll events at the document (where they
   // will bubble to the window)
   mozilla::layers::ScrollLinkedEffectDetector detector(
-      content->GetComposedDoc(),
+      mTarget->GetComposedDoc(),
       presContext->RefreshDriver()->MostRecentRefresh());
-  RefPtr target = ScrollEventTargetNode(RootTargetsDocument::Yes);
   // scroll events fired at elements don't bubble (although scroll events
   // fired at documents do, to the window)
-  event.mFlags.mBubbles = mIsRoot;
-  EventDispatcher::Dispatch(target, presContext, &event, nullptr, &status);
+  event.mFlags.mBubbles = !mTarget->IsElement();
+  EventDispatcher::Dispatch(MOZ_KnownLive(mTarget), presContext, &event,
+                            nullptr, &status);
+  return NS_OK;
 }
 
-void ScrollContainerFrame::PostScrollEvent() {
-  if (mScrollEvent) {
+MOZ_CAN_RUN_SCRIPT_BOUNDARY NS_IMETHODIMP ScrollEndEvent::Run() {
+  RefPtr<nsPresContext> presContext = mTarget->OwnerDoc()->GetPresContext();
+  AutoProfilerTracing scrollEventMarker(
+      "ScrollEndEvent::Run", geckoprofiler::category::GRAPHICS,
+      std::move(mBacktrace),
+      geckoprofiler::markers::detail::
+          profiler_get_inner_window_id_from_docshell(
+              presContext ? presContext->GetDocShell() : nullptr));
+  nsEventStatus status = nsEventStatus_eIgnore;
+  WidgetGUIEvent event(true, eScrollend, nullptr);
+  event.mFlags.mBubbles = !mTarget->IsElement();
+  event.mFlags.mCancelable = false;
+  EventDispatcher::Dispatch(MOZ_KnownLive(mTarget), presContext, &event,
+                            nullptr, &status);
+  return NS_OK;
+}
+
+void ScrollContainerFrame::PostScrollEvent(const nsPoint& aOldScrollPosition) {
+  auto* ps = PresShell();
+  if (mScrollEventGeneration == ps->GetScrollEventGeneration()) {
     return;
   }
-
-  // The ScrollEvent constructor registers itself.
-  mScrollEvent = MakeRefPtr<ScrollEvent>(this);
-  // Capture stack trace now rather when FireScrollEvent runs async
-  mScrollEvent->mBacktrace = profiler_capture_backtrace();
+  // If this is a viewport scroll, this could affect the relative offset
+  // between layout and visual viewport, so we might have to fire a visual
+  // viewport scroll event as well.
+  if (mIsRoot) {
+    if (auto* window = nsGlobalWindowInner::Cast(
+            PresContext()->Document()->GetInnerWindow())) {
+      window->VisualViewport()->PostScrollEvent(ps->GetVisualViewportOffset(),
+                                                aOldScrollPosition);
+    }
+  }
+  RefPtr event =
+      MakeRefPtr<ScrollEvent>(ScrollEventTargetNode(RootTargetsDocument::Yes));
+  mScrollEventGeneration = ps->PostScrollEvent(event);
 }
 
 // TODO: Convert this to MOZ_CAN_RUN_SCRIPT (bug 1415230, bug 1535398)

@@ -381,7 +381,10 @@ class PresShell final : public nsStubDocumentObserver,
   enum class ResizeEventKind : uint8_t { Regular, Visual };
   void ScheduleResizeEventIfNeeded(ResizeEventKind = ResizeEventKind::Regular);
 
-  void PostScrollEvent(mozilla::Runnable*);
+  // Returns the current scroll event generation, which must be kept around by
+  // the caller to prevent duplicate scroll event entries.
+  [[nodiscard]] uint32_t PostScrollEvent(mozilla::Runnable*);
+  uint32_t GetScrollEventGeneration() const { return mScrollEventGeneration; }
 
   /**
    * Returns true if the document hosted by this presShell is in a devtools
@@ -3375,6 +3378,10 @@ class PresShell final : public nsStubDocumentObserver,
   nsTHashSet<ScrollContainerFrame*> mPendingScrollResnap;
   // Pending list of scroll/scrollend/etc events.
   nsTArray<RefPtr<Runnable>> mPendingScrollEvents;
+
+  // An always-non-zero generation number for scroll events. This lets callers
+  // know whether they've dispatched a scroll event this frame already.
+  uint32_t mScrollEventGeneration = 1;
 
   nsTHashSet<nsIContent*> mHiddenContentInForcedLayout;
 
