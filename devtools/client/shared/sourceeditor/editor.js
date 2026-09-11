@@ -299,6 +299,9 @@ class Editor extends EventEmitter {
       autoCloseEnabled: useAutoClose,
       theme: "mozilla",
       themeSwitching: true,
+      // Accessible name for the editor's text area. Consumers hosting something
+      // more specific than source code should pass their own.
+      editorLabel: null,
       autocomplete: false,
       autocompleteOpts: {},
       // Expect a CssProperties object (see devtools/client/fronts/css-properties.js)
@@ -854,6 +857,13 @@ class Editor extends EventEmitter {
     }
 
     const extensions = [
+      // CodeMirror gives the content area role="textbox" but no accessible name, and
+      // relies on `contenteditable` for focus, which leaves its DOM tabIndex at -1.
+      EditorView.contentAttributes.of({
+        "aria-label":
+          this.config.editorLabel || L10N.getStr("sourceEditor.label"),
+        tabindex: "0",
+      }),
       bracketMatching(),
       this.#compartments.indentCompartment.of(indentUnit.of(indentStr)),
       this.#compartments.tabSizeCompartment.of(

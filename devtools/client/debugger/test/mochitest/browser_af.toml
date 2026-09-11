@@ -109,18 +109,12 @@ fail-if = [
 ["browser_dbg-console-async.js"]
 
 ["browser_dbg-console-eval.js"]
-fail-if = [
-  "a11y_checks", # Bug 1849028 clicked element may not be focusable and/or labeled
-]
 
 ["browser_dbg-console-link.js"]
 
 ["browser_dbg-console-map-bindings.js"]
 
 ["browser_dbg-console.js"]
-fail-if = [
-  "a11y_checks", # Bug 1849028 clicked element may not be focusable and/or labeled
-]
 
 ["browser_dbg-content-script-sources.js"]
 
@@ -130,9 +124,6 @@ fail-if = [
 ]
 
 ["browser_dbg-continue-to-here.js"]
-fail-if = [
-  "a11y_checks", # Bug 1849028 clicked element may not be focusable and/or labeled
-]
 
 ["browser_dbg-custom-formatters.js"]
 fail-if = [
