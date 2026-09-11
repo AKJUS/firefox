@@ -315,7 +315,7 @@ add_task(async function () {
 });
 
 async function invokeOnElement(selector, action) {
-  await SpecialPowers.focus(gBrowser.selectedBrowser);
+  gBrowser.selectedBrowser.focus();
   await SpecialPowers.spawn(
     gBrowser.selectedBrowser,
     [selector, action],
