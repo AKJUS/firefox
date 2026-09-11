@@ -273,6 +273,12 @@ module.exports = function (config) {
               functions: 0,
               branches: 0,
             },
+            "common/Actions.mjs": {
+              statements: 0,
+              lines: 0,
+              functions: 0,
+              branches: 0,
+            },
             "content-src/components/Sections/Sections.jsx": {
               statements: 0,
               lines: 0,

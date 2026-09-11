@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import {
   actionCreators as ac,
   actionTypes as at,
@@ -12,45 +16,47 @@ import {
 
 describe("Actions", () => {
   it("should set globalImportContext to UI_CODE", () => {
-    assert.equal(globalImportContext, UI_CODE);
+    expect(globalImportContext).toBe(UI_CODE);
   });
 });
 
 describe("ActionTypes", () => {
   it("should be in alpha order", () => {
-    assert.equal(Object.keys(at).join(", "), Object.keys(at).sort().join(", "));
+    expect(Object.keys(at).join(", ")).toBe(Object.keys(at).sort().join(", "));
   });
 });
 
 describe("ActionCreators", () => {
   describe("_RouteMessage", () => {
     it("should throw if options are not passed as the second param", () => {
-      assert.throws(() => {
+      expect(() => {
         au._RouteMessage({ type: "FOO" });
-      });
+      }).toThrow();
     });
     it("should set all defined options on the .meta property of the new action", () => {
-      assert.deepEqual(
+      expect(
         au._RouteMessage(
           { type: "FOO", meta: { hello: "world" } },
           { from: "foo", to: "bar" }
-        ),
-        { type: "FOO", meta: { hello: "world", from: "foo", to: "bar" } }
-      );
+        )
+      ).toEqual({
+        type: "FOO",
+        meta: { hello: "world", from: "foo", to: "bar" },
+      });
     });
     it("should remove any undefined options related to message routing", () => {
       const action = au._RouteMessage(
         { type: "FOO", meta: { fromTarget: "bar" } },
         { from: "foo", to: "bar" }
       );
-      assert.isUndefined(action.meta.fromTarget);
+      expect(action.meta.fromTarget).toBeUndefined();
     });
   });
   describe("AlsoToMain", () => {
     it("should create the right action", () => {
       const action = { type: "FOO", data: "BAR" };
       const newAction = ac.AlsoToMain(action);
-      assert.deepEqual(newAction, {
+      expect(newAction).toEqual({
         type: "FOO",
         data: "BAR",
         meta: { from: CONTENT_MESSAGE_TYPE, to: MAIN_MESSAGE_TYPE },
@@ -59,15 +65,15 @@ describe("ActionCreators", () => {
     it("should add the fromTarget if it was supplied", () => {
       const action = { type: "FOO", data: "BAR" };
       const newAction = ac.AlsoToMain(action, "port123");
-      assert.equal(newAction.meta.fromTarget, "port123");
+      expect(newAction.meta.fromTarget).toBe("port123");
     });
     describe("isSendToMain", () => {
       it("should return true if action is AlsoToMain", () => {
         const newAction = ac.AlsoToMain({ type: "FOO" });
-        assert.isTrue(au.isSendToMain(newAction));
+        expect(au.isSendToMain(newAction)).toBe(true);
       });
       it("should return false if action is not AlsoToMain", () => {
-        assert.isFalse(au.isSendToMain({ type: "FOO" }));
+        expect(au.isSendToMain({ type: "FOO" })).toBe(false);
       });
     });
   });
@@ -76,7 +82,7 @@ describe("ActionCreators", () => {
       const action = { type: "FOO", data: "BAR" };
       const targetId = "abc123";
       const newAction = ac.AlsoToOneContent(action, targetId);
-      assert.deepEqual(newAction, {
+      expect(newAction).toEqual({
         type: "FOO",
         data: "BAR",
         meta: {
@@ -87,34 +93,34 @@ describe("ActionCreators", () => {
       });
     });
     it("should throw if no targetId is provided", () => {
-      assert.throws(() => {
+      expect(() => {
         ac.AlsoToOneContent({ type: "FOO" });
-      });
+      }).toThrow();
     });
     describe("isSendToOneContent", () => {
       it("should return true if action is AlsoToOneContent", () => {
         const newAction = ac.AlsoToOneContent({ type: "FOO" }, "foo123");
-        assert.isTrue(au.isSendToOneContent(newAction));
+        expect(au.isSendToOneContent(newAction)).toBe(true);
       });
       it("should return false if action is not AlsoToMain", () => {
-        assert.isFalse(au.isSendToOneContent({ type: "FOO" }));
-        assert.isFalse(
+        expect(au.isSendToOneContent({ type: "FOO" })).toBe(false);
+        expect(
           au.isSendToOneContent(ac.BroadcastToContent({ type: "FOO" }))
-        );
+        ).toBe(false);
       });
     });
     describe("isFromMain", () => {
       it("should return true if action is AlsoToOneContent", () => {
         const newAction = ac.AlsoToOneContent({ type: "FOO" }, "foo123");
-        assert.isTrue(au.isFromMain(newAction));
+        expect(au.isFromMain(newAction)).toBe(true);
       });
       it("should return true if action is BroadcastToContent", () => {
         const newAction = ac.BroadcastToContent({ type: "FOO" });
-        assert.isTrue(au.isFromMain(newAction));
+        expect(au.isFromMain(newAction)).toBe(true);
       });
       it("should return false if action is AlsoToMain", () => {
         const newAction = ac.AlsoToMain({ type: "FOO" });
-        assert.isFalse(au.isFromMain(newAction));
+        expect(au.isFromMain(newAction)).toBe(false);
       });
     });
   });
@@ -122,7 +128,7 @@ describe("ActionCreators", () => {
     it("should create the right action", () => {
       const action = { type: "FOO", data: "BAR" };
       const newAction = ac.BroadcastToContent(action);
-      assert.deepEqual(newAction, {
+      expect(newAction).toEqual({
         type: "FOO",
         data: "BAR",
         meta: { from: MAIN_MESSAGE_TYPE, to: CONTENT_MESSAGE_TYPE },
@@ -130,17 +136,17 @@ describe("ActionCreators", () => {
     });
     describe("isBroadcastToContent", () => {
       it("should return true if action is BroadcastToContent", () => {
-        assert.isTrue(
+        expect(
           au.isBroadcastToContent(ac.BroadcastToContent({ type: "FOO" }))
-        );
+        ).toBe(true);
       });
       it("should return false if action is not BroadcastToContent", () => {
-        assert.isFalse(au.isBroadcastToContent({ type: "FOO" }));
-        assert.isFalse(
+        expect(au.isBroadcastToContent({ type: "FOO" })).toBe(false);
+        expect(
           au.isBroadcastToContent(
             ac.AlsoToOneContent({ type: "FOO" }, "foo123")
           )
-        );
+        ).toBe(false);
       });
     });
   });
@@ -148,7 +154,7 @@ describe("ActionCreators", () => {
     it("should create the right action", () => {
       const action = { type: "FOO", data: "BAR" };
       const newAction = ac.AlsoToPreloaded(action);
-      assert.deepEqual(newAction, {
+      expect(newAction).toEqual({
         type: "FOO",
         data: "BAR",
         meta: { from: MAIN_MESSAGE_TYPE, to: PRELOAD_MESSAGE_TYPE },
@@ -157,39 +163,38 @@ describe("ActionCreators", () => {
   });
   describe("isSendToPreloaded", () => {
     it("should return true if action is AlsoToPreloaded", () => {
-      assert.isTrue(au.isSendToPreloaded(ac.AlsoToPreloaded({ type: "FOO" })));
+      expect(au.isSendToPreloaded(ac.AlsoToPreloaded({ type: "FOO" }))).toBe(
+        true
+      );
     });
     it("should return false if action is not AlsoToPreloaded", () => {
-      assert.isFalse(au.isSendToPreloaded({ type: "FOO" }));
-      assert.isFalse(
-        au.isSendToPreloaded(ac.BroadcastToContent({ type: "FOO" }))
+      expect(au.isSendToPreloaded({ type: "FOO" })).toBe(false);
+      expect(au.isSendToPreloaded(ac.BroadcastToContent({ type: "FOO" }))).toBe(
+        false
       );
     });
   });
   describe("UserEvent", () => {
     it("should include the given data", () => {
       const data = { action: "foo" };
-      assert.equal(ac.UserEvent(data).data, data);
+      expect(ac.UserEvent(data).data).toBe(data);
     });
     it("should wrap with AlsoToMain", () => {
       const action = ac.UserEvent({ action: "foo" });
-      assert.isTrue(au.isSendToMain(action), "isSendToMain");
+      expect(au.isSendToMain(action)).toBe(true);
     });
   });
   describe("ImpressionStats", () => {
     it("should include the right data", () => {
       const data = { action: "foo" };
-      assert.equal(ac.ImpressionStats(data).data, data);
+      expect(ac.ImpressionStats(data).data).toBe(data);
     });
     it("should wrap with AlsoToMain if in UI code", () => {
-      assert.isTrue(
-        au.isSendToMain(ac.ImpressionStats({ action: "foo" })),
-        "isSendToMain"
-      );
+      expect(au.isSendToMain(ac.ImpressionStats({ action: "foo" }))).toBe(true);
     });
     it("should not wrap with AlsoToMain if not in UI code", () => {
       const action = ac.ImpressionStats({ action: "foo" }, BACKGROUND_PROCESS);
-      assert.isFalse(au.isSendToMain(action), "isSendToMain");
+      expect(au.isSendToMain(action)).toBe(false);
     });
   });
   describe("WebExtEvent", () => {
@@ -198,17 +203,17 @@ describe("ActionCreators", () => {
         source: "MyExtension",
         url: "foo.com",
       });
-      assert.equal(action.type, at.WEBEXT_CLICK);
+      expect(action.type).toBe(at.WEBEXT_CLICK);
     });
     it("should set the provided data", () => {
       const data = { source: "MyExtension", url: "foo.com" };
       const action = ac.WebExtEvent(at.WEBEXT_CLICK, data);
-      assert.equal(action.data, data);
+      expect(action.data).toBe(data);
     });
     it("should throw if the 'source' property is missing", () => {
-      assert.throws(() => {
+      expect(() => {
         ac.WebExtEvent(at.WEBEXT_CLICK, {});
-      });
+      }).toThrow();
     });
   });
   describe("SetMultiplePrefs", () => {
@@ -218,18 +223,15 @@ describe("ActionCreators", () => {
         "widgets.lists.size": "large",
       };
       const action = ac.SetMultiplePrefs(values);
-      assert.equal(action.type, at.SET_MULTIPLE_PREFS);
-      assert.equal(action.data.values, values);
+      expect(action.type).toBe(at.SET_MULTIPLE_PREFS);
+      expect(action.data.values).toBe(values);
     });
     it("should wrap with AlsoToMain if in UI code", () => {
-      assert.isTrue(
-        au.isSendToMain(ac.SetMultiplePrefs({ foo: 1 })),
-        "isSendToMain"
-      );
+      expect(au.isSendToMain(ac.SetMultiplePrefs({ foo: 1 }))).toBe(true);
     });
     it("should not wrap with AlsoToMain if not in UI code", () => {
       const action = ac.SetMultiplePrefs({ foo: 1 }, BACKGROUND_PROCESS);
-      assert.isFalse(au.isSendToMain(action), "isSendToMain");
+      expect(au.isSendToMain(action)).toBe(false);
     });
   });
 });
@@ -241,7 +243,7 @@ describe("ActionUtils", () => {
       const result = au.getPortIdOfSender(
         ac.AlsoToMain({ type: "FOO" }, portID)
       );
-      assert.equal(result, portID);
+      expect(result).toBe(portID);
     });
   });
 });
