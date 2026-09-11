@@ -9,6 +9,10 @@ Services.scriptloader.loadSubScript(
   this
 );
 
+const { PageExtractorParent } = ChromeUtils.importESModule(
+  "resource://gre/actors/PageExtractorParent.sys.mjs"
+);
+
 describe("Smart Form Fill form review generation", () => {
   let context;
 
@@ -143,6 +147,39 @@ describe("Smart Form Fill form review generation", () => {
       "ai-smart-form-fill-close-review"
     );
     await dialogClosed;
+  });
+
+  it("requests page extraction with boilerplate removed", async () => {
+    const getTextStub = sinon
+      .stub(PageExtractorParent.prototype, "getText")
+      .resolves({ text: "extracted page text", links: [] });
+
+    try {
+      const { dialog, reviewBrowser } = await openFormReview(context);
+
+      await respondWithGeneratedFields(context.mockEngineManager, []);
+      await waitForFormReviewState(reviewBrowser, FORM_REVIEW_STATES.FINAL);
+
+      Assert.ok(
+        getTextStub.called,
+        "Smart Form Fill should request page extraction"
+      );
+      Assert.ok(
+        getTextStub
+          .getCalls()
+          .every(call => call.args[0]?.removeBoilerplate === true),
+        "Every extraction call should request boilerplate removal"
+      );
+
+      const dialogClosed = waitForFormReviewClose(context.win, dialog);
+      await activateFormReviewButton(
+        reviewBrowser,
+        "ai-smart-form-fill-close-review"
+      );
+      await dialogClosed;
+    } finally {
+      getTextStub.restore();
+    }
   });
 
   it("shows the generation-failure result", async () => {

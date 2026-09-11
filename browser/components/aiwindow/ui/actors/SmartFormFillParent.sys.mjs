@@ -1060,7 +1060,7 @@ export class SmartFormFillParent extends JSWindowActorParent {
       const pageExtractor = windowGlobal.getActor("PageExtractor");
       const extraction = await pageExtractor.getText({
         sufficientLength: textCharLimit,
-        removeBoilerplate: false,
+        removeBoilerplate: true,
         sourceUrl,
       });
 
