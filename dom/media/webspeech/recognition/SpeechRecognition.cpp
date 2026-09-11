@@ -40,6 +40,7 @@
 #include "mozilla/dom/SpeechRecognitionErrorEvent.h"
 #include "mozilla/dom/SpeechRecognitionEvent.h"
 #include "mozilla/dom/SpeechRecognitionPhrase.h"
+#include "mozilla/glean/DomMediaWebspeechMetrics.h"
 #include "mozilla/hwinference/PSpeechRecognitionChild.h"
 #include "mozilla/intl/Locale.h"
 #include "nsCOMPtr.h"
@@ -49,6 +50,7 @@
 #include "nsGkAtoms.h"
 #include "nsGlobalWindowInner.h"
 #include "nsIContent.h"
+#include "nsID.h"
 #include "nsIPermissionManager.h"
 #include "nsIPrincipal.h"
 #include "nsPIDOMWindow.h"
@@ -70,6 +72,8 @@ class Promise;
 namespace mozilla::dom {
 
 static LazyLogModule gSpeechRecognitionLog("SpeechRecognition");
+
+using InitFailure = glean::media_speech_recognition::InitFailureLabel;
 
 #define LOG(...) \
   MOZ_LOG_FMT(gSpeechRecognitionLog, LogLevel::Debug, __VA_ARGS__)
@@ -245,9 +249,71 @@ already_AddRefed<SpeechRecognition> SpeechRecognition::Constructor(
   return object.forget();
 }
 
+// The media.speech_recognition.error label for an error code.
+static glean::media_speech_recognition::ErrorLabel ErrorCodeLabel(
+    SpeechRecognitionErrorCode aCode) {
+  using Label = glean::media_speech_recognition::ErrorLabel;
+  switch (aCode) {
+    case SpeechRecognitionErrorCode::No_speech:
+      return Label::eNoSpeech;
+    case SpeechRecognitionErrorCode::Aborted:
+      return Label::eAborted;
+    case SpeechRecognitionErrorCode::Audio_capture:
+      return Label::eAudioCapture;
+    case SpeechRecognitionErrorCode::Network:
+      return Label::eNetwork;
+    case SpeechRecognitionErrorCode::Not_allowed:
+      return Label::eNotAllowed;
+    case SpeechRecognitionErrorCode::Service_not_allowed:
+      return Label::eServiceNotAllowed;
+    case SpeechRecognitionErrorCode::Bad_grammar:
+      return Label::eBadGrammar;
+    case SpeechRecognitionErrorCode::Language_not_supported:
+      return Label::eLanguageNotSupported;
+    case SpeechRecognitionErrorCode::Phrases_not_supported:
+      return Label::ePhrasesNotSupported;
+    default:
+      MOZ_ASSERT_UNREACHABLE(
+          "Unhandled SpeechRecognitionErrorCode, add a label for it in "
+          "metrics.yaml");
+      return Label::e__Other__;
+  }
+}
+
+void SpeechRecognition::RecordSessionEnded() {
+  AssertIsOnMainThread();
+  MOZ_ASSERT(mStarted);
+
+  glean::media_speech_recognition::SessionEndedExtra extra;
+  if (mSessionError) {
+    extra.outcome.emplace("error"_ns);
+    // Spelled like the media.speech_recognition.error labels, so the two
+    // always agree.
+    nsAutoCString errorCode(GetEnumString(*mSessionError));
+    errorCode.ReplaceChar('-', '_');
+    extra.errorCode.emplace(errorCode);
+  } else if (mAborting) {
+    extra.outcome.emplace("aborted"_ns);
+    extra.errorCode.emplace(EmptyCString());
+  } else if (mStopping) {
+    extra.outcome.emplace("stopped"_ns);
+    extra.errorCode.emplace(EmptyCString());
+  } else {
+    extra.outcome.emplace("discarded"_ns);
+    extra.errorCode.emplace(EmptyCString());
+  }
+  if (!mSessionStartTime.IsNull()) {
+    extra.duration.emplace(static_cast<uint32_t>(
+        (TimeStamp::Now() - mSessionStartTime).ToMilliseconds()));
+  }
+  extra.sessionId.emplace(mSessionId);
+  glean::media_speech_recognition::session_ended.Record(Some(std::move(extra)));
+}
+
 void SpeechRecognition::Reset() {
   MOZ_ASSERT(NS_IsMainThread(), "Reset must be on main thread");
   if (mStarted) {
+    RecordSessionEnded();
     for (nsStaticAtom* atom : kKeepAliveEventTypes) {
       IgnoreKeepAliveIfHasListenersFor(atom);
     }
@@ -471,28 +537,32 @@ already_AddRefed<Promise> SpeechRecognition::Available(
   // Step 4: If processLocally is false, Gecko doesn't support remote
   // recognition.
   if (!aOptions.mProcessLocally) {
-    promise->MaybeResolve(AvailabilityStatus::Unavailable);
+    SpeechRecognitionBackend::ResolveAvailability(
+        promise, AvailabilityStatus::Unavailable);
     return promise.forget();
   }
 
   Document* doc = window->GetExtantDoc();
   if (!doc || !FeaturePolicyUtils::IsFeatureAllowed(
                   doc, u"on-device-speech-recognition"_ns)) {
-    promise->MaybeResolve(AvailabilityStatus::Unavailable);
+    SpeechRecognitionBackend::ResolveAvailability(
+        promise, AvailabilityStatus::Unavailable);
     return promise.forget();
   }
 
   // The user can turn on-device speech recognition off via AI Controls.
   if (IsBlockedByAIControls()) {
     doc->WarnOnceAbout(Document::eSpeechRecognitionBlockedByAIControls);
-    promise->MaybeResolve(AvailabilityStatus::Unavailable);
+    SpeechRecognitionBackend::ResolveAvailability(
+        promise, AvailabilityStatus::Unavailable);
     return promise.forget();
   }
 
   // Step 5: processLocally is true.
   // If langs is empty, return unavailable.
   if (aOptions.mLangs.IsEmpty()) {
-    promise->MaybeResolve(AvailabilityStatus::Unavailable);
+    SpeechRecognitionBackend::ResolveAvailability(
+        promise, AvailabilityStatus::Unavailable);
     return promise.forget();
   }
 
@@ -787,20 +857,38 @@ void SpeechRecognition::StartImpl(MediaStreamTrack* aAudioTrack,
   // Content-Language for anything the network did not serve. Recognition has
   // to run in some language, so use the user's own, which says more about what
   // is about to be spoken than the document does anyway. Chrome does the same.
+  bool langFromUserLanguage = false;
   if (effectiveLang.IsEmpty()) {
     if (Document* doc = win->GetExtantDoc()) {
       doc->WarnOnceAbout(
           Document::eSpeechRecognitionLangDefaultedToUserLanguage);
     }
     win->Navigator()->GetLanguage(effectiveLang);
+    langFromUserLanguage = true;
   }
 
   // Step 4.1: "If the user agent determines that local speech recognition is
   // not available for this.lang [...] fire an event named error [...] with its
   // error attribute initialized to service-not-allowed".
-  if (!effectiveLang.IsEmpty() &&
-      SpeechModelFor(NS_ConvertUTF16toUTF8(effectiveLang)).isNothing()) {
+  // The match is kept rather than discarded: it names the model that will run
+  // and its own locale for this language, which is what session_started
+  // reports, `lang` being merely what the page asked for.
+  SpeechModelMatch model;
+  if (effectiveLang.IsEmpty()) {
+    // Nothing to negotiate with, so the engine runs its own default, picked
+    // the same way on the other side of the IPC boundary (see RecvInit).
+    model = DefaultSpeechModel();
+  } else if (Maybe<SpeechModelMatch> match =
+                 SpeechModelFor(NS_ConvertUTF16toUTF8(effectiveLang))) {
+    model = std::move(*match);
+  } else {
     LOGE("No on-device model recognizes this language");
+    // The spec code below is shared with three other causes, and this is the
+    // common one, so record which it was. This happens before [[started]], so
+    // it is also the only trace this session leaves.
+    glean::media_speech_recognition::init_failure
+        .EnumGet(InitFailure::eLanguageNotSupported)
+        .Add();
     DispatchErrorAndEnd(SpeechRecognitionErrorCode::Service_not_allowed,
                         "No on-device model recognizes this language"_ns);
     return;
@@ -814,6 +902,24 @@ void SpeechRecognition::StartImpl(MediaStreamTrack* aAudioTrack,
   mBackendListening = false;
   mStartDispatched = false;
   const uint32_t generation = ++mSessionGeneration;
+
+  mSessionStartTime = TimeStamp::Now();
+  mSessionError = Nothing();
+  mSessionId = nsIDToCString(nsID::GenerateUUID()).get();
+
+  {
+    glean::media_speech_recognition::SessionStartedExtra extra;
+    extra.lang.emplace(NS_ConvertUTF16toUTF8(effectiveLang));
+    extra.langSource.emplace(!mLang.IsEmpty()          ? "attribute"_ns
+                             : effectiveLang.IsEmpty() ? "none"_ns
+                             : langFromUserLanguage    ? "user"_ns
+                                                       : "document"_ns);
+    extra.modelId.emplace(model.mId);
+    extra.modelLocale.emplace(model.mLocale);
+    extra.sessionId.emplace(mSessionId);
+    glean::media_speech_recognition::session_started.Record(
+        Some(std::move(extra)));
+  }
 
   // Register keep-alive event types. While recognition is active, if script
   // has listeners for these events, the object stays alive even without a
@@ -868,6 +974,9 @@ void SpeechRecognition::OnModelInstalled(
     // The request never reached the service, so there is nothing to recognize
     // with, the same as a backend that cannot be created below.
     LOGE("Could not ask for the on-device model");
+    glean::media_speech_recognition::init_failure
+        .EnumGet(InitFailure::eModelInstallUnavailable)
+        .Add();
     DispatchErrorAndEnd(SpeechRecognitionErrorCode::Service_not_allowed,
                         "Local speech recognition is not available"_ns);
     return;
@@ -912,6 +1021,9 @@ void SpeechRecognition::BeginSession(PendingSession&& aSession) {
       this, aSession.mGraphRate, aSession.mLanguage, aSession.mPhrases);
   if (!mBackend) {
     LOGE("Failed to create the backend");
+    glean::media_speech_recognition::init_failure
+        .EnumGet(InitFailure::eBackendCreationFailed)
+        .Add();
     DispatchErrorAndEnd(SpeechRecognitionErrorCode::Service_not_allowed,
                         "Local speech recognition is not available"_ns);
     return;
@@ -1096,6 +1208,10 @@ void SpeechRecognition::NotifyTrackAdded(
 void SpeechRecognition::DispatchError(SpeechRecognitionErrorCode aErrorCode,
                                       const nsACString& aMessage) {
   MOZ_ASSERT(NS_IsMainThread(), "DispatchError must be on main thread");
+
+  glean::media_speech_recognition::error.EnumGet(ErrorCodeLabel(aErrorCode))
+      .Add(1);
+  mSessionError = Some(aErrorCode);
 
   RefPtr<SpeechRecognitionErrorEvent> srError =
       new SpeechRecognitionErrorEvent(nullptr, nullptr, nullptr);
