@@ -24,10 +24,13 @@ ERROR_HEADER = re.compile(r"^\+(?P<path>[^:]+?)(?::(?P<lineno>\d+))?: error:$")
 MULTIPLE_FILES = "(multiple files)"
 
 
+HERE = Path(__file__).parent
+
+
 def _run_check(script, lintargs):
     root = Path(lintargs["root"])
     proc = subprocess.run(
-        [sys.executable, str(root / "config" / script)],
+        [sys.executable, str(HERE / script)],
         cwd=str(root),
         capture_output=True,
         text=True,
@@ -98,7 +101,8 @@ def style(paths, config, fix=None, **lintargs):
             config,
             "js/src/tests/style",
             output,
-            hint="expected_output in config/check_spidermonkey_style.py needs updating",
+            hint="expected_output in tools/lint/spidermonkey/check_spidermonkey_style.py"
+            " needs updating",
         )
     ]
 

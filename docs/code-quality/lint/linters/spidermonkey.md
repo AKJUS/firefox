@@ -15,8 +15,8 @@ The check compares its whole output against the output expected for the
 deliberately broken fixtures in {searchfox}`js/src/tests/style
 <js/src/tests/style/>`. If the baseline itself stops matching -- usually because
 the fixtures were edited -- the raw diff is reported instead, and
-`expected_output` in {searchfox}`config/check_spidermonkey_style.py
-<config/check_spidermonkey_style.py>` needs updating.
+`expected_output` in {searchfox}`tools/lint/spidermonkey/check_spidermonkey_style.py
+<tools/lint/spidermonkey/check_spidermonkey_style.py>` needs updating.
 
 ## spidermonkey-macroassembler
 

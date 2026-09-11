@@ -465,9 +465,6 @@ spidermonkey:
         mach: lint -v -l spidermonkey -f treeherder -f json:/builds/worker/mozlint.json .
     when:
         files-changed:
-            - 'config/check_js_opcode.py'
-            - 'config/check_macroassembler_style.py'
-            - 'config/check_spidermonkey_style.py'
             - 'intl/components/**/*.h'
             - 'js/public/**'
             - 'js/src/**'

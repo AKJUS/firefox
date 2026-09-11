@@ -64,11 +64,11 @@
 // - If the declaration is "inline", then the method definition(s) would be in
 //   the "-inl.h" variant of the same file(s).
 //
-// The script check_macroassembler_style.py (which runs on every build) is
-// used to verify that method definitions match the annotation on the method
-// declarations.  If there is any difference, then you either forgot to define
-// the method in one of the macro assembler, or you forgot to update the
-// annotation of the macro assembler declaration.
+// The `mach lint --linter spidermonkey` check is used to verify that method
+// definitions match the annotation on the method declarations.  If there is
+// any difference, then you either forgot to define the method in one of the
+// macro assembler, or you forgot to update the annotation of the macro
+// assembler declaration.
 //
 // Some convenient short-cuts are used to avoid repeating the same list of
 // architectures on each method declaration, such as PER_ARCH and

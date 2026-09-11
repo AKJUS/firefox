@@ -23,7 +23,6 @@ spidermonkey-style:
         - msg
         - tbl
     support-files:
-        - 'config/check_spidermonkey_style.py'
         - 'tools/lint/spidermonkey/**'
     type: global
     payload: spidermonkey:style
@@ -38,7 +37,6 @@ spidermonkey-macroassembler:
         - cpp
         - h
     support-files:
-        - 'config/check_macroassembler_style.py'
         - 'tools/lint/spidermonkey/**'
     type: global
     payload: spidermonkey:macroassembler
@@ -49,7 +47,6 @@ spidermonkey-opcode:
         - js/src/vm/Opcodes.h
         - js/src/vm/jsopcode.py
     support-files:
-        - 'config/check_js_opcode.py'
         - 'tools/lint/spidermonkey/**'
     type: global
     payload: spidermonkey:opcode

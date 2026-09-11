@@ -8,9 +8,10 @@
 
 import os
 import sys
+from pathlib import Path
 
 scriptname = os.path.basename(__file__)
-topsrcdir = os.path.dirname(os.path.dirname(__file__))
+topsrcdir = str(Path(__file__).resolve().parents[3])
 
 
 def log_pass(text):
