@@ -23,10 +23,6 @@ prefs = [
 ["browser_dbg-audiocontext.js"]
 
 ["browser_dbg-backgroundtask-debugging.js"]
-skip-if = [
-  "os == 'linux' && os_version == '24.04' && arch == 'x86_64' && display == 'x11' && asan", # Bug 1767707
-  "os == 'linux' && os_version == '24.04' && arch == 'x86_64' && display == 'x11' && debug", # Bug 1767707
-]
 
 ["browser_dbg-bfcache.js"]
 
