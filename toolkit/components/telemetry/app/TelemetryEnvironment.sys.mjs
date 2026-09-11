@@ -80,7 +80,7 @@ export var Policy = {
 var gActiveExperimentStartupBuffer = new Map();
 
 // For Powering arewegleanyet.com (See bug 1944592)
-// Legacy Count: 65
+// Legacy Count: 63
 // Glean Count: 113
 
 var gGlobalEnvironment;
@@ -1327,16 +1327,10 @@ EnvironmentCache.prototype = {
       this._currentEnvironment.profile.creationDate
     );
     if (resetDate) {
-      this._currentEnvironment.profile.resetDate =
-        Utils.millisecondsToDays(resetDate);
-      Glean.profiles.resetDate.set(this._currentEnvironment.profile.resetDate);
+      Glean.profiles.resetDate.set(Utils.millisecondsToDays(resetDate));
     }
     if (firstUseDate) {
-      this._currentEnvironment.profile.firstUseDate =
-        Utils.millisecondsToDays(firstUseDate);
-      Glean.profiles.firstUseDate.set(
-        this._currentEnvironment.profile.firstUseDate
-      );
+      Glean.profiles.firstUseDate.set(Utils.millisecondsToDays(firstUseDate));
     }
     if (recoveredFromBackup) {
       this._currentEnvironment.profile.recoveredFromBackup =

@@ -428,14 +428,6 @@ export var TelemetryEnvironmentTesting = {
       truncateToDays(PROFILE_CREATION_DATE_MS)
     );
     lazy.Assert.equal(
-      data.profile.resetDate,
-      truncateToDays(PROFILE_RESET_DATE_MS)
-    );
-    lazy.Assert.equal(
-      data.profile.firstUseDate,
-      truncateToDays(PROFILE_FIRST_USE_MS)
-    );
-    lazy.Assert.equal(
       data.profile.recoveredFromBackup,
       truncateToDays(PROFILE_RECOVERED_FROM_BACKUP)
     );
@@ -444,11 +436,11 @@ export var TelemetryEnvironmentTesting = {
       Glean.profiles.creationDate.testGetValue()
     );
     lazy.Assert.equal(
-      data.profile.resetDate,
+      truncateToDays(PROFILE_RESET_DATE_MS),
       Glean.profiles.resetDate.testGetValue()
     );
     lazy.Assert.equal(
-      data.profile.firstUseDate,
+      truncateToDays(PROFILE_FIRST_USE_MS),
       Glean.profiles.firstUseDate.testGetValue()
     );
     lazy.Assert.equal(
