@@ -389,6 +389,11 @@ gfxFontEntry* gfxDWriteFontEntry::Clone() const {
 gfxDWriteFontEntry::~gfxDWriteFontEntry() {
   auto* cache = mFontTableCache.exchange(nullptr);
   delete cache;
+#if MOZ_FONTATIONS
+  if (mFragmentContext) {
+    mFontFileStream->ReleaseFileFragment(mFragmentContext);
+  }
+#endif
 }
 
 static bool UsingArabicOrHebrewScriptSystemLocale() {
@@ -711,30 +716,58 @@ void gfxDWriteFontEntry::InitSkrifaFontFace() {
   RefPtr<IDWriteLocalFontFileLoader> local;
   loader->QueryInterface(__uuidof(IDWriteLocalFontFileLoader),
                          (void**)getter_AddRefs(local));
-  if (local) {
-    // We have a local file path; memmap it.
+  while (local) {
+    // We have a local file path; attempt to memmap it. If this fails, |break|
+    // to fall back to stream access.
     uint32_t length = 0;
     if (FAILED(local->GetFilePathLengthFromKey(key, keySize, &length))) {
-      return;
+      break;
     }
     nsAutoString path;
     path.SetLength(length);
     if (FAILED(local->GetFilePathFromKey(
             key, keySize, (WCHAR*)path.BeginWriting(), length + 1))) {
-      return;
+      break;
     }
     AutoFDClose fd(PR_Open(NS_ConvertUTF16toUTF8(path).get(), PR_RDONLY, 0));
     MemoryMappedFile mappedFile = MemoryMappedFile::Open(fd.get());
     if (!mappedFile.IsValid()) {
-      return;
+      break;
     }
     const uint8_t* const data = static_cast<const uint8_t*>(mappedFile.Data());
     const size_t size = mappedFile.Size();
     if (auto* skf = skrifa_font_new_from_index(data, size, face->GetIndex())) {
       SetSkrifaFont(skf, std::move(mappedFile));
     }
+    return;
   }
-  // TODO: What about fonts not using IDWriteLocalFontFileLoader?
+  // No local file, or failed to open/mmap it. Get a reference to the entire
+  // font data.
+  RefPtr<IDWriteFontFileStream> stream;
+  if (FAILED(loader->CreateStreamFromKey(key, keySize,
+                                         getter_AddRefs(stream)))) {
+    return;
+  }
+  uint64_t fileSize;
+  if (FAILED(stream->GetFileSize(&fileSize)) || !fileSize ||
+      fileSize > std::numeric_limits<size_t>::max()) {
+    return;
+  }
+  const void* data = nullptr;
+  void* fragmentContext = nullptr;
+  if (FAILED(stream->ReadFileFragment(&data, 0, fileSize, &fragmentContext))) {
+    return;
+  }
+  if (data) {
+    if (auto* skf = skrifa_font_new_from_index(
+            static_cast<const uint8_t*>(data), fileSize, face->GetIndex())) {
+      if (SetSkrifaFont(skf)) {
+        // Hold a reference to the stream, so that the data remains live.
+        mFontFileStream = stream;
+        mFragmentContext = fragmentContext;
+      }
+    }
+  }
 }
 #endif
 
@@ -989,8 +1022,10 @@ void gfxDWriteFontEntry::AddSizeOfIncludingThis(MallocSizeOf aMallocSizeOf,
 size_t gfxDWriteFontEntry::ComputedSizeOfExcludingThis(
     mozilla::MallocSizeOf aMallocSizeOf) {
   size_t result = gfxFontEntry::ComputedSizeOfExcludingThis(aMallocSizeOf);
-  if (mFontFileStream) {
-    result += mFontFileStream->SizeOfExcludingThis(aMallocSizeOf);
+  if (mFontFileStream && mIsDataUserFont) {
+    auto* stream =
+        reinterpret_cast<gfxDWriteFontFileStream*>(mFontFileStream.get());
+    result += stream->SizeOfExcludingThis(aMallocSizeOf);
   }
   return result;
 }
