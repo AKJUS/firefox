@@ -37,9 +37,6 @@ skip-if = [
 ["browser_dbg-blackbox-original.js"]
 
 ["browser_dbg-blackbox.js"]
-skip-if = [
-  "os == 'linux' && os_version == '24.04' && arch == 'x86_64' && display == 'x11' && tsan",
-]
 
 ["browser_dbg-breaking-from-console.js"]
 
@@ -210,10 +207,6 @@ fail-if = [
 ["browser_dbg-event-breakpoints.js"]
 fail-if = [
   "a11y_checks", # Bug 1849028 clicked element may not be focusable and/or labeled
-]
-skip-if = [
-  "os == 'mac' && os_version == '14.70' && arch == 'x86_64'", # Bug 1959062
-  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'", # Bug 1959062, Bug 2028047
 ]
 
 ["browser_dbg-event-handler.js"]
