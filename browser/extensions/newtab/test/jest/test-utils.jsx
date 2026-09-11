@@ -55,6 +55,19 @@ const SERVICE_STUBS = {
     removeObserver: jest.fn(),
     notifyObservers: jest.fn(),
   }),
+  prefs: () => ({
+    getBoolPref: jest.fn(),
+    getStringPref: jest.fn(),
+    getIntPref: jest.fn(),
+    setBoolPref: jest.fn(),
+    setStringPref: jest.fn(),
+    setIntPref: jest.fn(),
+    clearUserPref: jest.fn(),
+    prefHasUserValue: jest.fn(),
+    addObserver: jest.fn(),
+    removeObserver: jest.fn(),
+  }),
+  vc: () => ({ compare: jest.fn() }),
   scriptSecurityManager: () => ({
     createContentPrincipalFromOrigin: jest.fn(origin => ({ origin })),
   }),
@@ -81,4 +94,79 @@ export function mockServices(names) {
       return [name, stub()];
     })
   );
+}
+
+export class EventEmitter {
+  static decorate(objectToDecorate) {
+    const emitter = new EventEmitter();
+    objectToDecorate.on = emitter.on.bind(emitter);
+    objectToDecorate.off = emitter.off.bind(emitter);
+    objectToDecorate.once = emitter.once.bind(emitter);
+    objectToDecorate.emit = emitter.emit.bind(emitter);
+  }
+
+  on(event, listener) {
+    if (!this._eventEmitterListeners) {
+      this._eventEmitterListeners = new Map();
+    }
+    if (!this._eventEmitterListeners.has(event)) {
+      this._eventEmitterListeners.set(event, []);
+    }
+    this._eventEmitterListeners.get(event).push(listener);
+  }
+
+  off(event, listener) {
+    if (!this._eventEmitterListeners) {
+      return;
+    }
+    const listeners = this._eventEmitterListeners.get(event);
+    if (listeners) {
+      this._eventEmitterListeners.set(
+        event,
+        listeners.filter(
+          l => l !== listener && l._originalListener !== listener
+        )
+      );
+    }
+  }
+
+  once(event, listener) {
+    return new Promise(resolve => {
+      const handler = (_, first, ...rest) => {
+        this.off(event, handler);
+        if (listener) {
+          listener(event, first, ...rest);
+        }
+        resolve(first);
+      };
+
+      handler._originalListener = listener;
+      this.on(event, handler);
+    });
+  }
+
+  emit(event, ...args) {
+    if (
+      !this._eventEmitterListeners ||
+      !this._eventEmitterListeners.has(event)
+    ) {
+      return;
+    }
+    const originalListeners = this._eventEmitterListeners.get(event);
+    for (const listener of this._eventEmitterListeners.get(event)) {
+      if (!this._eventEmitterListeners) {
+        break;
+      }
+      if (
+        originalListeners === this._eventEmitterListeners.get(event) ||
+        this._eventEmitterListeners.get(event).some(l => l === listener)
+      ) {
+        try {
+          listener(event, ...args);
+        } catch (ex) {
+          // error with a listener
+        }
+      }
+    }
+  }
 }

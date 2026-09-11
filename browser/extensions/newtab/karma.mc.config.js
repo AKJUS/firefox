@@ -427,12 +427,6 @@ module.exports = function (config) {
                 functions: 0,
                 branches: 0,
               },
-            "lib/AboutPreferences.sys.mjs": {
-              statements: 98,
-              lines: 98,
-              functions: 94,
-              branches: 66,
-            },
             /**
              * TelemetryFeed.sys.mjs is tested via an xpcshell test
              */

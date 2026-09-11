@@ -3,27 +3,29 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import "@testing-library/jest-dom"; // eslint-disable-line import/no-unassigned-import
+import { EventEmitter } from "test/jest/test-utils";
+
+// Platform globals that lib/*.sys.mjs modules touch while their module body
+// runs, so they cannot be installed from a test's beforeEach. Everything else
+// belongs in stubGlobals() calls inside the tests that need it.
+globalThis.ChromeUtils = {
+  // Karma resolves lazy getters by reparenting the `lazy` object onto the
+  // global, so tests can stub e.g. globalThis.PlacesUtils. Do the same here.
+  defineESModuleGetters(object) {
+    Object.setPrototypeOf(object, globalThis);
+    return globalThis;
+  },
+  importESModule() {
+    return globalThis;
+  },
+};
+globalThis.EventEmitter = EventEmitter;
 
 globalThis.requestIdleCallback = cb => {
   cb();
   return 0;
 };
 globalThis.cancelIdleCallback = () => {};
-
-// lib/*.sys.mjs modules call ChromeUtils.defineESModuleGetters at import time,
-// which is before any beforeEach can install globals, so the shim has to live
-// here. Each lazily imported name resolves to the same-named global, which
-// tests replace with stubGlobals() from test-utils.
-globalThis.ChromeUtils = {
-  defineESModuleGetters(target, modules) {
-    for (const name of Object.keys(modules)) {
-      Object.defineProperty(target, name, {
-        configurable: true,
-        get: () => globalThis[name],
-      });
-    }
-  },
-};
 
 globalThis.IntersectionObserver = class {
   observe() {}

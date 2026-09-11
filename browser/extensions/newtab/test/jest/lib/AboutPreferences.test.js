@@ -1,61 +1,87 @@
-/* global Services */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+// AppConstants is imported eagerly by AboutPreferences.sys.mjs and Jest can't
+// resolve resource:// URIs, so mock it the way karma's webpack config did.
+jest.mock(
+  "resource://gre/modules/AppConstants.sys.mjs",
+  () => ({
+    AppConstants: {
+      MOZILLA_OFFICIAL: true,
+      MOZ_APP_VERSION: "69.0a1",
+      isPlatformAndVersionAtMost() {
+        return false;
+      },
+      platform: "win",
+    },
+  }),
+  { virtual: true }
+);
+
 import {
   AboutPreferences,
   PREFERENCES_LOADED_EVENT,
   PREFERENCES_LOADED_EVENT_SUBPANE,
 } from "lib/AboutPreferences.sys.mjs";
 import { actionTypes as at, actionCreators as ac } from "common/Actions.mjs";
-import { GlobalOverrider } from "test/unit/utils";
+import { mockServices, stubGlobals } from "test/jest/test-utils";
 
 describe("AboutPreferences Feed", () => {
-  let globals;
-  let sandbox;
+  let restoreGlobals;
+  let fakeServices;
   let Sections;
   let DiscoveryStream;
   let instance;
 
+  // sinon's `.withArgs(pref, false).returns(value)` becomes a lookup table:
+  // any pref that isn't listed reads back as undefined.
+  const setBoolPrefs = prefs => {
+    fakeServices.prefs.getBoolPref.mockImplementation(pref => prefs[pref]);
+  };
+
   beforeEach(() => {
-    globals = new GlobalOverrider();
-    sandbox = globals.sandbox;
     Sections = [];
     DiscoveryStream = { config: { enabled: false } };
     instance = new AboutPreferences();
     instance.store = {
-      dispatch: sandbox.stub(),
+      dispatch: jest.fn(),
       getState: () => ({ Sections, DiscoveryStream }),
     };
-    globals.set("NimbusFeatures", {
-      newtab: { getAllVariables: sandbox.stub() },
+    fakeServices = mockServices(["obs", "prefs"]);
+    restoreGlobals = stubGlobals({
+      Services: fakeServices,
     });
   });
   afterEach(() => {
-    globals.restore();
+    restoreGlobals();
+    jest.restoreAllMocks();
   });
 
   describe("#onAction", () => {
     it("should call .init() on an INIT action", () => {
-      const stub = sandbox.stub(instance, "init");
+      const stub = jest.spyOn(instance, "init").mockImplementation(() => {});
 
       instance.onAction({ type: at.INIT });
 
-      assert.calledOnce(stub);
+      expect(stub).toHaveBeenCalledTimes(1);
     });
     it("should call .uninit() on an UNINIT action", () => {
-      const stub = sandbox.stub(instance, "uninit");
+      const stub = jest.spyOn(instance, "uninit").mockImplementation(() => {});
 
       instance.onAction({ type: at.UNINIT });
 
-      assert.calledOnce(stub);
+      expect(stub).toHaveBeenCalledTimes(1);
     });
     it("should call .openPreferences on SETTINGS_OPEN", () => {
       const action = {
         type: at.SETTINGS_OPEN,
         _target: {
-          window: { openPreferences: sinon.spy() },
+          window: { openPreferences: jest.fn() },
         },
       };
       instance.onAction(action);
-      assert.calledOnce(action._target.window.openPreferences);
+      expect(action._target.window.openPreferences).toHaveBeenCalledTimes(1);
     });
     it("should call .BrowserAddonUI.openAddonsMgr with the extension id on OPEN_WEBEXT_SETTINGS", () => {
       const action = {
@@ -63,15 +89,14 @@ describe("AboutPreferences Feed", () => {
         data: "foo",
         _target: {
           window: {
-            BrowserAddonUI: { openAddonsMgr: sinon.spy() },
+            BrowserAddonUI: { openAddonsMgr: jest.fn() },
           },
         },
       };
       instance.onAction(action);
-      assert.calledWith(
-        action._target.window.BrowserAddonUI.openAddonsMgr,
-        "addons://detail/foo"
-      );
+      expect(
+        action._target.window.BrowserAddonUI.openAddonsMgr
+      ).toHaveBeenCalledWith("addons://detail/foo");
     });
   });
 
@@ -81,43 +106,36 @@ describe("AboutPreferences Feed", () => {
 
     beforeEach(() => {
       // Stub out All The Things
-      renderPreferenceSection = sandbox.stub(
-        instance,
-        "renderPreferenceSection"
-      );
-      toggleRestoreDefaults = sandbox.stub(instance, "toggleRestoreDefaults");
+      renderPreferenceSection = jest
+        .spyOn(instance, "renderPreferenceSection")
+        .mockImplementation(() => {});
+      toggleRestoreDefaults = jest
+        .spyOn(instance, "toggleRestoreDefaults")
+        .mockImplementation(() => {});
     });
 
     it("should watch for about:preferences loading", () => {
-      sandbox.stub(Services.obs, "addObserver");
-
       instance.init();
 
-      assert.calledTwice(Services.obs.addObserver);
-      assert.calledWith(
-        Services.obs.addObserver,
+      expect(fakeServices.obs.addObserver).toHaveBeenCalledTimes(2);
+      expect(fakeServices.obs.addObserver).toHaveBeenCalledWith(
         instance,
         PREFERENCES_LOADED_EVENT
       );
-      assert.calledWith(
-        Services.obs.addObserver,
+      expect(fakeServices.obs.addObserver).toHaveBeenCalledWith(
         instance,
         PREFERENCES_LOADED_EVENT_SUBPANE
       );
     });
     it("should stop watching on uninit", () => {
-      sandbox.stub(Services.obs, "removeObserver");
-
       instance.uninit();
 
-      assert.calledTwice(Services.obs.removeObserver);
-      assert.calledWith(
-        Services.obs.removeObserver,
+      expect(fakeServices.obs.removeObserver).toHaveBeenCalledTimes(2);
+      expect(fakeServices.obs.removeObserver).toHaveBeenCalledWith(
         instance,
         PREFERENCES_LOADED_EVENT
       );
-      assert.calledWith(
-        Services.obs.removeObserver,
+      expect(fakeServices.obs.removeObserver).toHaveBeenCalledWith(
         instance,
         PREFERENCES_LOADED_EVENT_SUBPANE
       );
@@ -142,107 +160,120 @@ describe("AboutPreferences Feed", () => {
       await instance.observe(window, PREFERENCES_LOADED_EVENT);
 
       // Render all the prefs
-      assert.callCount(renderPreferenceSection, 6);
+      expect(renderPreferenceSection).toHaveBeenCalledTimes(6);
 
       // Show or hide the "Restore defaults" button depending on prefs
-      assert.calledOnce(toggleRestoreDefaults);
+      expect(toggleRestoreDefaults).toHaveBeenCalledTimes(1);
     });
 
     describe("when browser.settings-redesign.enabled is true", () => {
+      let restoreRedesignGlobals;
       let registerGroups;
       let getSettingGroup;
       let insertFTLIfNeeded;
 
       beforeEach(() => {
-        sandbox.stub(Services.prefs, "getBoolPref").returns(true);
-        registerGroups = sandbox.stub();
-        getSettingGroup = sandbox.stub();
-        getSettingGroup
-          .withArgs("home")
-          .onFirstCall()
-          .throws(new Error("Not yet registered"));
-        getSettingGroup.withArgs("home").onSecondCall().returns(true);
-        insertFTLIfNeeded = sandbox.stub();
-        globals.set("SettingGroupManager", {
-          registerGroups,
-          get: getSettingGroup,
+        fakeServices.prefs.getBoolPref.mockReturnValue(true);
+        registerGroups = jest.fn();
+        let homeCalls = 0;
+        getSettingGroup = jest.fn(group => {
+          if (group !== "home") {
+            return undefined;
+          }
+          homeCalls += 1;
+          if (homeCalls === 1) {
+            throw new Error("Not yet registered");
+          }
+          return true;
         });
-        globals.set("MozXULElement", { insertFTLIfNeeded });
-        sandbox.stub(instance, "_registerPreferences");
-        sandbox.stub(instance, "_setupHomeGroup").returns({});
+        insertFTLIfNeeded = jest.fn();
+        restoreRedesignGlobals = stubGlobals({
+          SettingGroupManager: {
+            registerGroups,
+            get: getSettingGroup,
+          },
+          MozXULElement: { insertFTLIfNeeded },
+        });
+        jest.spyOn(instance, "_registerPreferences").mockImplementation();
+        jest.spyOn(instance, "_setupHomeGroup").mockReturnValue({});
+      });
+
+      afterEach(() => {
+        restoreRedesignGlobals();
       });
 
       it("should register newtab.ftl with the preferences document", () => {
         instance.observe(window);
 
-        assert.calledWith(insertFTLIfNeeded, "browser/newtab/newtab.ftl");
+        expect(insertFTLIfNeeded).toHaveBeenCalledWith(
+          "browser/newtab/newtab.ftl"
+        );
       });
 
       it("should call registerGroups with home only", async () => {
         // homepage/customHomepage are owned by components/preferences.
         await instance.observe(window);
 
-        assert.calledOnce(registerGroups);
-        assert.hasAllKeys(registerGroups.firstCall.args[0], ["home"]);
-        assert.doesNotHaveAnyKeys(registerGroups.firstCall.args[0], [
-          "homepage",
-          "customHomepage",
-        ]);
+        expect(registerGroups).toHaveBeenCalledTimes(1);
+        const [[groups]] = registerGroups.mock.calls;
+        expect(Object.keys(groups)).toEqual(["home"]);
+        expect(groups).not.toHaveProperty("homepage");
+        expect(groups).not.toHaveProperty("customHomepage");
       });
 
       it("should not call renderPreferenceSection or toggleRestoreDefaults", async () => {
         // The redesign path returns early; legacy DOM rendering must not run.
         await instance.observe(window);
 
-        assert.notCalled(renderPreferenceSection);
-        assert.notCalled(toggleRestoreDefaults);
+        expect(renderPreferenceSection).not.toHaveBeenCalled();
+        expect(toggleRestoreDefaults).not.toHaveBeenCalled();
       });
 
       it("should not register a second time when observe fires again for the same window", async () => {
         await instance.observe(window, PREFERENCES_LOADED_EVENT);
         await instance.observe(window, PREFERENCES_LOADED_EVENT_SUBPANE);
 
-        assert.calledOnce(instance._registerPreferences);
-        assert.calledOnce(registerGroups);
+        expect(instance._registerPreferences).toHaveBeenCalledTimes(1);
+        expect(registerGroups).toHaveBeenCalledTimes(1);
       });
     });
   });
 
   describe("#_registerPreferences", () => {
     it("should call Preferences.addAll once with all pref ids", () => {
-      const addAll = sandbox.stub();
+      const addAll = jest.fn();
 
       instance._registerPreferences({ Preferences: { addAll } });
 
-      assert.calledOnce(addAll);
+      expect(addAll).toHaveBeenCalledTimes(1);
       // Spot-check prefs from the beginning, middle, and end of the list.
-      const [prefs] = addAll.firstCall.args;
-      assert.isArray(prefs);
-      assert.isTrue(
+      const [[prefs]] = addAll.mock.calls;
+      expect(Array.isArray(prefs)).toBe(true);
+      expect(
         prefs.some(
           p => p.id === "browser.newtabpage.activity-stream.showSearch"
         )
-      );
-      assert.isTrue(
+      ).toBe(true);
+      expect(
         prefs.some(
           p => p.id === "browser.newtabpage.activity-stream.feeds.topsites"
         )
-      );
-      assert.isTrue(
+      ).toBe(true);
+      expect(
         prefs.some(
           p =>
             p.id ===
             "browser.newtabpage.activity-stream.section.highlights.includeVisited"
         )
-      );
-      assert.isTrue(
+      ).toBe(true);
+      expect(
         prefs.some(
           p =>
             p.id === "browser.newtabpage.activity-stream.hideLogo" &&
             p.type === "bool" &&
             p.inverted === true
         )
-      );
+      ).toBe(true);
     });
   });
 
@@ -251,63 +282,66 @@ describe("AboutPreferences Feed", () => {
     let Preferences;
 
     beforeEach(() => {
-      addSetting = sandbox.stub();
+      addSetting = jest.fn();
       Preferences = { addSetting };
     });
 
     it("should register weather against showWeather prefs when Nova is disabled", () => {
-      sandbox
-        .stub(Services.prefs, "getBoolPref")
-        .withArgs("browser.newtabpage.activity-stream.nova.enabled", false)
-        .returns(false);
+      setBoolPrefs({
+        "browser.newtabpage.activity-stream.nova.enabled": false,
+      });
 
       instance._setupHomeGroup({ Preferences });
 
-      const calls = addSetting.args.map(([{ id, pref }]) => ({ id, pref }));
-      assert.isTrue(
+      const calls = addSetting.mock.calls.map(([{ id, pref }]) => ({
+        id,
+        pref,
+      }));
+      expect(
         calls.some(
           c =>
             c.id === "weather" &&
             c.pref === "browser.newtabpage.activity-stream.showWeather"
         )
-      );
-      assert.isFalse(
+      ).toBe(true);
+      expect(
         calls.some(
           c =>
             c.pref ===
             "browser.newtabpage.activity-stream.widgets.weather.enabled"
         )
-      );
+      ).toBe(false);
     });
 
     it("should register weather against widgets.weather.enabled when Nova is enabled", () => {
-      sandbox
-        .stub(Services.prefs, "getBoolPref")
-        .withArgs("browser.newtabpage.activity-stream.nova.enabled", false)
-        .returns(true);
+      setBoolPrefs({ "browser.newtabpage.activity-stream.nova.enabled": true });
 
       instance._setupHomeGroup({ Preferences });
 
-      const calls = addSetting.args.map(([{ id, pref }]) => ({ id, pref }));
-      assert.isTrue(
+      const calls = addSetting.mock.calls.map(([{ id, pref }]) => ({
+        id,
+        pref,
+      }));
+      expect(
         calls.some(
           c =>
             c.id === "weather" &&
             c.pref ===
               "browser.newtabpage.activity-stream.widgets.weather.enabled"
         )
-      );
-      assert.isFalse(
+      ).toBe(true);
+      expect(
         calls.some(
           c => c.pref === "browser.newtabpage.activity-stream.showWeather"
         )
-      );
+      ).toBe(false);
     });
 
-    const findSetting = id => addSetting.args.find(([s]) => s.id === id)[0];
+    const findSetting = id =>
+      addSetting.mock.calls.find(([s]) => s.id === id)[0];
 
     it("shows a widget toggle when the widget is enabled via trainhopConfig even if its system pref is off", () => {
-      sandbox.stub(Services.prefs, "getBoolPref").returns(false);
+      fakeServices.prefs.getBoolPref.mockReturnValue(false);
       instance.store.getState = () => ({
         Prefs: {
           values: { trainhopConfig: { widgets: { listsEnabled: true } } },
@@ -316,35 +350,35 @@ describe("AboutPreferences Feed", () => {
 
       instance._setupHomeGroup({ Preferences });
 
-      assert.isTrue(
+      expect(
         findSetting("lists").visible({ listsEnabled: { value: false } })
-      );
+      ).toBe(true);
     });
 
     it("shows a widget toggle when its system pref is on (read live from deps)", () => {
-      sandbox.stub(Services.prefs, "getBoolPref").returns(false);
+      fakeServices.prefs.getBoolPref.mockReturnValue(false);
       instance.store.getState = () => ({ Prefs: { values: {} } });
 
       instance._setupHomeGroup({ Preferences });
 
-      assert.isTrue(
+      expect(
         findSetting("lists").visible({ listsEnabled: { value: true } })
-      );
+      ).toBe(true);
     });
 
     it("hides a widget toggle when neither the system pref nor trainhopConfig enable it", () => {
-      sandbox.stub(Services.prefs, "getBoolPref").returns(false);
+      fakeServices.prefs.getBoolPref.mockReturnValue(false);
       instance.store.getState = () => ({ Prefs: { values: {} } });
 
       instance._setupHomeGroup({ Preferences });
 
-      assert.isFalse(
+      expect(
         findSetting("lists").visible({ listsEnabled: { value: false } })
-      );
+      ).toBe(false);
     });
 
     it("shows a widget toggle when revealed via widgetsSettings even if its system pref is off", () => {
-      sandbox.stub(Services.prefs, "getBoolPref").returns(false);
+      fakeServices.prefs.getBoolPref.mockReturnValue(false);
       instance.store.getState = () => ({
         Prefs: {
           values: {
@@ -355,48 +389,48 @@ describe("AboutPreferences Feed", () => {
 
       instance._setupHomeGroup({ Preferences });
 
-      assert.isTrue(
+      expect(
         findSetting("lists").visible({ listsEnabled: { value: false } })
-      );
+      ).toBe(true);
     });
 
     it("shows the widgets group when the container is enabled via trainhopConfig even if the system pref is off", () => {
-      sandbox.stub(Services.prefs, "getBoolPref").returns(false);
+      fakeServices.prefs.getBoolPref.mockReturnValue(false);
       instance.store.getState = () => ({
         Prefs: { values: { trainhopConfig: { widgets: { enabled: true } } } },
       });
 
       instance._setupHomeGroup({ Preferences });
 
-      assert.isTrue(
+      expect(
         findSetting("widgets").visible({ widgetsEnabled: { value: false } })
-      );
+      ).toBe(true);
     });
 
     it("shows the widgets group when the container system pref is on (read live from deps)", () => {
-      sandbox.stub(Services.prefs, "getBoolPref").returns(false);
+      fakeServices.prefs.getBoolPref.mockReturnValue(false);
       instance.store.getState = () => ({ Prefs: { values: {} } });
 
       instance._setupHomeGroup({ Preferences });
 
-      assert.isTrue(
+      expect(
         findSetting("widgets").visible({ widgetsEnabled: { value: true } })
-      );
+      ).toBe(true);
     });
 
     it("hides the widgets group when neither the system pref nor trainhopConfig enable the container", () => {
-      sandbox.stub(Services.prefs, "getBoolPref").returns(false);
+      fakeServices.prefs.getBoolPref.mockReturnValue(false);
       instance.store.getState = () => ({ Prefs: { values: {} } });
 
       instance._setupHomeGroup({ Preferences });
 
-      assert.isFalse(
+      expect(
         findSetting("widgets").visible({ widgetsEnabled: { value: false } })
-      );
+      ).toBe(false);
     });
 
     it("shows the widgets group when revealed via widgetsSettings even if the system pref is off", () => {
-      sandbox.stub(Services.prefs, "getBoolPref").returns(false);
+      fakeServices.prefs.getBoolPref.mockReturnValue(false);
       instance.store.getState = () => ({
         Prefs: {
           values: { trainhopConfig: { widgetsSettings: { enabled: true } } },
@@ -405,51 +439,42 @@ describe("AboutPreferences Feed", () => {
 
       instance._setupHomeGroup({ Preferences });
 
-      assert.isTrue(
+      expect(
         findSetting("widgets").visible({ widgetsEnabled: { value: false } })
-      );
+      ).toBe(true);
     });
 
     it("nests the weather toggle inside the widgets group when Nova and the widgets system pref are enabled", () => {
-      sandbox
-        .stub(Services.prefs, "getBoolPref")
-        .withArgs("browser.newtabpage.activity-stream.nova.enabled", false)
-        .returns(true);
+      setBoolPrefs({ "browser.newtabpage.activity-stream.nova.enabled": true });
       instance.store.getState = () => ({
         Prefs: { values: { "widgets.system.enabled": true } },
       });
 
       const group = instance._setupHomeGroup({ Preferences });
 
-      assert.isUndefined(group.items.find(i => i.id === "weather"));
+      expect(group.items.find(i => i.id === "weather")).toBeUndefined();
       const widgets = group.items.find(i => i.id === "widgets");
-      assert.isTrue(widgets.items.some(i => i.id === "weather"));
+      expect(widgets.items.some(i => i.id === "weather")).toBe(true);
     });
 
     it("nests the weather toggle inside the widgets group when the container is enabled via trainhopConfig", () => {
-      sandbox
-        .stub(Services.prefs, "getBoolPref")
-        .withArgs("browser.newtabpage.activity-stream.nova.enabled", false)
-        .returns(true);
+      setBoolPrefs({ "browser.newtabpage.activity-stream.nova.enabled": true });
       instance.store.getState = () => ({
         Prefs: { values: { trainhopConfig: { widgets: { enabled: true } } } },
       });
 
       const group = instance._setupHomeGroup({ Preferences });
 
-      assert.isUndefined(group.items.find(i => i.id === "weather"));
+      expect(group.items.find(i => i.id === "weather")).toBeUndefined();
       const widgets = group.items.find(i => i.id === "widgets");
       const nestedWeather = widgets.items.find(i => i.id === "weather");
-      assert.isDefined(nestedWeather);
+      expect(nestedWeather).toBeDefined();
       // Nested under Widgets, Weather is a checkbox like its siblings.
-      assert.notProperty(nestedWeather, "control");
+      expect(nestedWeather).not.toHaveProperty("control");
     });
 
     it("keeps the weather toggle standalone when Nova is enabled but the widgets system pref is off", () => {
-      sandbox
-        .stub(Services.prefs, "getBoolPref")
-        .withArgs("browser.newtabpage.activity-stream.nova.enabled", false)
-        .returns(true);
+      setBoolPrefs({ "browser.newtabpage.activity-stream.nova.enabled": true });
       instance.store.getState = () => ({
         Prefs: {
           values: {
@@ -461,25 +486,24 @@ describe("AboutPreferences Feed", () => {
 
       const group = instance._setupHomeGroup({ Preferences });
 
-      assert.isTrue(group.items.some(i => i.id === "weather"));
+      expect(group.items.some(i => i.id === "weather")).toBe(true);
       const widgets = group.items.find(i => i.id === "widgets");
-      assert.isFalse(widgets.items.some(i => i.id === "weather"));
+      expect(widgets.items.some(i => i.id === "weather")).toBe(false);
     });
 
     it("keeps the weather toggle as a standalone row when Nova is disabled", () => {
-      sandbox
-        .stub(Services.prefs, "getBoolPref")
-        .withArgs("browser.newtabpage.activity-stream.nova.enabled", false)
-        .returns(false);
+      setBoolPrefs({
+        "browser.newtabpage.activity-stream.nova.enabled": false,
+      });
 
       const group = instance._setupHomeGroup({ Preferences });
 
       const standaloneWeather = group.items.find(i => i.id === "weather");
-      assert.isDefined(standaloneWeather);
+      expect(standaloneWeather).toBeDefined();
       // Standalone, Weather is a top-level toggle like the other rows.
-      assert.equal(standaloneWeather.control, "moz-toggle");
+      expect(standaloneWeather.control).toBe("moz-toggle");
       const widgets = group.items.find(i => i.id === "widgets");
-      assert.isFalse(widgets.items.some(i => i.id === "weather"));
+      expect(widgets.items.some(i => i.id === "weather")).toBe(false);
     });
   });
 
@@ -487,76 +511,78 @@ describe("AboutPreferences Feed", () => {
     let renderStub;
 
     beforeEach(() => {
-      renderStub = sandbox.stub(instance, "renderPreferenceSection");
-      sandbox.stub(instance, "toggleRestoreDefaults");
+      renderStub = jest
+        .spyOn(instance, "renderPreferenceSection")
+        .mockImplementation(() => {});
+      jest
+        .spyOn(instance, "toggleRestoreDefaults")
+        .mockImplementation(() => {});
     });
 
     it("uses showWeather pref when Nova is disabled", () => {
-      sandbox
-        .stub(Services.prefs, "getBoolPref")
-        .withArgs("browser.newtabpage.activity-stream.nova.enabled", false)
-        .returns(false);
+      setBoolPrefs({
+        "browser.newtabpage.activity-stream.nova.enabled": false,
+      });
 
       instance.observe(window);
 
-      const weatherSection = renderStub.args
+      const weatherSection = renderStub.mock.calls
         .map(([s]) => s)
         .find(s => s && s.id === "weather");
-      assert.isDefined(weatherSection);
-      assert.equal(weatherSection.pref.feed, "showWeather");
+      expect(weatherSection).toBeDefined();
+      expect(weatherSection.pref.feed).toBe("showWeather");
     });
 
     it("uses widgets.weather.enabled pref when Nova is enabled", () => {
-      sandbox
-        .stub(Services.prefs, "getBoolPref")
-        .withArgs("browser.newtabpage.activity-stream.nova.enabled", false)
-        .returns(true);
+      setBoolPrefs({ "browser.newtabpage.activity-stream.nova.enabled": true });
 
       instance.observe(window);
 
-      const weatherSection = renderStub.args
+      const weatherSection = renderStub.mock.calls
         .map(([s]) => s)
         .find(s => s && s.id === "weather");
-      assert.isDefined(weatherSection);
-      assert.equal(weatherSection.pref.feed, "widgets.weather.enabled");
+      expect(weatherSection).toBeDefined();
+      expect(weatherSection.pref.feed).toBe("widgets.weather.enabled");
     });
   });
 
   describe("#renderPreferenceSection", () => {
     let node;
     let Preferences;
+    let prefObject;
     let document;
 
     beforeEach(() => {
       node = {
-        appendChild: sandbox.stub().returnsArg(0),
-        addEventListener: sandbox.stub(),
-        classList: { add: sandbox.stub(), remove: sandbox.stub() },
-        cloneNode: sandbox.stub().returnsThis(),
-        insertAdjacentElement: sandbox.stub().returnsArg(1),
-        setAttribute: sandbox.stub(),
-        remove: sandbox.stub(),
+        appendChild: jest.fn(child => child),
+        addEventListener: jest.fn(),
+        classList: { add: jest.fn(), remove: jest.fn() },
+        cloneNode: jest.fn(function cloneNode() {
+          return this;
+        }),
+        insertAdjacentElement: jest.fn((position, element) => element),
+        setAttribute: jest.fn(),
+        remove: jest.fn(),
         style: {},
       };
       document = {
-        createXULElement: sandbox.stub().returns(node),
+        createXULElement: jest.fn(() => node),
         l10n: {
           setAttributes(el, id, args) {
             el.setAttribute("data-l10n-id", id);
             el.setAttribute("data-l10n-args", JSON.stringify(args));
           },
         },
-        createProcessingInstruction: sandbox.stub(),
-        createElementNS: sandbox.stub().callsFake(() => node),
-        getElementById: sandbox.stub().returns(node),
-        insertBefore: sandbox.stub().returnsArg(0),
-        querySelector: sandbox.stub().returns({ appendChild: sandbox.stub() }),
+        createProcessingInstruction: jest.fn(),
+        createElementNS: jest.fn(() => node),
+        getElementById: jest.fn(() => node),
+        insertBefore: jest.fn(child => child),
+        querySelector: jest.fn(() => ({ appendChild: jest.fn() })),
       };
+      prefObject = { on: jest.fn() };
       Preferences = {
-        add: sandbox.stub(),
-        get: sandbox.stub().returns({
-          on: sandbox.stub(),
-        }),
+        add: jest.fn(),
+        get: jest.fn(() => prefObject),
       };
     });
 
@@ -565,14 +591,14 @@ describe("AboutPreferences Feed", () => {
         const sectionData = { pref: { feed: "feed" } };
         instance.renderPreferenceSection(sectionData, document, Preferences);
 
-        assert.calledOnce(Preferences.add);
+        expect(Preferences.add).toHaveBeenCalledTimes(1);
       });
 
       it("should skip adding if not shown", () => {
         const sectionData = { shouldHidePref: true };
         instance.renderPreferenceSection(sectionData, document, Preferences);
 
-        assert.notCalled(Preferences.add);
+        expect(Preferences.add).not.toHaveBeenCalled();
       });
     });
 
@@ -582,7 +608,10 @@ describe("AboutPreferences Feed", () => {
         const sectionData = { pref: { titleString } };
         instance.renderPreferenceSection(sectionData, document, Preferences);
 
-        assert.calledWith(node.setAttribute, "data-l10n-id", titleString);
+        expect(node.setAttribute).toHaveBeenCalledWith(
+          "data-l10n-id",
+          titleString
+        );
       });
     });
 
@@ -600,15 +629,18 @@ describe("AboutPreferences Feed", () => {
       });
 
       it("should setup a user event for top stories eventSource", () => {
-        sinon.spy(instance, "setupUserEvent");
+        jest.spyOn(instance, "setupUserEvent");
         instance.renderPreferenceSection(sectionData, document, Preferences);
 
-        assert.calledWith(node.addEventListener, "command");
-        assert.calledWith(instance.setupUserEvent, node, eventSource);
+        expect(node.addEventListener).toHaveBeenCalledWith(
+          "command",
+          expect.any(Function)
+        );
+        expect(instance.setupUserEvent).toHaveBeenCalledWith(node, eventSource);
       });
 
       it("should setup a user event for top stories nested pref eventSource", () => {
-        sinon.spy(instance, "setupUserEvent");
+        jest.spyOn(instance, "setupUserEvent");
         const section = {
           id: "topstories",
           pref: {
@@ -627,8 +659,14 @@ describe("AboutPreferences Feed", () => {
         };
         instance.renderPreferenceSection(section, document, Preferences);
 
-        assert.calledWith(node.addEventListener, "command");
-        assert.calledWith(instance.setupUserEvent, node, "POCKET_SPOCS");
+        expect(node.addEventListener).toHaveBeenCalledWith(
+          "command",
+          expect.any(Function)
+        );
+        expect(instance.setupUserEvent).toHaveBeenCalledWith(
+          node,
+          "POCKET_SPOCS"
+        );
       });
 
       it("should fire store dispatch with onCommand", () => {
@@ -639,8 +677,7 @@ describe("AboutPreferences Feed", () => {
           },
         };
         instance.setupUserEvent(element, eventSource);
-        assert.calledWith(
-          instance.store.dispatch,
+        expect(instance.store.dispatch).toHaveBeenCalledWith(
           ac.UserEvent({
             event: "PREF_CHANGED",
             source: eventSource,
@@ -659,7 +696,7 @@ describe("AboutPreferences Feed", () => {
 
         instance.renderPreferenceSection(section, document, Preferences);
 
-        assert.calledWith(node.setAttribute, "href", href);
+        expect(node.setAttribute).toHaveBeenCalledWith("href", href);
       });
     });
 
@@ -670,7 +707,10 @@ describe("AboutPreferences Feed", () => {
 
         instance.renderPreferenceSection(sectionData, document, Preferences);
 
-        assert.calledWith(node.setAttribute, "data-l10n-id", descString);
+        expect(node.setAttribute).toHaveBeenCalledWith(
+          "data-l10n-id",
+          descString
+        );
       });
 
       it("should render rows dropdown with appropriate number", () => {
@@ -682,9 +722,9 @@ describe("AboutPreferences Feed", () => {
 
         instance.renderPreferenceSection(sectionData, document, Preferences);
 
-        assert.calledWith(node.setAttribute, "value", 1);
-        assert.calledWith(node.setAttribute, "value", 2);
-        assert.calledWith(node.setAttribute, "value", 3);
+        expect(node.setAttribute).toHaveBeenCalledWith("value", 1);
+        expect(node.setAttribute).toHaveBeenCalledWith("value", 2);
+        expect(node.setAttribute).toHaveBeenCalledWith("value", 3);
       });
     });
     describe("nested prefs", () => {
@@ -698,7 +738,10 @@ describe("AboutPreferences Feed", () => {
       it("should render a nested pref", () => {
         instance.renderPreferenceSection(sectionData, document, Preferences);
 
-        assert.calledWith(node.setAttribute, "data-l10n-id", titleString);
+        expect(node.setAttribute).toHaveBeenCalledWith(
+          "data-l10n-id",
+          titleString
+        );
       });
 
       it("should set node hidden to true", () => {
@@ -706,67 +749,58 @@ describe("AboutPreferences Feed", () => {
 
         instance.renderPreferenceSection(sectionData, document, Preferences);
 
-        assert.isTrue(node.hidden);
+        expect(node.hidden).toBe(true);
       });
       it("should add a change event", () => {
         instance.renderPreferenceSection(sectionData, document, Preferences);
 
-        assert.calledOnce(Preferences.get().on);
-        assert.calledWith(Preferences.get().on, "change");
+        expect(prefObject.on).toHaveBeenCalledTimes(1);
+        expect(prefObject.on).toHaveBeenCalledWith(
+          "change",
+          expect.any(Function)
+        );
       });
 
       it("should default node disabled to false", async () => {
-        Preferences.get = sandbox.stub().returns({
-          on: sandbox.stub(),
-          _value: true,
-        });
+        prefObject._value = true;
 
         instance.renderPreferenceSection(sectionData, document, Preferences);
 
-        assert.isFalse(node.disabled);
+        expect(node.disabled).toBe(false);
       });
       it("should default node disabled to true", async () => {
         instance.renderPreferenceSection(sectionData, document, Preferences);
 
-        assert.isTrue(node.disabled);
+        expect(node.disabled).toBe(true);
       });
       it("should set node disabled to true", async () => {
-        const pref = {
-          on: sandbox.stub(),
-          _value: true,
-        };
-        Preferences.get = sandbox.stub().returns(pref);
+        prefObject._value = true;
 
         instance.renderPreferenceSection(sectionData, document, Preferences);
-        pref._value = !pref._value;
-        await Preferences.get().on.firstCall.args[1]();
+        prefObject._value = !prefObject._value;
+        await prefObject.on.mock.calls[0][1]();
 
-        assert.isTrue(node.disabled);
+        expect(node.disabled).toBe(true);
       });
       it("should set node disabled to false", async () => {
-        const pref = {
-          on: sandbox.stub(),
-          _value: false,
-        };
-        Preferences.get = sandbox.stub().returns(pref);
+        prefObject._value = false;
 
         instance.renderPreferenceSection(sectionData, document, Preferences);
-        pref._value = !pref._value;
-        await Preferences.get().on.firstCall.args[1]();
+        prefObject._value = !prefObject._value;
+        await prefObject.on.mock.calls[0][1]();
 
-        assert.isFalse(node.disabled);
+        expect(node.disabled).toBe(false);
       });
     });
   });
 
   describe("#toggleRestoreDefaults", () => {
     it("should call toggleRestoreDefaultsBtn", async () => {
-      let gHomePane;
-      gHomePane = { toggleRestoreDefaultsBtn: sandbox.stub() };
+      const gHomePane = { toggleRestoreDefaultsBtn: jest.fn() };
 
       await instance.toggleRestoreDefaults(gHomePane);
 
-      assert.calledOnce(gHomePane.toggleRestoreDefaultsBtn);
+      expect(gHomePane.toggleRestoreDefaultsBtn).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -775,21 +809,21 @@ describe("AboutPreferences Feed", () => {
       const emptyPref = {};
 
       const returnString = instance.getString(emptyPref);
-      assert.equal(returnString, undefined);
+      expect(returnString).toBeUndefined();
     });
 
     it("should return the string id if titleString is just a string", () => {
       const titleString = "foo";
 
       const returnString = instance.getString(titleString);
-      assert.equal(returnString, titleString);
+      expect(returnString).toBe(titleString);
     });
 
     it("should set id and args if titleString is an object with id and values", () => {
       const titleString = { id: "foo", values: { provider: "bar" } };
 
       const returnString = instance.getString(titleString);
-      assert.equal(returnString, titleString.id);
+      expect(returnString).toBe(titleString.id);
     });
   });
 });
