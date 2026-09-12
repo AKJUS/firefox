@@ -1075,21 +1075,6 @@ windowsLaunchOnLogin:
         pref: browser.startup.windowsLaunchOnLogin.enabled
       description: Should users see the Windows launch on login checkbox.
 
-pushNotificationHelper:
-  description: "Controls the Windows push notification helper process"
-  owner: desktop-integrations@mozilla.com
-  applications:
-    - firefox-desktop
-  hasExposure: false
-  variables:
-    enabled:
-      type: boolean
-      setPref:
-        branch: default
-        pref: app.backgroundNotifications.helper.enabled
-      description: >-
-        Whether the push notification helper process should be enabled and running.
-
 firefoxBridge:
   description: "Controls for Firefox Bridge extension and extension registration"
   owner: install-update@mozilla.com
