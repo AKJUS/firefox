@@ -202,7 +202,6 @@ data class TabsTrayState(
      * @property hasViewedTabGroupsPage Whether the user has viewed the Tab Groups page.
      * @property skipUngroupConfirmation Whether the ungroup confirmation dialog should be skipped.
      * @property hasRecordedOnboardingImpression Whether an onboarding impression has been recorded this session.
-     * @property showCollectionsMigrationCard Whether the Collections to Tab Groups migration card is shown.
      * @property enteringGroupId Recently created group id, to be referenced for animations. Cleared after entrance
      *   animations are played.
      * @property dragProcessingState The lifecycle state of tab-group drag handling
@@ -217,7 +216,6 @@ data class TabsTrayState(
         internal val hasViewedTabGroupsPage: Boolean = false,
         internal val skipUngroupConfirmation: Boolean = false,
         internal val hasRecordedOnboardingImpression: Boolean = false,
-        val showCollectionsMigrationCard: Boolean = false,
         val enteringGroupId: String? = null,
         val dragProcessingState: DragProcessingState = DragProcessingState.UNINITIALIZED,
     )

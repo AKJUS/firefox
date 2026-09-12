@@ -319,9 +319,6 @@ fun TabsTray(
                             onDeleteTabGroupClick = { group ->
                                 onAction(TabGroupAction.DeleteClicked(group))
                             },
-                            onCollectionsMigrationCardDismiss = {
-                                onAction(TabGroupAction.CollectionsMigrationCardDismissed)
-                            },
                         )
                     }
                 }
