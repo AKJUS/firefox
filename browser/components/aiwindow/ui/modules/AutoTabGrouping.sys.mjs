@@ -113,7 +113,10 @@ export const AutoTabGrouping = {
    * computePromise memoizes the in-flight clustering run (it resolves to
    * undefined once suggestions are stored) so a panel reopened while it is
    * still running awaits the same computation instead of getting stuck on the
-   * loading state.
+   * loading state. A panel stops waiting on it after timeoutMs and shows what
+   * it has, but the run itself is never given up: models that are slow to
+   * load, typically right after startup, still deliver their groups to the
+   * open panel or to the next one.
    *
    * recent holds the groups created from suggestions (newest first); the panel
    * lists them under "Just created" and the "Ungroup" button reverses all of
@@ -296,10 +299,14 @@ export const AutoTabGrouping = {
     }
     const done = this._computeSuggestions(win);
     this._syncCard(win, panel);
-    await done;
+    const finished = await this._withTimeout(done, lazy.timeoutMs).then(
+      () => true,
+      () => false
+    );
     if (this._panels.get(win) !== panel) {
       return;
     }
+    panel._waitedOut = !finished;
     this._syncCard(win, panel);
 
     await panel._card.updateComplete;
@@ -310,6 +317,7 @@ export const AutoTabGrouping = {
       suggested_groups: state.suggestions.length,
       groups: state.recent.length,
       time: Date.now() - openedAt,
+      waited_out: !finished,
     });
   },
 
@@ -374,6 +382,7 @@ export const AutoTabGrouping = {
     panel._dismissedRow = null;
     panel._focusFlyoutController = null;
     panel._restoreFocus = false;
+    panel._waitedOut = false;
     return panel;
   },
 
@@ -474,7 +483,7 @@ export const AutoTabGrouping = {
     const hidden = this._hideFlyout(panel);
 
     const card = panel._card;
-    card.computing = state.computing;
+    card.computing = state.computing && !panel._waitedOut;
     card.suggestions = [...state.suggestions];
     card.recent = [...state.recent];
     card.duplicates = win.gBrowser.getAllDuplicateTabsToClose().length;
@@ -1159,12 +1168,9 @@ export const AutoTabGrouping = {
       let suggestions = [];
       let errorType = "";
       try {
-        const proposals = await this._withTimeout(
-          lazy.AutoTabGroupingSuggestions.buildProposals(
-            candidates,
-            this._takenGroupLabels(win)
-          ),
-          lazy.timeoutMs
+        const proposals = await lazy.AutoTabGroupingSuggestions.buildProposals(
+          candidates,
+          this._takenGroupLabels(win)
         );
         suggestions = proposals.map((proposal, index) => ({
           id: this._nextId++,
@@ -1196,6 +1202,11 @@ export const AutoTabGrouping = {
           total_length: titleLength(suggestion.tabs),
           grouped_id: suggestion.id,
         });
+      }
+      // A panel that stopped waiting on this run is filled in now.
+      const panel = this._panels.get(win);
+      if (panel?._waitedOut) {
+        this._syncCard(win, panel);
       }
     })();
     return state.computePromise;

@@ -171,6 +171,11 @@ describe("Auto Tab Grouping toolbar button", () => {
         "Showed both suggestions"
       );
       Assert.equal(displayed[0].extra.groups, "0", "Nothing created yet");
+      Assert.equal(
+        displayed[0].extra.waited_out,
+        "false",
+        "Clustering finished before the panel stopped waiting"
+      );
 
       await closePanel(win);
       await openPanelWithSuggestions(win);
