@@ -315,6 +315,13 @@ export class SmartFormFillParent extends JSWindowActorParent {
    * @returns {Promise<void>}
    */
   async triggerAutofill() {
+    await lazy.Region.init().catch(error =>
+      lazy.console.error("Could not initialize Region", error)
+    );
+    if (!this.#onIsSmartWindow()) {
+      return;
+    }
+
     const focusedForm = await this.#getFocusedForm();
     if (!focusedForm) {
       return;
@@ -487,9 +494,17 @@ export class SmartFormFillParent extends JSWindowActorParent {
    * @returns {Promise<boolean> | null | undefined}
    */
   receiveMessage({ data, name }) {
+    if (!this.#onIsSmartWindow()) {
+      return null;
+    }
+
     switch (name) {
       case "SmartFormFill:IsSmartWindow":
-        return this.#onIsSmartWindow();
+        return lazy.Region.init()
+          .catch(error =>
+            lazy.console.error("Could not initialize Region", error)
+          )
+          .then(() => this.#onIsSmartWindow());
 
       case "SmartFormFill:FormUpdate":
         return this.#onFormUpdate(data);
@@ -1120,7 +1135,11 @@ export class SmartFormFillParent extends JSWindowActorParent {
    * @returns {boolean}
    */
   #cannotAutofill() {
-    return this.#destroyed || !this.#controller;
+    if (!this.#onIsSmartWindow()) {
+      return true;
+    }
+
+    return !this.#controller;
   }
 
   /**
@@ -1137,21 +1156,14 @@ export class SmartFormFillParent extends JSWindowActorParent {
   /**
    * Checks whether this is an active Smart Window in a supported region.
    *
-   * @returns {Promise<boolean>}
+   * @returns {boolean}
    */
-  async #onIsSmartWindow() {
+  #onIsSmartWindow() {
     if (
       this.#destroyed ||
       !lazy.AIWindow.isAIWindowActive(this.browsingContext.topChromeWindow)
     ) {
       return false;
-    }
-
-    // #isDisallowedRegion reads Region.home synchronously.
-    try {
-      await lazy.Region.init();
-    } catch (error) {
-      lazy.console.error("Could not initialize Region", error);
     }
 
     return !this.#destroyed && !this.#isDisallowedRegion();
