@@ -249,7 +249,7 @@ impl JxlApiDecoder {
         })
     }
 
-    fn set_pixel_format(&mut self) {
+    fn set_pixel_format(&mut self) -> Result<(), Error> {
         debug_assert!(self.inner.basic_info().is_some());
         let basic_info = self.inner.basic_info().unwrap();
 
@@ -316,8 +316,9 @@ impl JxlApiDecoder {
             }),
             extra_channel_format,
         };
-        self.inner.set_pixel_format(pixel_format);
+        self.inner.set_pixel_format(pixel_format)?;
         self.pixel_format_set = true;
+        Ok(())
     }
 
     /// Process JXL data. Pass output_buffer once frame_ready is true.
@@ -389,7 +390,7 @@ impl JxlApiDecoder {
             // unwraps it).
             if !self.pixel_format_set && self.inner.basic_info().is_some() {
                 debug_assert!(self.inner.embedded_color_profile().is_some());
-                self.set_pixel_format();
+                self.set_pixel_format()?;
                 debug_assert!(self.pixel_format_set);
                 debug_assert!(self.inner.current_pixel_format().is_some());
                 if !need_more {
