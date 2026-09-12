@@ -1181,16 +1181,16 @@ TEST_F(ImageDecoders, JXLParallelDecodeMatchesSerial) {
   {
     // Compare to the same image in another format to make sure it's the right
     // reference.
-#if defined(XP_WIN) && !defined(HAVE_64BIT_BUILD)
+#  if defined(XP_WIN) && !defined(HAVE_64BIT_BUILD)
     const uint32_t kReferenceMaxDifferingPixels = 7;
     const uint8_t kReferenceMaxChannelDiff = 1;
-#elif defined(ANDROID)
+#  elif defined(ANDROID)
     const uint32_t kReferenceMaxDifferingPixels = 4;
     const uint8_t kReferenceMaxChannelDiff = 1;
-#else
+#  else
     const uint32_t kReferenceMaxDifferingPixels = 0;
     const uint8_t kReferenceMaxChannelDiff = 0;
-#endif
+#  endif
     ImageTestCase referenceCase = LargeJXLReferenceWebPTestCase();
     RefPtr<SourceSurface> webpReference;
     WithSingleChunkDecode(referenceCase, Nothing(), /* aUseDecodePool */ false,
