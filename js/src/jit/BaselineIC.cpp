@@ -69,6 +69,7 @@ class MOZ_RAII FallbackICCodeCompiler final {
   [[nodiscard]] bool emitCall(bool isSpread, bool isConstructing);
   [[nodiscard]] bool emitGetElem(bool hasReceiver);
   [[nodiscard]] bool emitGetProp(bool hasReceiver);
+  void emitBailoutStub(BailoutReturnKind kind);
 
  public:
   FallbackICCodeCompiler(JSContext* cx, BaselineICFallbackCode& code,
@@ -646,6 +647,14 @@ void FallbackICCodeCompiler::enterStubFrame(MacroAssembler& masm,
 #endif
 }
 
+void FallbackICCodeCompiler::emitBailoutStub(BailoutReturnKind kind) {
+  code.initBailoutStubOffset(kind, masm.currentOffset());
+  // The bailoutTail jumps here when performing bailout stack
+  // reconstruction.
+  // TODO: call the bailout stub handler.
+  code.initBailoutReturnOffset(kind, masm.currentOffset());
+}
+
 void FallbackICCodeCompiler::assumeStubFrame() {
   MOZ_ASSERT(!inStubFrame_);
   inStubFrame_ = true;
@@ -830,11 +839,9 @@ bool FallbackICCodeCompiler::emitGetElem(bool hasReceiver) {
   // will point here.
   assumeStubFrame();
   if (hasReceiver) {
-    code.initBailoutReturnOffset(BailoutReturnKind::GetElemSuper,
-                                 masm.currentOffset());
+    emitBailoutStub(BailoutReturnKind::GetElemSuper);
   } else {
-    code.initBailoutReturnOffset(BailoutReturnKind::GetElem,
-                                 masm.currentOffset());
+    emitBailoutStub(BailoutReturnKind::GetElem);
   }
 
   leaveStubFrame(masm);
@@ -1416,11 +1423,9 @@ bool FallbackICCodeCompiler::emitGetProp(bool hasReceiver) {
   // will point here.
   assumeStubFrame();
   if (hasReceiver) {
-    code.initBailoutReturnOffset(BailoutReturnKind::GetPropSuper,
-                                 masm.currentOffset());
+    emitBailoutStub(BailoutReturnKind::GetPropSuper);
   } else {
-    code.initBailoutReturnOffset(BailoutReturnKind::GetProp,
-                                 masm.currentOffset());
+    emitBailoutStub(BailoutReturnKind::GetProp);
   }
 
   leaveStubFrame(masm);
@@ -1619,8 +1624,7 @@ bool FallbackICCodeCompiler::emit_SetProp() {
   // Ion inlined frames. The return address pushed onto reconstructed stack
   // will point here.
   assumeStubFrame();
-  code.initBailoutReturnOffset(BailoutReturnKind::SetProp,
-                               masm.currentOffset());
+  emitBailoutStub(BailoutReturnKind::SetProp);
 
   leaveStubFrame(masm);
   EmitReturnFromIC(masm);
@@ -1917,9 +1921,9 @@ bool FallbackICCodeCompiler::emitCall(bool isSpread, bool isConstructing) {
   MOZ_ASSERT(!isSpread);
 
   if (isConstructing) {
-    code.initBailoutReturnOffset(BailoutReturnKind::New, masm.currentOffset());
+    emitBailoutStub(BailoutReturnKind::New);
   } else {
-    code.initBailoutReturnOffset(BailoutReturnKind::Call, masm.currentOffset());
+    emitBailoutStub(BailoutReturnKind::Call);
   }
 
   // Load passed-in ThisV into R1 just in case it's needed.  Need to do this

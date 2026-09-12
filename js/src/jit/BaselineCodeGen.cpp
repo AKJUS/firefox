@@ -7145,6 +7145,23 @@ bool BaselineCompiler::emitBody() {
   return true;
 }
 
+void BaselineInterpreterGenerator::emitICBailoutStub() {
+  MOZ_ASSERT(handler.currentOp());
+  mozilla::DebugOnly<JSOp> op = *handler.currentOp();
+  MOZ_ASSERT(BytecodeOpHasIC(op) && IsIonInlinableOp(op));
+
+  auto& entry = handler.icReturnOffsets().back();
+  MOZ_ASSERT(entry.op == op);
+
+  Label icReturn;
+  icReturn.bind(entry.offset);
+  entry.bailoutStubOffset = masm.currentOffset();
+  // The bailoutTail jumps here when performing bailout stack
+  // reconstruction.
+  // TODO: call the bailout stub handler.
+  masm.jump(&icReturn);
+}
+
 bool BaselineInterpreterGenerator::emitDebugTrap() {
   CodeOffset offset = masm.nopPatchableToCall();
   if (!debugTrapOffsets_.append(offset.offset())) {
@@ -7234,19 +7251,22 @@ bool BaselineInterpreterGenerator::emitInterpreterLoop() {
 
   // Emit code for each bytecode op.
   Label opLabels[JSOP_LIMIT];
-#define EMIT_OP(OP, ...)                          \
-  {                                               \
-    AutoCreatedBy acb(masm, "op=" #OP);           \
-    perfSpewer_.recordOffset(masm, JSOp::OP);     \
-    masm.bind(&opLabels[uint8_t(JSOp::OP)]);      \
-    handler.setCurrentOp(JSOp::OP);               \
-    if (!this->emit_##OP()) {                     \
-      return false;                               \
-    }                                             \
-    if (!opEpilogue(JSOp::OP, JSOpLength_##OP)) { \
-      return false;                               \
-    }                                             \
-    handler.resetCurrentOp();                     \
+#define EMIT_OP(OP, ...)                                           \
+  {                                                                \
+    AutoCreatedBy acb(masm, "op=" #OP);                            \
+    perfSpewer_.recordOffset(masm, JSOp::OP);                      \
+    masm.bind(&opLabels[uint8_t(JSOp::OP)]);                       \
+    handler.setCurrentOp(JSOp::OP);                                \
+    if (!this->emit_##OP()) {                                      \
+      return false;                                                \
+    }                                                              \
+    if (!opEpilogue(JSOp::OP, JSOpLength_##OP)) {                  \
+      return false;                                                \
+    }                                                              \
+    if (BytecodeOpHasIC(JSOp::OP) && IsIonInlinableOp(JSOp::OP)) { \
+      this->emitICBailoutStub();                                   \
+    }                                                              \
+    handler.resetCurrentOp();                                      \
   }
   FOR_EACH_OPCODE(EMIT_OP)
 #undef EMIT_OP

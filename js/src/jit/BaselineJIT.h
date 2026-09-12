@@ -484,6 +484,7 @@ class BaselineInterpreter {
   };
   struct ICReturnOffset {
     uint32_t offset;
+    uint32_t bailoutStubOffset = 0;
     JSOp op;
     ICReturnOffset(uint32_t offset, JSOp op) : offset(offset), op(op) {}
   };
@@ -575,6 +576,7 @@ class BaselineInterpreter {
   }
 
   uint8_t* retAddrForIC(JSOp op) const;
+  uint8_t* bailoutStubAddrForIC(JSOp op) const;
 
   TrampolinePtr interpretOpAddr() const {
     return TrampolinePtr(codeAtOffset(interpretOpOffset_));

@@ -1379,6 +1379,15 @@ uint8_t* BaselineInterpreter::retAddrForIC(JSOp op) const {
   MOZ_CRASH("Unexpected op");
 }
 
+uint8_t* BaselineInterpreter::bailoutStubAddrForIC(JSOp op) const {
+  for (const ICReturnOffset& entry : icReturnOffsets_) {
+    if (entry.op == op) {
+      return codeAtOffset(entry.bailoutStubOffset);
+    }
+  }
+  MOZ_CRASH("Unexpected op");
+}
+
 bool jit::GenerateBaselineInterpreter(JSContext* cx,
                                       BaselineInterpreter& interpreter) {
   if (IsBaselineInterpreterEnabled()) {
