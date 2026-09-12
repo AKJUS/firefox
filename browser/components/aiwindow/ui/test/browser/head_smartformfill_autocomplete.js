@@ -8,9 +8,6 @@
 const { MockEngineManager } = ChromeUtils.importESModule(
   "resource://testing-common/AIWindowTestUtils.sys.mjs"
 );
-const { UrlTokenizer } = ChromeUtils.importESModule(
-  "moz-src:///browser/components/aiwindow/ui/modules/UrlTokenizer.sys.mjs"
-);
 
 const FORM_URL =
   "https://example.com/browser/browser/components/aiwindow/ui/test/browser/test_smartformfill_autocomplete.html";
@@ -186,12 +183,9 @@ function respondToMetadataRequest(
       return;
 
     case RELEVANT_TABS_SCHEMA: {
-      const selectedSourceToken = selectedSourceUrl
-        ? new UrlTokenizer().encodeToken(selectedSourceUrl, false)
+      const source = selectedSourceUrl
+        ? requestData.tabs.find(tab => tab.url === selectedSourceUrl)
         : null;
-      const source = requestData.tabs.find(
-        tab => tab.url === selectedSourceToken
-      );
       respond(
         JSON.stringify({
           selectedTabs: source

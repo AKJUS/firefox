@@ -65,7 +65,6 @@ MOZ_SRC_FILES += [
     "modules/ToolActionLog.sys.mjs",
     "modules/ToolUI.sys.mjs",
     "modules/ToolUITelemetry.sys.mjs",
-    "modules/UrlTokenizer.sys.mjs",
 ]
 
 TESTING_JS_MODULES += [

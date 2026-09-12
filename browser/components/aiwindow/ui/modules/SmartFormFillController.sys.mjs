@@ -526,7 +526,7 @@ export class SmartFormFillController {
    * @param {PageInfo} pageInfo
    * @param {Array<FieldData>} fields
    *
-   * @returns {Promise<Array<{id: string, memory_summary: string}>>}
+   * @returns {Promise<Array<string>>}
    */
   // eslint-disable-next-line no-unused-private-class-members -- will be enabled in v0+
   async #getMemories(pageInfo, fields) {
@@ -552,11 +552,9 @@ export class SmartFormFillController {
     const relevantMemories =
       await lazy.MemoriesManager.getRelevantMemories(contextMessage);
 
-    return relevantMemories.map(relevant_memory => {
-      const { id, memory_summary } = relevant_memory;
-
-      return { id, memory_summary };
-    });
+    return relevantMemories.map(
+      relevant_memory => relevant_memory.memory_summary
+    );
   }
 
   /**
@@ -586,7 +584,7 @@ export class SmartFormFillController {
       let value;
       switch (result.action) {
         case "fill_from_token":
-          value = result.value ? valuesByToken.get(result.value) : undefined;
+          value = result.token ? valuesByToken.get(result.token) : undefined;
           break;
 
         case "generate":
@@ -642,7 +640,7 @@ export class SmartFormFillController {
       const count = (typeCounts.get(type) ?? 0) + 1;
       typeCounts.set(type, count);
 
-      const token = `§${type.toUpperCase().replaceAll("-", "_")}_${count}§`;
+      const token = `$${type.toUpperCase().replaceAll("-", "_")}_${count}`;
 
       candidates.push({ token, type });
       valuesByToken.set(token, value);

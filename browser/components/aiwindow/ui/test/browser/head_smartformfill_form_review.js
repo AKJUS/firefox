@@ -93,8 +93,7 @@ function respondToFormReviewMetadataRequest(schemaName, requestData, respond) {
       return;
 
     case RELEVANT_TABS_SCHEMA: {
-      const sourceToken = new UrlTokenizer().encodeToken(SOURCE_URL);
-      const source = requestData.tabs.find(tab => tab.url === sourceToken);
+      const source = requestData.tabs.find(tab => tab.url === SOURCE_URL);
       respond(
         JSON.stringify({
           selectedTabs: source

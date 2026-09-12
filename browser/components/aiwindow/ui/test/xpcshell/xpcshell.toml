@@ -41,8 +41,6 @@ run-if = [
 
 ["test_ToolUIUpdate.js"]
 
-["test_UrlTokenizer.js"]
-
 ["test_chat-utils.js"]
 
 ["test_ui_modules_AIWindow_placesEvents.js"]
