@@ -989,7 +989,7 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvTextSelectionChangeEvent(
 }
 
 mozilla::ipc::IPCResult DocAccessibleParent::RecvRoleChangedEvent(
-    const a11y::role& aRole, const uint8_t& aRoleMapEntryIndex) {
+    const uint8_t& aRoleMapEntryIndex) {
   ACQUIRE_ANDROID_LOCK
   if (mShutdown) {
     return IPC_OK();
@@ -999,11 +999,14 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvRoleChangedEvent(
     return IPC_FAIL(this, "Invalid role map entry index");
   }
 
-  mNativeRole = aRole;
+  const nsRoleMapEntry* entry = aria::GetRoleMapFromIndex(aRoleMapEntryIndex);
+  if (entry && !nsAccUtils::IsARIARoleAllowedOnContentDoc(entry->role)) {
+    return IPC_FAIL(this, "Invalid role on document");
+  }
   mRoleMapEntryIndex = aRoleMapEntryIndex;
 
 #ifdef MOZ_WIDGET_COCOA
-  PlatformRoleChangedEvent(this, aRole, aRoleMapEntryIndex);
+  PlatformRoleChangedEvent(this, Role(), aRoleMapEntryIndex);
 #endif
 
   return IPC_OK();

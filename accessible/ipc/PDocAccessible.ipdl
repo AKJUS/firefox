@@ -102,7 +102,7 @@ parent:
   async MutationEvents(MutationEventData[] aData);
   async RequestAckMutationEvents();
   async SelectionEvent(uint64_t aID, uint64_t aWidgetID, uint32_t aType);
-  async RoleChangedEvent(role aRole, uint8_t aRoleMapEntryIndex);
+  async RoleChangedEvent(uint8_t aRoleMapEntryIndex);
   async FocusEvent(uint64_t aID, LayoutDeviceIntRect aCaretRect);
   async ScrollingEvent(uint64_t aID, uint64_t aType,
                        uint32_t aScrollX, uint32_t aScrollY,
