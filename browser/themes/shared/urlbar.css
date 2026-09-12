@@ -250,15 +250,30 @@ toolbar[inactive="true"] .urlbar,
   }
 }
 
-/* In a page the bar takes its height from the embedder and is taller than in a
-   chrome window, leaving the buttons a uniform inset on all four sides. The
-   size derivation repeats the one on the root because that one runs where the
-   padding still has its chrome value. */
 .urlbar[in-page] {
+  /* In a page the input takes its height from the embedder and is taller than in
+     a chrome window, leaving the buttons a uniform inset on all four sides. The
+     size derivation repeats the one on the root because that one runs where the
+     padding still has its chrome value. */
   --urlbar-container-padding-block: 0px;
   --urlbar-input-container-padding: 10px;
   --urlbar-basic-component-size: calc(var(--urlbar-height) - 2 * var(--urlbar-input-container-padding));
   --urlbarview-border-radius: calc(var(--urlbar-height) / 2);
+
+  /* When the input isn't in a toolbar, it can't use a background that may have
+     significant transparency since it counts on the toolbar background behind
+     it. */
+  --urlbar-background-color: var(--input-text-background-color);
+  --urlbar-background-color-focus: var(--input-text-background-color);
+  --toolbar-field-text-color: var(--input-text-color);
+  --toolbar-field-text-color-focus: var(--input-text-color);
+  --toolbar-field-border-color: var(--input-text-border-color);
+
+  /* The selected row's background and text have to stay a pair, so both come
+     from the list item tokens. The action text follows the input. */
+  --urlbarview-background-color-selected: var(--background-color-list-item-hover);
+  --urlbarview-text-color-selected: var(--text-color-list-item-hover);
+  --urlbarview-text-color-action: var(--input-text-color);
 }
 
 .urlbar-background {

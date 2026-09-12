@@ -25,6 +25,8 @@ support-files = ["../browser/slow-page.sjs"]
 
 ["browser_escape.js"]
 
+["browser_inputBackground.js"]
+
 ["browser_inputmode.js"]
 
 ["browser_mousedown.js"]

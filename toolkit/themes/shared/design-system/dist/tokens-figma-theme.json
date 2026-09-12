@@ -860,9 +860,9 @@
     "forcedColors": "{Theme$border/color/interactive/disabled}"
   },
   "input/text/color": {
-    "light": "transparent",
-    "dark": "transparent",
-    "forcedColors": "transparent"
+    "light": "{Theme$text/color}",
+    "dark": "{Theme$text/color}",
+    "forcedColors": "{Theme$text/color}"
   },
   "input/text/color/disabled": {
     "light": "{Theme$input/text/color}",
