@@ -4115,42 +4115,85 @@ void MacroAssembler::generateBailoutTail(Register scratch,
     AllocatableGeneralRegisterSet regs(GeneralRegisterSet::All());
     MOZ_ASSERT_IF(!IsHiddenSP(getStackPointer()),
                   !regs.has(AsRegister(getStackPointer())));
+    regs.take(scratch);
     regs.take(bailoutInfo);
+    regs.take(BailoutStubHandlerReg);
 
-    Register temp = regs.takeAny();
+    Register copyCur = regs.takeAny();
+    Register copyEnd = regs.takeAny();
+    Register stubInfo = regs.takeAny();
 
 #ifdef DEBUG
     // Assert the stack pointer points to the JitFrameLayout header. Copying
     // starts here.
     Label ok;
     loadPtr(Address(bailoutInfo, offsetof(BaselineBailoutInfo, incomingStack)),
-            temp);
-    branchStackPtr(Assembler::Equal, temp, &ok);
+            scratch);
+    branchStackPtr(Assembler::Equal, scratch, &ok);
     assumeUnreachable("Unexpected stack pointer value");
     bind(&ok);
 #endif
 
-    Register copyCur = regs.takeAny();
-    Register copyEnd = regs.takeAny();
-
     // Copy data onto stack.
     loadPtr(Address(bailoutInfo, offsetof(BaselineBailoutInfo, copyStackTop)),
             copyCur);
-    loadPtr(
-        Address(bailoutInfo, offsetof(BaselineBailoutInfo, copyStackBottom)),
-        copyEnd);
-    {
-      Label copyLoop;
-      Label endOfCopy;
-      bind(&copyLoop);
-      branchPtr(Assembler::BelowOrEqual, copyCur, copyEnd, &endOfCopy);
-      subPtr(Imm32(sizeof(uintptr_t)), copyCur);
-      subFromStackPtr(Imm32(sizeof(uintptr_t)));
-      loadPtr(Address(copyCur, 0), temp);
-      storePtr(temp, Address(getStackPointer(), 0));
-      jump(&copyLoop);
-      bind(&endOfCopy);
-    }
+    // Instead of directly copying the entire bailout stack in one go, we
+    // materialize the frames one at a time using calls to bailout stubs for the
+    // return addresses.
+    computeEffectiveAddress(Address(bailoutInfo, sizeof(BaselineBailoutInfo)),
+                            stubInfo);
+
+    CodeLabel bailoutStubHandler;
+    // Pin the BailoutStubHandlerReg that each bailout stub will call.
+    mov(&bailoutStubHandler, BailoutStubHandlerReg);
+
+#ifdef JS_USE_LINK_REGISTER
+    // On the first iteration into the bailout stub handler,
+    // the link register does not need to be pushed.
+    Label copyFrame;
+    jump(&copyFrame);
+#endif
+
+    bind(&bailoutStubHandler);
+    addCodeLabel(bailoutStubHandler);
+
+#ifdef JS_USE_LINK_REGISTER
+    // The call from the bailout stub to the bailout stub handler
+    // does not actually push the return address onto the stack.
+    pushReturnAddress();
+    bind(&copyFrame);
+#endif
+
+    // Bailout segment handler starts here. The baseline bailout stubs
+    // repeatedly call into this to push the return address and begin
+    // copying the next frame on the stack.
+    loadPtr(Address(stubInfo, offsetof(BailoutStubInfo, frameBoundary)),
+            copyEnd);
+
+    Label copyLoop;
+    Label endOfCopy;
+    bind(&copyLoop);
+    branchStackPtr(Assembler::BelowOrEqual, copyEnd, &endOfCopy);
+    subPtr(Imm32(sizeof(uintptr_t)), copyCur);
+    subFromStackPtr(Imm32(sizeof(uintptr_t)));
+    loadPtr(Address(copyCur, 0), scratch);
+    storePtr(scratch, Address(getStackPointer(), 0));
+    jump(&copyLoop);
+
+    bind(&endOfCopy);
+    // all of the frame's contents have been copied except the return address.
+    loadPtr(Address(stubInfo, offsetof(BailoutStubInfo, bailoutStub)), scratch);
+    // move to the next bailout stub info.
+    addPtr(Imm32(sizeof(BailoutStubInfo)), stubInfo);
+    Label copyDone;
+    // A null stubAddr marks the final stack boundary.
+    branchTestPtr(Assembler::Zero, scratch, scratch, &copyDone);
+
+    // The call in each bailout stub recreates the return address skipped here.
+    subPtr(Imm32(sizeof(uintptr_t)), copyCur);
+    jump(scratch);
+
+    bind(&copyDone);
 
     loadPtr(Address(bailoutInfo, offsetof(BaselineBailoutInfo, resumeFramePtr)),
             FramePointer);
@@ -4168,7 +4211,7 @@ void MacroAssembler::generateBailoutTail(Register scratch,
 
     // Call a stub to free allocated memory and create arguments objects.
     using Fn = bool (*)(BaselineBailoutInfo* bailoutInfoArg);
-    setupUnalignedABICall(temp);
+    setupUnalignedABICall(scratch);
     passABIArg(bailoutInfo);
     callWithABI<Fn, FinishBailoutToBaseline>(
         ABIType::General, CheckUnsafeCallWithABI::DontCheckHasExitFrame);

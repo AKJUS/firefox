@@ -143,6 +143,10 @@ static constexpr Register RegExpSearcherRegExpReg = CallTempReg0;
 static constexpr Register RegExpSearcherStringReg = CallTempReg1;
 static constexpr Register RegExpSearcherLastIndexReg = CallTempReg2;
 
+// Register used by the bailout tail and bailout stubs during stack
+// reconstruction.
+static constexpr Register BailoutStubHandlerReg = CallTempReg0;
+
 static constexpr Register JSReturnReg_Type{Registers::a3};
 static constexpr Register JSReturnReg_Data{Registers::s2};
 static constexpr Register JSReturnReg{Registers::a2};

@@ -7157,8 +7157,9 @@ void BaselineInterpreterGenerator::emitICBailoutStub() {
   icReturn.bind(entry.offset);
   entry.bailoutStubOffset = masm.currentOffset();
   // The bailoutTail jumps here when performing bailout stack
-  // reconstruction.
-  // TODO: call the bailout stub handler.
+  // reconstruction. The Baseline frame has been rebuilt.
+  // Only the return address remains to be pushed.
+  entry.offset = masm.call(BailoutStubHandlerReg).offset();
   masm.jump(&icReturn);
 }
 
