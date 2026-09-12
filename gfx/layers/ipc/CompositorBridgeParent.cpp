@@ -274,7 +274,7 @@ void CompositorBridgeParent::Initialize() {
     MOZ_ASSERT(!mApzcTreeManager);
     MOZ_ASSERT(!mApzSampler);
     MOZ_ASSERT(!mApzUpdater);
-    mApzcTreeManager = APZCTreeManager::Create(mRootLayerTreeID);
+    mApzcTreeManager = APZCTreeManager::Create(mRootLayerTreeID, mScale);
     mApzSampler = new APZSampler(mApzcTreeManager, true);
     mApzUpdater = new APZUpdater(mApzcTreeManager, true);
   }

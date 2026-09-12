@@ -275,6 +275,7 @@ class MOZ_RAII AutoFocusSequenceNumberSetter {
 };
 
 APZCTreeManager::APZCTreeManager(LayersId aRootLayersId,
+                                 CSSToLayoutDeviceScale aWidgetScale,
                                  UniquePtr<IAPZHitTester> aHitTester)
     : mTestSampleTime(Nothing(), "APZCTreeManager::mTestSampleTime"),
       mInputQueue(new InputQueue()),
@@ -290,6 +291,7 @@ APZCTreeManager::APZCTreeManager(LayersId aRootLayersId,
       mApzcTreeLog("apzctree"),
       mTestDataLock("APZTestDataLock"),
       mDPI(160.0),
+      mWidgetScale(aWidgetScale),
       mHitTester(std::move(aHitTester)),
       mScrollGenerationLock("APZScrollGenerationLock"),
       mInteractiveWidget(
@@ -315,9 +317,10 @@ void APZCTreeManager::Init() {
 }
 
 already_AddRefed<APZCTreeManager> APZCTreeManager::Create(
-    LayersId aRootLayersId, UniquePtr<IAPZHitTester> aHitTester) {
+    LayersId aRootLayersId, CSSToLayoutDeviceScale aWidgetScale,
+    UniquePtr<IAPZHitTester> aHitTester) {
   RefPtr<APZCTreeManager> manager =
-      new APZCTreeManager(aRootLayersId, std::move(aHitTester));
+      new APZCTreeManager(aRootLayersId, aWidgetScale, std::move(aHitTester));
   manager->Init();
   return manager.forget();
 }
@@ -4077,6 +4080,10 @@ void APZCTreeManager::SetDPI(float aDpiValue) {
 float APZCTreeManager::GetDPI() const {
   APZThreadUtils::AssertOnControllerThread();
   return mDPI;
+}
+
+CSSToLayoutDeviceScale APZCTreeManager::GetWidgetScale() const {
+  return mWidgetScale;
 }
 
 void APZCTreeManager::EndWheelTransaction(
