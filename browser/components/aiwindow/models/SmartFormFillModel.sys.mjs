@@ -13,6 +13,7 @@ import {
   buildConversation,
   loadPrompt,
 } from "moz-src:///browser/components/aiwindow/models/PromptLoader.sys.mjs";
+import { UrlTokenizer } from "moz-src:///browser/components/aiwindow/ui/modules/UrlTokenizer.sys.mjs";
 
 /**
  * Reports the model and prompt version a request is about to be sent with.
@@ -142,10 +143,16 @@ import {
  */
 
 /**
+ * @typedef {object} MemoryDataForValueGen
+ * @property {string} id Memory ID
+ * @property {string} memory_summary Memory summary
+ */
+
+/**
  * @typedef {object} Context
  * @property {string} [pageText] Text of the current page
  * @property {Array<TabCandidate>} [relevantTabs] Tabs for context
- * @property {Array<string>} [memories] List of memories
+ * @property {Array<MemoryDataForValueGen>} [memories] List of memories
  */
 
 /**
@@ -161,14 +168,9 @@ import {
  * @typedef {object} FieldValue
  * @property {string} id The stable field ID
  * @property {"fill_from_token" | "select_option" | "generate" | "skip"} action The action the LLM decided for the value
- * @property {string} [token] Candidate token, present only when action is
- * "fill_from_token"
  * @property {"high" | "medium" | "low"} confidence The LLM's value confidence
- * @property {string} [optionId] Select option stable ID, present only when
- * action is
- * "select_option"
- * @property {string} [value] Generated value, present only when action is
- * "generate"
+ * @property {string} value Candidate token, option ID, generated value, or an
+ * empty string when the action is "skip"
  */
 
 /**
@@ -264,6 +266,8 @@ function queueValuesBatchRequest(request, options) {
   return promise;
 }
 
+const TITLE_CHAR_LIMIT = 100;
+
 const FIELD_CLASSIFICATION_RESPONSE_SCHEMA = {
   type: "object",
   properties: {
@@ -326,75 +330,21 @@ const FORM_VALUES_RESPONSE_SCHEMA = {
     fields: {
       type: "array",
       items: {
-        oneOf: [
-          {
-            type: "object",
-            properties: {
-              id: { type: "string" },
-              action: {
-                type: "string",
-                enum: ["fill_from_token"],
-              },
-              token: { type: "string" },
-              confidence: {
-                type: "string",
-                enum: ["high", "medium", "low"],
-              },
-            },
-            required: ["id", "action", "token", "confidence"],
-            additionalProperties: false,
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          action: {
+            type: "string",
+            enum: ["fill_from_token", "select_option", "generate", "skip"],
           },
-          {
-            type: "object",
-            properties: {
-              id: { type: "string" },
-              action: {
-                type: "string",
-                enum: ["generate"],
-              },
-              value: { type: "string" },
-              confidence: {
-                type: "string",
-                enum: ["high", "medium", "low"],
-              },
-            },
-            required: ["id", "action", "value", "confidence"],
-            additionalProperties: false,
+          confidence: {
+            type: "string",
+            enum: ["high", "medium", "low"],
           },
-          {
-            type: "object",
-            properties: {
-              id: { type: "string" },
-              action: {
-                type: "string",
-                enum: ["select_option"],
-              },
-              optionId: { type: "string" },
-              confidence: {
-                type: "string",
-                enum: ["high", "medium", "low"],
-              },
-            },
-            required: ["id", "action", "optionId", "confidence"],
-            additionalProperties: false,
-          },
-          {
-            type: "object",
-            properties: {
-              id: { type: "string" },
-              action: {
-                type: "string",
-                enum: ["skip"],
-              },
-              confidence: {
-                type: "string",
-                enum: ["high", "medium", "low"],
-              },
-            },
-            required: ["id", "action", "confidence"],
-            additionalProperties: false,
-          },
-        ],
+          value: { type: "string" },
+        },
+        required: ["id", "action", "confidence", "value"],
+        additionalProperties: false,
       },
     },
   },
@@ -409,10 +359,14 @@ const FORM_VALUES_RESPONSE_SCHEMA = {
  * @param {object} [param1={}]
  * @param {AbortSignal} [param1.signal]
  * @param {ModelInfoCallback} [param1.onDispatch]
+ * @param {UrlTokenizer} param1.urlTokenizer
  *
  * @returns {Promise<GenerateFormValuesBatchResponse>}
  */
-async function generateFormValuesBatch(request, { signal, onDispatch } = {}) {
+async function generateFormValuesBatch(
+  request,
+  { signal, onDispatch, urlTokenizer } = {}
+) {
   signal?.throwIfAborted();
 
   const conversation = await buildConversation(MODEL_FEATURES.SMART_FORM_FILL);
@@ -432,12 +386,21 @@ async function generateFormValuesBatch(request, { signal, onDispatch } = {}) {
     ]);
   signal?.throwIfAborted();
 
+  const url = urlTokenizer.encodeToken(request.page.url);
+  const relevantTabs = request.context.relevantTabs.map(tab => {
+    return {
+      ...tab,
+      title: tab.title.substring(0, TITLE_CHAR_LIMIT),
+      url: urlTokenizer.encodeToken(tab.url),
+    };
+  });
+
   const userPrompt = renderPrompt(userPromptTemplate, {
-    title: request.page.title,
-    url: request.page.url,
+    url,
+    title: request.page.title.substring(0, TITLE_CHAR_LIMIT),
     pageText: request.context.pageText ?? "",
     memories: JSON.stringify(request.context.memories ?? []),
-    pageContext: JSON.stringify(request.context.relevantTabs ?? []),
+    pageContext: JSON.stringify(relevantTabs ?? []),
     candidateTokens: JSON.stringify(request.candidates),
     fields: JSON.stringify(request.fields),
   });
@@ -516,9 +479,11 @@ export const SmartFormFillModel = {
       ]);
     signal?.throwIfAborted();
 
+    const urlTokenizer = new UrlTokenizer();
+    const url = urlTokenizer.encodeToken(request.page.url);
     const userPrompt = renderPrompt(userPromptTemplate, {
-      title: request.page.title,
-      url: request.page.url,
+      url,
+      title: request.page.title.substring(0, TITLE_CHAR_LIMIT),
       fields: JSON.stringify(request.fields),
     });
 
@@ -577,11 +542,21 @@ export const SmartFormFillModel = {
       ]);
     signal?.throwIfAborted();
 
+    const urlTokenizer = new UrlTokenizer();
+    const url = urlTokenizer.encodeToken(request.page.url);
+    const tabs = request.tabs.map(tab => {
+      return {
+        ...tab,
+        title: tab.title.substring(0, TITLE_CHAR_LIMIT),
+        url: urlTokenizer.encodeToken(tab.url),
+      };
+    });
+
     const userPrompt = renderPrompt(userPromptTemplate, {
-      title: request.page.title,
-      url: request.page.url,
+      url,
+      title: request.page.title.substring(0, TITLE_CHAR_LIMIT),
       fields: JSON.stringify(request.fields),
-      tabs: JSON.stringify(request.tabs),
+      tabs: JSON.stringify(tabs),
       max_selected_tabs: request.maxSelectedTabs,
     });
 
@@ -626,6 +601,7 @@ export const SmartFormFillModel = {
   async generateFormValues(request, { signal, onDispatch } = {}) {
     signal?.throwIfAborted();
 
+    const urlTokenizer = new UrlTokenizer();
     const requests = [];
     for (
       let index = 0;
@@ -641,7 +617,7 @@ export const SmartFormFillModel = {
               index + MAX_FIELDS_PER_GENERATION_REQUEST
             ),
           },
-          { signal, onDispatch }
+          { signal, onDispatch, urlTokenizer }
         )
       );
     }

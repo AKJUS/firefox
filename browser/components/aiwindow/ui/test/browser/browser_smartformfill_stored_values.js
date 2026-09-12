@@ -55,8 +55,8 @@ async function saveStoredValues(address) {
  */
 function respondWithTokenFills(mockEngineManager) {
   return respondWithGeneratedFields(mockEngineManager, [
-    { action: "fill_from_token", token: "$EMAIL_1", confidence: "high" },
-    { action: "fill_from_token", token: "$NAME_1", confidence: "high" },
+    { action: "fill_from_token", value: "§EMAIL_1§", confidence: "high" },
+    { action: "fill_from_token", value: "§NAME_1§", confidence: "high" },
   ]);
 }
 
